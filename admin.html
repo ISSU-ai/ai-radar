@@ -567,6 +567,28 @@
     </div>
   </div>
 
+  <!-- MODAL: Add New Solution Modal (디자인 통일) -->
+  <div class="modal-backdrop hidden" id="add-solution-modal" onclick="closeAddSolutionModal(event)">
+    <div class="modal-card glass-card" onclick="event.stopPropagation()" style="max-width: 500px;">
+      <button class="modal-close-btn" onclick="toggleAddSolutionModal(false)">
+        <i data-lucide="x"></i>
+      </button>
+      <div class="modal-header">
+        <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary);"><i data-lucide="plus-circle" style="vertical-align: middle; margin-right: 8px; color: var(--accent-green);"></i>신규 솔루션 추가</h2>
+      </div>
+      <div class="modal-body" style="gap: 15px; margin-top: 1rem;">
+        <div class="form-group">
+          <label class="control-label" for="new-sol-name">솔루션 명 (Name)</label>
+          <input type="text" id="new-sol-name" class="form-control" style="padding-left: 12px; width: 100%;" placeholder="예: OpenAI Enterprise" required>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 1.5rem;">
+          <button onclick="toggleAddSolutionModal(false)" class="btn-save" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--card-border); color: var(--text-primary);">취소</button>
+          <button onclick="submitNewSolution()" class="btn-save" style="background: var(--accent-green); border: none; color: white;">생성</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Toast Notification -->
   <div class="toast" id="toast-message">
     <i data-lucide="check-circle" style="color: var(--accent-green);"></i>
@@ -844,10 +866,37 @@
       };
     }
 
-    // Create New Draft
-    async function createNewDraft() {
-      const solName = prompt('추가할 신규 솔루션 명칭을 입력해주세요:');
-      if (!solName || solName.trim() === '') return;
+    // Create New Draft Modal Control
+    function createNewDraft() {
+      document.getElementById('new-sol-name').value = '';
+      toggleAddSolutionModal(true);
+    }
+
+    function toggleAddSolutionModal(show) {
+      const modal = document.getElementById('add-solution-modal');
+      if (show) {
+        modal.classList.remove('hidden');
+        document.getElementById('new-sol-name').focus();
+        lucide.createIcons();
+      } else {
+        modal.classList.add('hidden');
+      }
+    }
+
+    function closeAddSolutionModal(e) {
+      if (e) e.stopPropagation();
+      toggleAddSolutionModal(false);
+    }
+
+    async function submitNewSolution() {
+      const solNameInput = document.getElementById('new-sol-name');
+      const solName = solNameInput.value.trim();
+      if (!solName) {
+        alert('솔루션 이름을 입력해주세요.');
+        return;
+      }
+
+      toggleAddSolutionModal(false);
 
       try {
         const res = await fetch('/api/admin/solutions', {
@@ -856,7 +905,7 @@
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            name: solName.trim(),
+            name: solName,
             layer: 'L1',
             status: 'draft',
             sections: {
@@ -1273,12 +1322,17 @@
     function showToast(message, iconName = 'check-circle') {
       const toast = document.getElementById('toast-message');
       const text = document.getElementById('toast-text');
+      if (!toast) return;
       
-      // Update icon
-      const icon = toast.querySelector('i');
-      icon.setAttribute('data-lucide', iconName);
+      // Update icon (querying both i and svg because Lucide replaces i with svg after drawing)
+      const icon = toast.querySelector('i, svg');
+      if (icon) {
+        icon.setAttribute('data-lucide', iconName);
+      }
       
-      text.textContent = message;
+      if (text) {
+        text.textContent = message;
+      }
       toast.style.display = 'flex';
       
       lucide.createIcons();
