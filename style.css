@@ -565,6 +565,7 @@ body {
   font-size: 0.85rem;
   border-bottom: 1px solid var(--card-border);
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .isv-table tbody tr {

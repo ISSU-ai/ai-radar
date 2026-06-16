@@ -186,18 +186,34 @@ async function loadDashboardData() {
     currentUser = meData.user;
     
     // Update Session Bar UI
+    const sessionBar = document.getElementById('user-session-bar');
+    if (sessionBar) {
+      sessionBar.style.background = '#ffffff';
+      sessionBar.style.borderColor = 'var(--card-border)';
+      sessionBar.style.boxShadow = '0 4px 12px rgba(0,0,0,0.03)';
+    }
+
     document.getElementById('session-username').textContent = currentUser.name;
     document.getElementById('session-email').textContent = currentUser.email;
     
     const roleBadge = document.getElementById('session-role-badge');
     roleBadge.textContent = currentUser.role === 'admin' ? 'Admin' : 'Viewer';
+    
+    const adminBtn = document.getElementById('admin-btn');
     if (currentUser.role === 'admin') {
       roleBadge.style.color = 'var(--accent-blue)';
       roleBadge.style.background = 'rgba(14, 165, 233, 0.12)';
-      document.getElementById('admin-btn').classList.remove('hidden');
+      if (adminBtn) {
+        adminBtn.classList.remove('hidden');
+        adminBtn.style.borderColor = 'var(--accent-blue)';
+        adminBtn.style.color = 'var(--accent-blue)';
+      }
     } else {
       roleBadge.style.color = '#475569';
       roleBadge.style.background = '#f1f5f9';
+      if (adminBtn) {
+        adminBtn.classList.add('hidden');
+      }
     }
 
     // 2. Fetch all solutions
