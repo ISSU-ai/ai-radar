@@ -452,21 +452,21 @@
             <!-- Industries -->
             <div class="form-group">
               <label class="control-label">적합 업종 (Domain) 분류</label>
-              <div class="checkbox-group-container" style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 8px;">
+              <div class="checkbox-group-container" style="background: #ffffff; border: 1px solid var(--card-border); border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 8px;">
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; color: var(--text-secondary);">
-                  <input type="checkbox" name="sol-industries" value="금융/보험" style="accent-color: var(--accent-purple);"> 금융/보험
+                  <input type="checkbox" name="sol-industries" value="금융/보험" style="accent-color: var(--accent-blue);"> 금융/보험
                 </label>
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; color: var(--text-secondary);">
-                  <input type="checkbox" name="sol-industries" value="공공/국방" style="accent-color: var(--accent-purple);"> 공공/국방
+                  <input type="checkbox" name="sol-industries" value="공공/국방" style="accent-color: var(--accent-blue);"> 공공/국방
                 </label>
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; color: var(--text-secondary);">
-                  <input type="checkbox" name="sol-industries" value="제조" style="accent-color: var(--accent-purple);"> 제조
+                  <input type="checkbox" name="sol-industries" value="제조" style="accent-color: var(--accent-blue);"> 제조
                 </label>
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; color: var(--text-secondary);">
-                  <input type="checkbox" name="sol-industries" value="유통/CS/서비스" style="accent-color: var(--accent-purple);"> 유통/CS/서비스
+                  <input type="checkbox" name="sol-industries" value="유통/CS/서비스" style="accent-color: var(--accent-blue);"> 유통/CS/서비스
                 </label>
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; color: var(--text-secondary);">
-                  <input type="checkbox" name="sol-industries" value="IT/미디어/테크" style="accent-color: var(--accent-purple);"> IT/미디어/테크
+                  <input type="checkbox" name="sol-industries" value="IT/미디어/테크" style="accent-color: var(--accent-blue);"> IT/미디어/테크
                 </label>
               </div>
             </div>
@@ -474,7 +474,7 @@
             <!-- Simulator Mappings -->
             <div class="form-group">
               <label class="control-label">시뮬레이터 의사결정 트리 매핑 (Simulator Mappings)</label>
-              <div class="checkbox-group-container" id="simulator-checkboxes-container" style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.75rem; height: 162px; overflow-y: scroll; display: flex; flex-direction: column; gap: 10px;">
+              <div class="checkbox-group-container" id="simulator-checkboxes-container" style="background: #ffffff; border: 1px solid var(--card-border); border-radius: 8px; padding: 0.75rem; height: 162px; overflow-y: scroll; display: flex; flex-direction: column; gap: 10px;">
                 <!-- Option checkboxes populated programmatically from javascript -->
               </div>
             </div>
@@ -750,7 +750,7 @@
           label.style.paddingLeft = '8px';
           
           label.innerHTML = `
-            <input type="checkbox" name="sol-simulator" value="${opt.id}" style="accent-color: var(--accent-purple);">
+            <input type="checkbox" name="sol-simulator" value="${opt.id}" style="accent-color: var(--accent-blue);">
             <span>[${opt.id}] ${opt.text}</span>
           `;
           container.appendChild(label);
