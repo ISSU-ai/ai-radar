@@ -1,6 +1,7 @@
 const http = require('http');
 const { createClient } = require('@supabase/supabase-js');
 const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
 require('dotenv').config();
 
 const PORT = 3000;
@@ -80,6 +81,7 @@ async function runTests() {
 
   let testCount = 0;
   let successCount = 0;
+  let pendingUserId = null;
 
   function assert(condition, message, extra = null) {
     testCount++;
@@ -94,41 +96,80 @@ async function runTests() {
     }
   }
 
+  const tempPendingEmail = 'pending_test@mz.co.kr';
+
   try {
     // 0. Setup/Check database test accounts
-    // Supabase Auth에 테스트 계정이 잘 가입되어 있는지 확인 및 권한 강제 조율
     console.log('Checking test accounts sync...');
     
-    // admin@mzc.co.kr 프로필 조회
-    const adminCheck = await pool.query("SELECT id FROM profiles WHERE email = 'admin@mzc.co.kr'");
-    if (adminCheck.rows.length === 0) {
-      console.log('[WARN] admin@mzc.co.kr profile not found. Please ensure users are created in Supabase Auth first.');
+    // wonzero@mz.co.kr 및 admin@mz.co.kr 계정 존재 확인
+    const adminCheck = await pool.query("SELECT id FROM profiles WHERE email = 'admin@mz.co.kr'");
+    const userCheck = await pool.query("SELECT id FROM profiles WHERE email = 'wonzero@mz.co.kr'");
+    
+    if (adminCheck.rows.length === 0 || userCheck.rows.length === 0) {
+      console.log('[WARN] Required test accounts (admin@mz.co.kr, wonzero@mz.co.kr) not found in profiles. Please run seed/setup first.');
     } else {
-      await pool.query("UPDATE profiles SET role = 'admin', approved = true WHERE email = 'admin@mzc.co.kr'");
-      await pool.query("UPDATE profiles SET role = 'viewer', approved = true WHERE email = 'viewer@mzc.co.kr'");
-      await pool.query("UPDATE profiles SET role = 'viewer', approved = false WHERE email = 'pending@mzc.co.kr'");
-      console.log('Test accounts sync updated in profiles table.');
+      // 뷰어 역할 테스트를 위해 임시로 wonzero@mz.co.kr을 viewer로 변경 (원래 admin)
+      await pool.query("UPDATE profiles SET role = 'viewer', approved = true WHERE email = 'wonzero@mz.co.kr'");
+      // admin@mz.co.kr은 어드민 유지
+      await pool.query("UPDATE profiles SET role = 'admin', approved = true WHERE email = 'admin@mz.co.kr'");
+      console.log('Test accounts (wonzero as viewer, admin as admin) synced in profiles table.');
     }
+
+    // 0-1. 미승인(pending) 임시 계정 생성
+    console.log('Setting up temporary pending account...');
+    // 혹시 모를 기존 데이터 정리
+    await pool.query("DELETE FROM public.profiles WHERE email = $1", [tempPendingEmail]);
+    await pool.query("DELETE FROM auth.users WHERE email = $1", [tempPendingEmail]);
+
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync('admin123!', salt);
+
+    const insertAuthQuery = `
+      INSERT INTO auth.users (
+        id, instance_id, aud, email, encrypted_password, email_confirmed_at,
+        raw_app_meta_data, raw_user_meta_data, is_super_admin, role,
+        created_at, updated_at, confirmation_token, recovery_token,
+        email_change_token_new, email_change, phone_change, phone_change_token,
+        email_change_token_current, reauthentication_token, phone
+      )
+      VALUES (
+        gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', $1, $2, now(),
+        '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, false, 'authenticated',
+        now(), now(), '', '', '', '', '', '', '', '', null
+      )
+      RETURNING id;
+    `;
+    const resPending = await pool.query(insertAuthQuery, [tempPendingEmail, hash]);
+    pendingUserId = resPending.rows[0].id;
+
+    // 트리거에 의해 profiles 레코드가 자동 생성되었을 것이므로, approved=false, role=viewer로 강제 업데이트
+    await pool.query(`
+      UPDATE public.profiles
+      SET role = 'viewer', approved = false, full_name = '대기사용자', team = 'Test Team'
+      WHERE id = $1
+    `, [pendingUserId]);
+    console.log('Temporary pending account created and marked as unapproved in DB.');
 
     // Test 1: login with pending account (should be blocked)
     const loginPending = await makeRequest('/api/auth/login', 'POST', {
-      email: 'pending@mzc.co.kr',
-      password: 'vudckdWlq1!'
+      email: tempPendingEmail,
+      password: 'admin123!'
     });
     assert(loginPending.statusCode === 403, '1. Pending user login should be rejected with 403', loginPending);
     assert(loginPending.body.error && loginPending.body.error.includes('승인'), '1.1 Pending error message should mention approval/approval state', loginPending.body);
 
     // Test 2: login with wrong password
     const loginWrong = await makeRequest('/api/auth/login', 'POST', {
-      email: 'viewer@mzc.co.kr',
+      email: 'wonzero@mz.co.kr',
       password: 'wrongpassword'
     });
     assert(loginWrong.statusCode === 401, '2. Login with wrong password should return 401', loginWrong);
 
-    // Test 3: login with valid viewer account
+    // Test 3: login with valid viewer account (wonzero@mz.co.kr, currently viewer role)
     const loginViewer = await makeRequest('/api/auth/login', 'POST', {
-      email: 'viewer@mzc.co.kr',
-      password: 'vudckdWlq1!'
+      email: 'wonzero@mz.co.kr',
+      password: 'admin123!'
     });
     assert(loginViewer.statusCode === 200, '3. Viewer login should succeed with 200', loginViewer);
     
@@ -149,10 +190,10 @@ async function runTests() {
     const viewerUsage = await makeRequest('/api/admin/usage', 'GET', null, { Cookie: viewerCookie });
     assert(viewerUsage.statusCode === 403, '5. Viewer accessing admin usage should return 403 Forbidden');
 
-    // Test 6: login with admin account
+    // Test 6: login with admin account (admin@mz.co.kr)
     const loginAdmin = await makeRequest('/api/auth/login', 'POST', {
-      email: 'admin@mzc.co.kr',
-      password: 'vudckdWlq1!'
+      email: 'admin@mz.co.kr',
+      password: 'admin123!'
     });
     assert(loginAdmin.statusCode === 200, '6. Admin login should succeed with 200');
     
@@ -182,7 +223,7 @@ async function runTests() {
     const manufacturingSolutions = await makeRequest('/api/solutions?industry=' + encodeURIComponent('제조'), 'GET', null, { Cookie: adminCookie });
     assert(manufacturingSolutions.statusCode === 200, '10. Can request filter by industry (제조)');
     assert(Array.isArray(manufacturingSolutions.body), '10.1 Industry filter response is an array');
-    assert(manufacturingSolutions.body.length === 0, '10.2 All returned solutions should be empty for "제조" industry due to v1 deactivation');
+    assert(manufacturingSolutions.body.length === 0, '10.2 Returned solutions should be empty for "제조" industry due to v1 deactivation');
 
     // Test 11: Filter solutions by simulator mapping
     const q1_1Solutions = await makeRequest('/api/solutions?simulator_mapping=q1_1', 'GET', null, { Cookie: adminCookie });
@@ -199,7 +240,7 @@ async function runTests() {
     console.log('--------------------------------------------------');
 
     // Security Test 1: 권한 상승 우회 차단 검증 (회원 가입 트리거 취약점 테스트)
-    const tempEmail = `test_escalation_${Date.now()}@mzc.co.kr`;
+    const tempEmail = `test_escalation_${Date.now()}@mz.co.kr`;
     // Supabase Auth에 메타데이터를 포함해 가입 시도 (role/approved 권한 상승 시도)
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: tempEmail,
@@ -226,8 +267,9 @@ async function runTests() {
       assert(prof.approved === false, 'Sec 1.2 Trigger approved ignored metadata and set always as false');
 
       // 임시 테스트 유저 삭제
-      await pool.query('DELETE FROM profiles WHERE id = $1', [signUpData.user.id]);
-      // Supabase Auth의 유저 삭제는 admin API가 필요하므로 profiles만 우선 삭제해둠
+      await pool.query('DELETE FROM public.profiles WHERE id = $1', [signUpData.user.id]);
+      await pool.query('DELETE FROM auth.users WHERE id = $1', [signUpData.user.id]);
+      console.log('Cleaned up Sec 1 temporary signup user.');
     }
 
     // Security Test 2: Viewer 권한의 solutions 쓰기(POST/PUT) 시도 차단 검증
@@ -248,7 +290,6 @@ async function runTests() {
 
     // Security Test 3: Viewer 응답에서 opinion 필드 노출 통제 검증 (완전 제거)
     const viewerOpiCheck = viewSolutions.body.every(s => {
-      // B 정책일 때 viewer는 절대 opinion 필드를 갖지 않아야 함
       return s.opinion === undefined;
     });
     assert(viewerOpiCheck, 'Sec 3. Opinion field completely removed in list endpoint for Viewer');
@@ -261,16 +302,32 @@ async function runTests() {
     console.log(` Verification Completed: ${successCount}/${testCount} tests passed.`);
     console.log('==================================================');
     
+  } catch (err) {
+    console.error('Error during test execution:', err);
+  } finally {
+    // 9. Teardown: 원복 및 임시 유저 삭제
+    console.log('Starting Teardown...');
+    try {
+      // wonzero@mz.co.kr을 다시 admin 권한으로 원상복구
+      await pool.query("UPDATE profiles SET role = 'admin', approved = true WHERE email = 'wonzero@mz.co.kr'");
+      console.log('Restored wonzero@mz.co.kr profile back to admin.');
+      
+      // pending_test 계정 최종 삭제
+      if (pendingUserId) {
+        await pool.query("DELETE FROM public.profiles WHERE id = $1", [pendingUserId]);
+        await pool.query("DELETE FROM auth.users WHERE id = $1", [pendingUserId]);
+        console.log('Deleted temporary pending user from DB.');
+      }
+    } catch (teardownErr) {
+      console.error('Error during teardown:', teardownErr);
+    }
+    
     await pool.end();
-    if (successCount === testCount) {
+    if (successCount === testCount && testCount > 0) {
       process.exit(0);
     } else {
       process.exit(1);
     }
-  } catch (err) {
-    console.error('Error during test execution:', err);
-    await pool.end().catch(() => {});
-    process.exit(1);
   }
 }
 
