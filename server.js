@@ -292,6 +292,15 @@ app.get('/api/solutions', authenticateToken, async (req, res) => {
       return copy;
     });
 
+    // 우선순위(★★★ > ★★ > ★)가 높은 것부터 내림차순 정렬
+    const getPriorityWeight = (row) => {
+      if (row.layer && row.layer.includes('L0')) return 1;
+      if (row.synergy === '매우 높음') return 3;
+      if (row.synergy === '높음') return 2;
+      return 1;
+    };
+    maskedRows.sort((a, b) => getPriorityWeight(b) - getPriorityWeight(a));
+
     res.json(maskedRows);
   } catch (err) {
     console.error(err);

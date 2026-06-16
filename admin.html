@@ -293,6 +293,36 @@
       color: var(--text-primary);
       font-weight: 500;
     }
+    
+    /* Premium Dark Glassmorphism Input/Select Control */
+    .form-control {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: var(--text-primary);
+      font-family: var(--font-main);
+      font-size: 0.875rem;
+      outline: none;
+      transition: var(--transition-smooth);
+      height: 42px;
+    }
+    .form-control:focus {
+      border-color: var(--accent-purple);
+      box-shadow: 0 0 12px rgba(168, 85, 247, 0.25);
+      background: rgba(15, 23, 42, 0.8);
+    }
+    select.form-control {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 1rem center;
+      background-size: 1em;
+      padding-right: 2.5rem;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
