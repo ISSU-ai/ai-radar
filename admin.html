@@ -260,7 +260,23 @@
     .btn-save:hover {
       background: rgba(255,255,255,0.03);
     }
+    .btn-archive {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: var(--transition-smooth);
+    }
+    .btn-archive:hover {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: #ef4444;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.25);
+    }
     .btn-commit {
+
       background: var(--gradient-main);
       color: white;
       border: none;
@@ -517,9 +533,11 @@
           </div>
 
           <div class="actions-bar">
+            <button type="button" onclick="archiveSolution()" class="btn-archive">솔루션 아카이브 (Archive)</button>
             <button type="button" onclick="saveAsDraft()" class="btn-save">임시 저장 (Save Draft)</button>
             <button type="button" onclick="proposePublish()" class="btn-commit">발행 승인 요청 (Publish)</button>
           </div>
+
         </form>
       </div>
 
@@ -964,8 +982,35 @@
       }
     }
 
+    // Archive Solution
+    async function archiveSolution() {
+      if (!currentSelectedId) return;
+      
+      const solName = document.getElementById('sol-name').value;
+      const confirmOk = confirm(`정말로 '${solName}' 솔루션을 아카이브하시겠습니까?\n아카이브된 솔루션은 포털 내 모든 화면에서 숨김 처리됩니다.`);
+      if (!confirmOk) return;
+
+      try {
+        const res = await fetch(`/api/admin/solutions/${currentSelectedId}`, {
+          method: 'DELETE'
+        });
+
+        const resData = await res.json();
+        if (!res.ok) throw new Error(resData.error || '아카이브 실패');
+
+        showToast('솔루션이 성공적으로 아카이브(숨김) 처리되었습니다.');
+        
+        // Reset selection and reload list
+        currentSelectedId = null;
+        await loadSolutionsList();
+      } catch (err) {
+        showToast(err.message, 'alert-circle');
+      }
+    }
+
     // Save as Draft
     async function saveAsDraft() {
+
       if (!currentSelectedId) return;
       const data = getCurrentFormData();
       data.status = 'draft'; // force draft status on draft save

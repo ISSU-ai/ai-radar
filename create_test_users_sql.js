@@ -10,8 +10,10 @@ const pool = new Pool({
 
 const users = [
   { email: 'wonzero@mz.co.kr', password: 'admin123!', role: 'admin', approved: true },
-  { email: 'admin@mz.co.kr', password: 'admin123!', role: 'admin', approved: true }
+  { email: 'admin@mz.co.kr', password: 'admin123!', role: 'admin', approved: true },
+  { email: 'dataai@mz.co.kr', password: 'dataai123!', role: 'viewer', approved: true }
 ];
+
 
 async function run() {
   try {

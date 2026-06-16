@@ -89,10 +89,20 @@ const pool = new Pool({
   family: 6
 });
 
+// Run DB Migrations
+pool.query('ALTER TABLE public.solutions ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT false', (err) => {
+  if (err) {
+    console.error('Error running migrations (is_archived column):', err);
+  } else {
+    console.log('Database migration successful: is_archived column verified.');
+  }
+});
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
+
 
 // Middleware
 app.use(express.json());
@@ -220,8 +230,9 @@ app.get('/api/solutions', authenticateToken, async (req, res) => {
   const { layer, synergy, delivery, category, q, industry, simulator_mapping } = req.query;
   
   let queryStr = 'SELECT id, legacy_id, slug, name, delivery, layer, synergy, category, jtbd, value_chain, opinion, status, version, updated_at, simulator_mappings, industries FROM solutions';
-  let conditions = [];
+  let conditions = ['is_archived = false'];
   let params = [];
+
   let paramIdx = 1;
 
   if (req.user.role === 'viewer') {
@@ -313,8 +324,9 @@ app.get('/api/solutions/:slug', authenticateToken, async (req, res) => {
   const slug = req.params.slug;
 
   try {
-    const result = await pool.query('SELECT * FROM solutions WHERE slug = $1', [slug]);
+    const result = await pool.query('SELECT * FROM solutions WHERE slug = $1 AND is_archived = false', [slug]);
     const row = result.rows[0];
+
 
     if (!row) {
       return res.status(404).json({ error: '솔루션을 찾을 수 없습니다.' });
@@ -485,6 +497,27 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
     res.status(500).json({ error: '솔루션 발행에 실패했습니다.' });
   }
 });
+
+// DELETE /api/admin/solutions/:id (Archive solution)
+app.delete('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, res) => {
+  const solId = req.params.id;
+  const now = new Date().toISOString();
+  try {
+    const solRes = await pool.query('SELECT * FROM solutions WHERE id = $1', [solId]);
+    const sol = solRes.rows[0];
+    if (!sol) {
+      return res.status(404).json({ error: '아카이브할 솔루션을 찾을 수 없습니다.' });
+    }
+    
+    await pool.query('UPDATE solutions SET is_archived = true, updated_by = $1, updated_at = $2 WHERE id = $3', [req.user.id, now, solId]);
+    auditLog(req.user.id, 'archive', sol.slug);
+    res.json({ message: '솔루션이 성공적으로 아카이브(숨김) 처리되었습니다.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '솔루션 아카이브 처리에 실패했습니다.' });
+  }
+});
+
 
 app.get('/api/admin/solutions/:id/versions', authenticateToken, adminOnly, async (req, res) => {
   const solId = req.params.id;
