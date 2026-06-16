@@ -9,14 +9,33 @@ const pool = new Pool({
 });
 
 const users = [
-  { email: 'admin@mzc.co.kr', password: 'vudckdWlq1!', role: 'admin', approved: true },
-  { email: 'viewer@mzc.co.kr', password: 'vudckdWlq1!', role: 'viewer', approved: true },
-  { email: 'pending@mzc.co.kr', password: 'vudckdWlq1!', role: 'viewer', approved: false }
+  { email: 'wonzero@mz.co.kr', password: 'admin123!', role: 'admin', approved: true },
+  { email: 'admin@mz.co.kr', password: 'admin123!', role: 'admin', approved: true }
 ];
 
 async function run() {
   try {
-    // 1. auth.users 테이블 컬럼 조회
+    // 0. 기존 유저 및 관련 기록 전체 비우기 (외래키 순서 고려)
+    console.log('Cleaning existing user accounts and audit logs...');
+    
+    // 1) audit_log 삭제
+    await pool.query('DELETE FROM public.audit_log');
+    console.log('Cleared public.audit_log.');
+
+    // 2) solutions 및 solution_versions 의 유저 FK 임시 해제(null 처리)
+    await pool.query('UPDATE public.solutions SET updated_by = null');
+    await pool.query('UPDATE public.solution_versions SET editor = null');
+    console.log('Unlinked user references in solutions and versions.');
+
+    // 3) profiles 삭제
+    await pool.query('DELETE FROM public.profiles');
+    console.log('Cleared public.profiles.');
+
+    // 4) auth.users 삭제
+    await pool.query('DELETE FROM auth.users');
+    console.log('Cleared auth.users.');
+
+    // 1. auth.users 테이블 컬럼 조회 (안정성 체크)
     console.log('Querying auth.users columns...');
     const columnsRes = await pool.query(`
       SELECT column_name 
@@ -26,64 +45,44 @@ async function run() {
     const cols = columnsRes.rows.map(r => r.column_name);
     console.log('Columns in auth.users:', cols.join(', '));
 
-    // 2. 각 유저에 대해 삽입 시도
+    // 2. 신규 사용자 삽입
     for (const u of users) {
-      console.log(`Processing user directly in DB: ${u.email}...`);
-      
-      // 기존 auth.users에 이미 있는지 체크
-      const existRes = await pool.query('SELECT id FROM auth.users WHERE email = $1', [u.email]);
-      let userId;
+      console.log(`Inserting direct user: ${u.email}...`);
       
       const salt = bcrypt.genSaltSync(10);
       const hash = bcrypt.hashSync(u.password, salt);
 
-      if (existRes.rows.length === 0) {
-        console.log(`Inserting into auth.users...`);
-        // Supabase Auth에 이메일 기반 가입자 정보 insert
-        const insertAuthQuery = `
-          INSERT INTO auth.users (
-            id, instance_id, aud, email, encrypted_password, email_confirmed_at,
-            raw_app_meta_data, raw_user_meta_data, is_super_admin, role,
-            created_at, updated_at, confirmation_token, recovery_token,
-            email_change_token_new, email_change, phone_change, phone_change_token,
-            email_change_token_current, reauthentication_token, phone
-          )
-          VALUES (
-            gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', $1, $2, now(),
-            '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, false, 'authenticated',
-            now(), now(), '', '', '', '', '', '', '', '', null
-          )
-          RETURNING id;
-        `;
-        const res = await pool.query(insertAuthQuery, [u.email, hash]);
-        userId = res.rows[0].id;
-        console.log(`Inserted ${u.email} into auth.users with ID ${userId}`);
-      } else {
-        userId = existRes.rows[0].id;
-        console.log(`User ${u.email} already exists in auth.users. Updating password hash and aud...`);
-        await pool.query("UPDATE auth.users SET encrypted_password = $1, aud = 'authenticated', email_confirmed_at = now() WHERE id = $2", [hash, userId]);
-      }
+      // Supabase Auth에 이메일 기반 가입자 정보 insert
+      const insertAuthQuery = `
+        INSERT INTO auth.users (
+          id, instance_id, aud, email, encrypted_password, email_confirmed_at,
+          raw_app_meta_data, raw_user_meta_data, is_super_admin, role,
+          created_at, updated_at, confirmation_token, recovery_token,
+          email_change_token_new, email_change, phone_change, phone_change_token,
+          email_change_token_current, reauthentication_token, phone
+        )
+        VALUES (
+          gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', $1, $2, now(),
+          '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, false, 'authenticated',
+          now(), now(), '', '', '', '', '', '', '', '', null
+        )
+        RETURNING id;
+      `;
+      const res = await pool.query(insertAuthQuery, [u.email, hash]);
+      const userId = res.rows[0].id;
+      console.log(`Inserted ${u.email} into auth.users with ID ${userId}`);
 
-      // 3. public.profiles 테이블도 직접 동기화/업데이트
-      console.log(`Syncing profile for ${u.email}...`);
-      const profCheck = await pool.query('SELECT id FROM public.profiles WHERE id = $1', [userId]);
-      if (profCheck.rows.length === 0) {
-        await pool.query(`
-          INSERT INTO public.profiles (id, email, full_name, team, role, approved)
-          VALUES ($1, $2, $3, $4, $5::app_role, $6)
-        `, [userId, u.email, u.email.split('@')[0], 'Sales Team', u.role, u.approved]);
-        console.log(`Created new profile record.`);
-      } else {
-        await pool.query(`
-          UPDATE public.profiles
-          SET email = $1, role = $2::app_role, approved = $3
-          WHERE id = $4
-        `, [u.email, u.role, u.approved, userId]);
-        console.log(`Updated existing profile record.`);
-      }
+      // 3. public.profiles 테이블도 직접 동기화 (트리거에 의해 자동 생성된 값을 어드민/승인 상태로 업데이트)
+      console.log(`Updating profile for ${u.email}...`);
+      await pool.query(`
+        UPDATE public.profiles
+        SET role = $1::app_role, approved = $2, full_name = $3, team = $4
+        WHERE id = $5
+      `, [u.role, u.approved, u.email.split('@')[0], 'MZC Team', userId]);
+      console.log(`Updated profile for ${u.email}`);
     }
   } catch (err) {
-    console.error('SQL Direct User Injection failed:', err);
+    console.error('Direct User Reinitialization failed:', err);
   } finally {
     await pool.end();
   }
