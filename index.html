@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IPAD Portal</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    // 로그인 즉시 체크
+    (async function() {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (!res.ok) {
+          window.location.href = '/login.html';
+        }
+      } catch (err) {
+        window.location.href = '/login.html';
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div class="glow-container">
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+  </div>
+
+  <header class="app-header">
+    <div class="header-content" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 2rem; flex-wrap: wrap;">
+      <div class="header-left">
+        <div class="logo-area">
+          <div class="logo-icon">
+            <i data-lucide="radar"></i>
+          </div>
+          <div class="logo-text">
+            <h1>ISSU AI Radar</h1>
+            <span>ISSU Product AI Database v2.0</span>
+          </div>
+        </div>
+        <p class="header-desc">
+          영업 현장에서 고객의 다양한 AI 요구사항을 신속하게 분석하고, 최적의 AI 솔루션 조합을 추천하기 위한 세일즈 의사결정 마스터 대시보드입니다.
+        </p>
+      </div>
+      <div class="header-right" id="user-session-bar" style="background: rgba(15, 23, 42, 0.45); border: 1px solid var(--card-border); padding: 1rem 1.25rem; border-radius: 10px; display: flex; align-items: center; gap: 15px; min-width: 280px; justify-content: space-between;">
+        <div class="user-info" style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <strong id="session-username" style="font-size: 0.95rem; color: var(--text-primary);">사용자</strong>
+            <span id="session-role-badge" class="layer-badge" style="font-size: 0.7rem; font-weight: 700; padding: 1px 4px; border-radius: 3px;">Role</span>
+          </div>
+          <span id="session-email" style="font-size: 0.8rem; color: var(--text-secondary);">user@mzc.co.kr</span>
+        </div>
+        <div class="session-actions" style="display: flex; gap: 8px; align-items: center;">
+          <a href="/about" class="back-btn" style="margin-top: 0; padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+            <i data-lucide="info" style="width: 14px; height: 14px;"></i>소개
+          </a>
+          <a href="/admin" id="admin-btn" class="back-btn hidden" style="margin-top: 0; padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; border-color: var(--accent-purple); color: var(--accent-purple);">
+            <i data-lucide="settings" style="width: 14px; height: 14px;"></i>어드민
+          </a>
+          <button onclick="handleLogout()" class="back-btn" style="margin-top: 0; padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px;">
+            <i data-lucide="log-out" style="width: 14px; height: 14px;"></i>로그아웃
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <!-- SECTION 1: Interactive Decision Tree Simulator -->
+    <section class="dashboard-section simulator-section">
+      <div class="section-title">
+        <i data-lucide="git-branch"></i>
+        <h2>핵심 요구사항별 Decision Tree 시뮬레이터</h2>
+      </div>
+      <div class="glass-card simulator-card">
+        <div class="simulator-steps">
+          <!-- Step 1 -->
+          <div class="sim-step" id="step-1">
+            <h3 class="step-q">Q1. 고객이 당면한 가장 큰 업무 고민은 무엇입니까?</h3>
+            <div class="options-grid">
+              <button class="opt-btn" onclick="nextStep(1, 'q1')">
+                <i data-lucide="users"></i>
+                <div class="opt-text">
+                  <strong>전사 임직원 생산성 향상</strong>
+                  <span>일상 업무 효율성 및 지식 공유</span>
+                </div>
+              </button>
+              <button class="opt-btn" onclick="nextStep(1, 'q2')">
+                <i data-lucide="briefcase"></i>
+                <div class="opt-text">
+                  <strong>특정 부서 업무 자동화</strong>
+                  <span>영업/CS/IT지원 프로세스 혁신</span>
+                </div>
+              </button>
+              <button class="opt-btn" onclick="nextStep(1, 'q3')">
+                <i data-lucide="code-2"></i>
+                <div class="opt-text">
+                  <strong>개발자 및 데이터 과학자 지원</strong>
+                  <span>코딩 생산성 및 ML 예측 모델 빌드</span>
+                </div>
+              </button>
+              <button class="opt-btn" onclick="nextStep(1, 'q4')">
+                <i data-lucide="shield-alert"></i>
+                <div class="opt-text">
+                  <strong>에이전트 제어 및 LLM 비용 통제</strong>
+                  <span>멀티 LLM 통제, 보안 및 장애 자가 복구</span>
+                </div>
+              </button>
+              <button class="opt-btn" onclick="nextStep(1, 'q0')">
+                <i data-lucide="database"></i>
+                <div class="opt-text">
+                  <strong>데이터 레이크/DW 기반 AI 연동</strong>
+                  <span>데이터 플랫폼 내에 GenAI 직접 얹기</span>
+                </div>
+              </button>
+              <button class="opt-btn" onclick="nextStep(1, 'q4_q0')">
+                <i data-lucide="zap"></i>
+                <div class="opt-text">
+                  <strong>벡터 저장소 및 실시간 RAG 구성</strong>
+                  <span>데이터 캐싱, 검색 성능 및 스트리밍 레이어</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 2 (Dynamic text based on Step 1 selection) -->
+          <div class="sim-step hidden" id="step-2">
+            <h3 class="step-q" id="step-2-q">Q2. 세부 요구사항을 선택해 주세요.</h3>
+            <div class="options-grid" id="step-2-options">
+              <!-- Dynamically populated -->
+            </div>
+            <button class="back-btn" onclick="goBack(2)">
+              <i data-lucide="arrow-left"></i>
+              <span>이전 단계로</span>
+            </button>
+          </div>
+
+          <!-- Step 3: Result Recommendation -->
+          <div class="sim-step hidden" id="step-3">
+            <h3 class="step-q">추천 솔루션 매칭 결과</h3>
+            <div class="results-container" id="sim-results">
+              <!-- Dynamically populated cards -->
+            </div>
+            <div class="sim-actions">
+              <button class="back-btn" onclick="goBack(3)">
+                <i data-lucide="arrow-left"></i>
+                <span>이전 단계로</span>
+              </button>
+              <button class="reset-btn" onclick="resetSimulator()">
+                <i data-lucide="rotate-ccw"></i>
+                <span>처음부터 다시하기</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2: 4-Layer Matrix + L0 Layer -->
+    <section class="dashboard-section matrix-section">
+      <div class="section-title">
+        <i data-lucide="layout-grid"></i>
+        <h2>AI GTM 4-Layer Matrix & Data Foundation</h2>
+      </div>
+      
+      <div class="matrix-grid">
+        <!-- Q1 -->
+        <div class="matrix-cell glass-card layer-q1">
+          <div class="layer-header">
+            <span class="layer-badge">Q1</span>
+            <h3>Enterprise General Build AI</h3>
+            <p>전사 범용 AI 생산성 향상</p>
+          </div>
+          <div class="isv-tag-container" id="matrix-q1-tags"></div>
+        </div>
+        
+        <!-- Q2 -->
+        <div class="matrix-cell glass-card layer-q2">
+          <div class="layer-header">
+            <span class="layer-badge">Q2</span>
+            <h3>Business Domain Build AI</h3>
+            <p>특정 전문 영역 프로세스 혁신</p>
+          </div>
+          <div class="isv-tag-container" id="matrix-q2-tags"></div>
+        </div>
+        
+        <!-- Q3 -->
+        <div class="matrix-cell glass-card layer-q3">
+          <div class="layer-header">
+            <span class="layer-badge">Q3</span>
+            <h3>AI-native Works</h3>
+            <p>개발자 코딩 & 시민 데이터과학</p>
+          </div>
+          <div class="isv-tag-container" id="matrix-q3-tags"></div>
+        </div>
+        
+        <!-- Q4 -->
+        <div class="matrix-cell glass-card layer-q4">
+          <div class="layer-header">
+            <span class="layer-badge">Q4</span>
+            <h3>AI Infrastructure</h3>
+            <p>에이전트 연결, RAG, 비용/보안 통제</p>
+          </div>
+          <div class="isv-tag-container" id="matrix-q4-tags"></div>
+        </div>
+      </div>
+
+      <!-- L0 Horizontal Layer -->
+      <div class="l0-horizontal-layer glass-card">
+        <div class="l0-header">
+          <div class="l0-title-group">
+            <span class="layer-badge badge-l0">L0</span>
+            <h3>Data Foundation Layer</h3>
+          </div>
+          <p>AI 성능의 전제조건이 되는 데이터 수집/이동/저장/가상화 기반 솔루션군</p>
+        </div>
+        <div class="isv-tag-container" id="matrix-l0-tags"></div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: All ISV Explorer -->
+    <section class="dashboard-section explorer-section">
+      <div class="section-title">
+        <i data-lucide="search"></i>
+        <h2>전체 ISV 파트너 탐색기 (18개 핵심 솔루션)</h2>
+      </div>
+
+      <div class="glass-card explorer-card">
+        <div class="explorer-toolbar">
+          <div class="search-box">
+            <i data-lucide="search"></i>
+            <input type="text" id="search-input" placeholder="솔루션명, 카테고리, JTBD 실시간 검색..." oninput="filterISVs()">
+          </div>
+          
+          <div class="filters-row">
+            <div class="filter-group">
+              <label>적합 업종 (v1 비활성)</label>
+              <select id="filter-industry" onchange="filterISVs()" disabled style="opacity: 0.6; cursor: not-allowed;">
+                <option value="all">전체 (비활성화됨)</option>
+              </select>
+            </div>
+
+            <div class="filter-group">
+              <label>우선순위</label>
+              <select id="filter-priority" onchange="filterISVs()">
+                <option value="all">전체</option>
+                <option value="★★★">★★★ (초고순위)</option>
+                <option value="★★">★★ (중고순위)</option>
+                <option value="★">★ (일반)</option>
+              </select>
+            </div>
+            
+            <div class="filter-group">
+              <label>레이어</label>
+              <select id="filter-layer" onchange="filterISVs()">
+                <option value="all">전체</option>
+                <option value="L0">L0 (Data Foundation)</option>
+                <option value="L1">L1 (Enterprise AI)</option>
+                <option value="L2">L2 (Business Task)</option>
+                <option value="L3">L3 (AI-native Dev)</option>
+                <option value="L4">L4 (AI Infra)</option>
+              </select>
+            </div>
+
+            <div class="filter-group">
+              <label>제공 형태</label>
+              <select id="filter-delivery" onchange="filterISVs()">
+                <option value="all">전체</option>
+                <option value="SaaS">SaaS</option>
+                <option value="SW">Software</option>
+                <option value="API">API / API-first</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="isv-table">
+            <thead>
+              <tr>
+                <th>우선순위</th>
+                <th>솔루션명</th>
+                <th>레이어</th>
+                <th>제공 형태</th>
+                <th>MZC/AWS 시너지</th>
+                <th>서비스 카테고리(기능)</th>
+                <th>핵심 목적 (JTBD)</th>
+                <th>AI Tech 의견 (PreSales)</th>
+              </tr>
+            </thead>
+            <tbody id="isv-table-body">
+              <!-- Dynamically populated rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL: Solution Details with 8 tabs -->
+  <div class="modal-backdrop hidden" id="detail-modal" onclick="closeModal(event)">
+    <div class="modal-card glass-card" onclick="event.stopPropagation()">
+      <button class="modal-close-btn" onclick="toggleModal(false)">
+        <i data-lucide="x"></i>
+      </button>
+      
+      <div class="modal-header">
+        <div class="modal-title-row" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <div class="title-left" style="display: flex; align-items: center; gap: 10px;">
+            <span class="modal-priority-badge" id="modal-priority"></span>
+            <h2 id="modal-title">솔루션명</h2>
+          </div>
+          <button class="export-btn" onclick="exportSolutionWord()" style="display: flex; align-items: center; gap: 6px; background: var(--accent-blue); color: white; border: none; padding: 8px 14px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: background 0.2s;">
+            <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+            Export (.docx)
+          </button>
+        </div>
+        <div class="modal-specs" style="margin-top: 12px;">
+          <div class="spec-item"><span class="label">레이어:</span> <span id="modal-layer"></span></div>
+          <div class="spec-item"><span class="label">제공 형태:</span> <span id="modal-delivery"></span></div>
+          <div class="spec-item"><span class="label">시너지:</span> <span id="modal-synergy"></span></div>
+          <div class="spec-item"><span class="label">밸류체인:</span> <span id="modal-value-chain"></span></div>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-tabs">
+          <button class="tab-btn active" onclick="switchTab(event, '1')">1. 개요</button>
+          <button class="tab-btn" onclick="switchTab(event, '2')">2. 매핑</button>
+          <button class="tab-btn" onclick="switchTab(event, '3')">3. 고객군</button>
+          <button class="tab-btn" onclick="switchTab(event, '4')">4. 아키텍처</button>
+          <button class="tab-btn" onclick="switchTab(event, '5')">5. 유즈케이스</button>
+          <button class="tab-btn" onclick="switchTab(event, '6')">6. 경쟁비교</button>
+          <button class="tab-btn" onclick="switchTab(event, '7')">7. 체크리스트</button>
+          <button class="tab-btn" onclick="switchTab(event, '8')">8. 영업팁</button>
+        </div>
+        
+        <div class="tab-content-container" id="tab-content">
+          <!-- Dynamically parsed HTML from markdown content -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="app-footer">
+    <p>© 2026 MegazoneCloud AI GTM & PreSales Support Team. All rights reserved.</p>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="app.js"></script>
+</body>
+</html>
