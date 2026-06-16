@@ -192,12 +192,12 @@ async function loadDashboardData() {
     const roleBadge = document.getElementById('session-role-badge');
     roleBadge.textContent = currentUser.role === 'admin' ? 'Admin' : 'Viewer';
     if (currentUser.role === 'admin') {
-      roleBadge.style.color = 'var(--accent-purple)';
-      roleBadge.style.background = 'rgba(168, 85, 247, 0.15)';
+      roleBadge.style.color = 'var(--accent-blue)';
+      roleBadge.style.background = 'rgba(14, 165, 233, 0.12)';
       document.getElementById('admin-btn').classList.remove('hidden');
     } else {
-      roleBadge.style.color = 'var(--accent-blue)';
-      roleBadge.style.background = 'rgba(14, 165, 233, 0.15)';
+      roleBadge.style.color = '#475569';
+      roleBadge.style.background = '#f1f5f9';
     }
 
     // 2. Fetch all solutions

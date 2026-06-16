@@ -551,12 +551,13 @@ body {
 }
 
 .isv-table th {
-  background: rgba(15, 23, 42, 0.2);
+  background: #f8fafc;
   padding: 1rem 1.5rem;
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-secondary);
   border-bottom: 1px solid var(--card-border);
+  white-space: nowrap;
 }
 
 .isv-table td {
