@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ISSU AI Radar - 플랫폼 분류 가이드</title>
+  <title>ISSU AI Radar - 분류 가이드</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
   <!-- CSS Stylesheet -->
   <link rel="stylesheet" href="style.css">
@@ -40,15 +40,13 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
+      color: #11171e;
     }
     .about-title-area h1 {
       font-family: var(--font-header);
       font-size: 1.6rem;
       font-weight: 800;
-      background: linear-gradient(to right, var(--text-primary), var(--accent-purple));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      color: var(--text-primary);
     }
     .content-card {
       line-height: 1.7;
@@ -89,12 +87,12 @@
       margin: 1.5rem 0;
     }
     .layer-info-box {
-      background: #ffffff;
+      background: var(--surface-muted);
       border: 1px solid var(--card-border);
       border-radius: 8px;
       padding: 1.25rem;
       border-left: 3px solid var(--text-secondary);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+      box-shadow: 0 12px 28px rgba(0,0,0,0.16);
     }
     .layer-info-box.q1 { border-left-color: var(--accent-purple); }
     .layer-info-box.q2 { border-left-color: var(--accent-orange); }
@@ -128,14 +126,14 @@
       text-align: left;
     }
     .matrix-table th {
-      background: #f8fafc;
+      background: var(--surface-muted);
       color: var(--text-primary);
     }
     .matrix-table td {
       color: var(--text-secondary);
     }
     .matrix-table tr:hover {
-      background: rgba(0, 0, 0, 0.01);
+      background: rgba(255, 255, 255, 0.035);
     }
   </style>
 </head>
@@ -155,7 +153,7 @@
       </div>
       <a href="/radar" class="back-btn" style="margin-top:0; text-decoration:none;">
         <i data-lucide="arrow-left"></i>
-        <span>대시보드로 돌아가기</span>
+        <span>AI Radar로 돌아가기</span>
       </a>
     </div>
 

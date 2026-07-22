@@ -229,9 +229,9 @@ async function loadDashboardData() {
     // Update Session Bar UI
     const sessionBar = document.getElementById('user-session-bar');
     if (sessionBar) {
-      sessionBar.style.background = '#ffffff';
+      sessionBar.style.background = 'var(--surface-color)';
       sessionBar.style.borderColor = 'var(--card-border)';
-      sessionBar.style.boxShadow = '0 4px 12px rgba(0,0,0,0.03)';
+      sessionBar.style.boxShadow = 'var(--shadow-glow)';
     }
 
     document.getElementById('session-username').textContent = currentUser.name;
@@ -243,7 +243,7 @@ async function loadDashboardData() {
     const adminBtn = document.getElementById('admin-btn');
     if (currentUser.role === 'admin') {
       roleBadge.style.color = 'var(--accent-blue)';
-      roleBadge.style.background = 'rgba(14, 165, 233, 0.12)';
+      roleBadge.style.background = 'rgba(76, 154, 255, 0.12)';
       if (adminBtn) {
         adminBtn.classList.remove('hidden');
         adminBtn.style.borderColor = 'var(--accent-blue)';

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ISSU AI Radar - Admin Portal</title>
+  <title>ISSU Enablement Hub - Admin</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
   <!-- CSS Stylesheet -->
   <link rel="stylesheet" href="style.css">
@@ -109,7 +109,7 @@
     .textarea-control {
       width: 100%;
       height: 120px;
-      background: #ffffff;
+      background: var(--surface-muted);
       border: 1px solid var(--card-border);
       border-radius: 8px;
       padding: 0.9rem 1rem;
@@ -133,7 +133,7 @@
     }
     .ai-assistant-card {
       border: 1px dashed var(--accent-purple);
-      background: rgba(168, 85, 247, 0.03);
+      background: rgba(167, 139, 224, 0.07);
       padding: 1.5rem;
       border-radius: 12px;
       display: flex;
@@ -146,7 +146,7 @@
     }
     .ai-input {
       flex: 1;
-      background: #ffffff;
+      background: var(--surface-muted);
       border: 1px solid var(--card-border);
       border-radius: 8px;
       min-height: 48px;
@@ -161,7 +161,7 @@
     }
     .ai-btn {
       background: var(--accent-purple);
-      color: white;
+      color: #11171e;
       border: none;
       border-radius: 8px;
       padding: 0.75rem 1.25rem;
@@ -178,7 +178,7 @@
     
     /* Diff View Styles */
     .diff-container {
-      background: #f8fafc;
+      background: var(--surface-muted);
       border: 1px solid var(--card-border);
       border-radius: 8px;
       padding: 1.25rem;
@@ -196,12 +196,12 @@
     }
     .diff-line.removed {
       background: rgba(239, 68, 68, 0.08);
-      color: #b91c1c;
+      color: #fca5a5;
       border-left: 3px solid #ef4444;
     }
     .diff-line.added {
       background: rgba(34, 197, 94, 0.08);
-      color: #15803d;
+      color: #86efac;
       border-left: 3px solid #22c55e;
     }
     .diff-line.normal {
@@ -263,7 +263,7 @@
     }
     .btn-archive {
       background: rgba(239, 68, 68, 0.08);
-      color: #dc2626;
+      color: #fca5a5;
       border: 1px solid rgba(239, 68, 68, 0.25);
       padding: 0.75rem 1.5rem;
       border-radius: 8px;
@@ -279,7 +279,7 @@
     .btn-commit {
 
       background: var(--gradient-main);
-      color: white;
+      color: #11171e;
       border: none;
       padding: 0.75rem 1.5rem;
       border-radius: 8px;
@@ -298,7 +298,7 @@
       position: fixed;
       bottom: 2rem;
       right: 2rem;
-      background: #ffffff;
+      background: var(--surface-color);
       border: 1px solid var(--accent-purple);
       padding: 1rem 1.5rem;
       border-radius: 8px;
@@ -314,7 +314,7 @@
     /* Premium Dark Glassmorphism Input/Select Control */
     .form-control {
       width: 100%;
-      background: #ffffff;
+      background: var(--surface-muted);
       border: 1px solid var(--card-border);
       border-radius: 8px;
       padding: 0.8rem 1rem;
@@ -329,7 +329,7 @@
     .form-control:focus {
       border-color: var(--accent-purple);
       box-shadow: 0 0 12px rgba(168, 85, 247, 0.15);
-      background: #ffffff;
+      background: var(--surface-muted);
     }
     select.form-control {
       appearance: none;
@@ -396,13 +396,13 @@
             <i data-lucide="settings"></i>
           </div>
           <div class="logo-text">
-            <h1>ISSU AI Radar - Admin Console</h1>
-            <span>Data & AI 팀 전용 컨텐츠 제어판</span>
+            <h1>ISSU Enablement Admin</h1>
+            <span>솔루션 지식 · 회원 권한 · 운영 로그 관리</span>
           </div>
         </div>
       </div>
       <div class="header-right" style="display: flex; gap: 10px;">
-        <a href="/" target="_top" class="back-btn" style="margin-top:0; text-decoration:none;">
+        <a href="/radar" target="_top" class="back-btn" style="margin-top:0; text-decoration:none;">
           <i data-lucide="layout-dashboard"></i>대시보드 홈
         </a>
         <a href="/admin/usage" target="_top" class="back-btn" style="margin-top:0; text-decoration:none; border-color: var(--accent-blue); color: var(--accent-blue);">
@@ -536,7 +536,7 @@
             <!-- Industries -->
             <div class="form-group">
               <label class="control-label">적합 업종 (Domain) 분류</label>
-              <div class="checkbox-group-container" style="background: #ffffff; border: 1px solid var(--card-border); border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 8px;">
+              <div class="checkbox-group-container" style="background: var(--surface-muted); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 8px;">
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; color: var(--text-secondary);">
                   <input type="checkbox" name="sol-industries" value="금융/보험" style="accent-color: var(--accent-blue);"> 금융/보험
                 </label>
@@ -558,7 +558,7 @@
             <!-- Simulator Mappings -->
             <div class="form-group">
               <label class="control-label">시뮬레이터 의사결정 트리 매핑 (Simulator Mappings)</label>
-              <div class="checkbox-group-container" id="simulator-checkboxes-container" style="background: #ffffff; border: 1px solid var(--card-border); border-radius: 8px; padding: 0.75rem; height: 162px; overflow-y: scroll; display: flex; flex-direction: column; gap: 10px;">
+              <div class="checkbox-group-container" id="simulator-checkboxes-container" style="background: var(--surface-muted); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.75rem; height: 162px; overflow-y: scroll; display: flex; flex-direction: column; gap: 10px;">
                 <!-- Option checkboxes populated programmatically from javascript -->
               </div>
             </div>
@@ -566,7 +566,7 @@
 
           <div class="form-group">
             <label class="control-label" for="sol-opinion" style="color: var(--accent-blue);">MZC 내부 의견 (전략·마진 코멘트) ⚠️ 노출 차단 정책 대상</label>
-            <textarea id="sol-opinion" class="textarea-control" style="height: 60px; border-color: rgba(14, 165, 233, 0.3);"></textarea>
+            <textarea id="sol-opinion" class="textarea-control" style="height: 60px; border-color: rgba(76, 154, 255, 0.3);"></textarea>
           </div>
 
           <div class="sections-accordion" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
@@ -970,7 +970,7 @@
         const profiles = await res.json();
         if (!res.ok) throw new Error(profiles.error || '회원 목록 조회 실패');
         container.innerHTML = profiles.map(profile => `
-          <div class="profile-admin-row" data-profile-id="${escapeAdminHtml(profile.id)}" style="display:grid; grid-template-columns:minmax(180px,1.4fr) 1fr 130px 90px 80px; gap:10px; align-items:center; padding:12px; border:1px solid var(--card-border); border-radius:9px; background:#fff;">
+          <div class="profile-admin-row" data-profile-id="${escapeAdminHtml(profile.id)}" style="display:grid; grid-template-columns:minmax(180px,1.4fr) 1fr 130px 90px 80px; gap:10px; align-items:center; padding:12px; border:1px solid var(--card-border); border-radius:9px; background:var(--surface-muted);">
             <div><strong style="display:block;color:var(--text-primary);font-size:.84rem;">${escapeAdminHtml(profile.full_name || '이름 미입력')}</strong><small style="color:var(--text-secondary);">${escapeAdminHtml(profile.email || '')}</small></div>
             <input class="form-control profile-team" value="${escapeAdminHtml(profile.team || '')}" placeholder="팀" style="padding-left:10px;">
             <select class="form-control profile-role" style="padding-left:10px;"><option value="viewer" ${profile.role === 'viewer' ? 'selected' : ''}>일반 사용자</option><option value="admin" ${profile.role === 'admin' ? 'selected' : ''}>관리자</option></select>

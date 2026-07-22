@@ -56,3 +56,10 @@ test('dedicated admin surfaces return to an allowed admin URL after login', () =
   assert.match(usageHtml, /\/login\.html\?next=\/admin\/usage/);
   assert.match(loginHtml, /'\/admin\/usage'/);
 });
+
+test('admin dashboard home buttons return to the radar workspace instead of public root', () => {
+  assert.match(adminHtml, /href="\/radar" target="_top"[\s\S]*?대시보드 홈/);
+  assert.match(usageHtml, /href="\/radar" target="_top"[\s\S]*?대시보드 홈/);
+  assert.doesNotMatch(adminHtml, /href="\/" target="_top"[\s\S]*?대시보드 홈/);
+  assert.doesNotMatch(usageHtml, /href="\/"[\s\S]*?대시보드 홈/);
+});

@@ -2,26 +2,32 @@
   CSS Reset & Custom Properties
 ---------------------------------------------------- */
 :root {
-  --bg-color: hsl(210, 20%, 98%);
-  --card-bg: #ffffff;
-  --card-border: #e2e8f0;
-  --text-primary: hsl(215, 25%, 15%);
-  --text-secondary: hsl(215, 16%, 47%);
-  --accent-purple: hsl(263, 65%, 50%);
-  --accent-blue: hsl(197, 85%, 45%);
-  --accent-green: hsl(142, 60%, 35%);
-  --accent-orange: hsl(24, 85%, 45%);
+  --bg-color: #0f141a;
+  --surface-color: #161d26;
+  --surface-muted: #1d2631;
+  --surface-raised: #232e3b;
+  --card-bg: var(--surface-color);
+  --card-border: #2a3542;
+  --card-border-strong: #37444f;
+  --text-primary: #eaf0f6;
+  --text-secondary: #9daab8;
+  --text-faint: #71808f;
+  --accent-gold: #d4a438;
+  --accent-purple: #a78be0;
+  --accent-blue: #4c9aff;
+  --accent-green: #4fb477;
+  --accent-orange: #d4a438;
   
-  --p3-color: hsl(0, 75%, 45%);
-  --p2-color: hsl(38, 85%, 40%);
-  --p1-color: hsl(215, 16%, 47%);
+  --p3-color: #e06a7e;
+  --p2-color: #d4a438;
+  --p1-color: #9daab8;
   
-  --gradient-main: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+  --gradient-main: linear-gradient(135deg, var(--accent-gold), var(--accent-blue));
   --font-main: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-header: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  --shadow-glow: 0 4px 14px rgba(99, 102, 241, 0.15);
+  --shadow-glow: 0 12px 32px rgba(0, 0, 0, 0.2);
 }
 
 * {
@@ -38,6 +44,11 @@ body {
   overflow-x: hidden;
   min-height: 100vh;
   line-height: 1.55;
+}
+
+html {
+  color-scheme: dark;
+  background: var(--bg-color);
 }
 
 html.hub-embed .app-header { display: none; }
@@ -70,7 +81,7 @@ input::placeholder, textarea::placeholder {
   position: absolute;
   border-radius: 50%;
   filter: blur(140px);
-  opacity: 0.04;
+  opacity: 0.08;
 }
 
 .orb-1 {
@@ -118,7 +129,7 @@ input::placeholder, textarea::placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: #11171e;
   box-shadow: var(--shadow-glow);
 }
 
@@ -131,16 +142,14 @@ input::placeholder, textarea::placeholder {
   font-family: var(--font-header);
   font-size: 1.6rem;
   font-weight: 800;
-  letter-spacing: -0.5px;
-  background: linear-gradient(to right, var(--text-primary), var(--accent-purple));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  letter-spacing: 0;
+  color: var(--text-primary);
 }
 
 .logo-text span {
   font-size: 0.85rem;
-  color: var(--accent-blue);
-  font-weight: 500;
+  color: var(--accent-gold);
+  font-weight: 700;
 }
 
 .header-desc {
@@ -193,9 +202,9 @@ input::placeholder, textarea::placeholder {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--card-border);
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 1.5rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.2);
   transition: var(--transition-smooth);
 }
 
@@ -207,7 +216,7 @@ input::placeholder, textarea::placeholder {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  border: 1px solid rgba(0, 191, 255, 0.15);
+  border: 1px solid var(--card-border);
 }
 
 .step-q {
@@ -227,9 +236,9 @@ input::placeholder, textarea::placeholder {
 }
 
 .opt-btn {
-  background: #ffffff;
+  background: var(--surface-muted);
   border: 1px solid var(--card-border);
-  border-radius: 10px;
+  border-radius: 9px;
   padding: 1rem 1.25rem;
   display: flex;
   align-items: flex-start;
@@ -240,10 +249,10 @@ input::placeholder, textarea::placeholder {
 }
 
 .opt-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-raised);
   border-color: var(--accent-blue);
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0, 191, 255, 0.1);
+  box-shadow: 0 5px 15px rgba(76, 154, 255, 0.1);
 }
 
 .opt-btn svg {
@@ -290,13 +299,13 @@ input::placeholder, textarea::placeholder {
 
 .back-btn:hover {
   color: var(--text-primary);
-  border-color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--card-border-strong);
+  background: var(--surface-raised);
 }
 
 .reset-btn {
   background: var(--gradient-main);
-  color: white;
+  color: #11171e;
   border: none;
   box-shadow: var(--shadow-glow);
 }
@@ -363,7 +372,7 @@ input::placeholder, textarea::placeholder {
 }
 
 .layer-badge {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
   font-family: var(--font-header);
   font-size: 0.75rem;
   font-weight: 700;
@@ -375,7 +384,7 @@ input::placeholder, textarea::placeholder {
 .layer-q1 .layer-badge { color: var(--accent-purple); background: rgba(168, 85, 247, 0.15); }
 .layer-q2 .layer-badge { color: var(--accent-orange); background: rgba(249, 115, 22, 0.15); }
 .layer-q3 .layer-badge { color: var(--accent-green); background: rgba(34, 197, 94, 0.15); }
-.layer-q4 .layer-badge { color: var(--accent-blue); background: rgba(14, 165, 233, 0.15); }
+.layer-q4 .layer-badge { color: var(--accent-blue); background: rgba(76, 154, 255, 0.15); }
 
 .layer-header h3 {
   font-size: 1.1rem;
@@ -398,7 +407,7 @@ input::placeholder, textarea::placeholder {
 }
 
 .isv-tag {
-  background: #f1f5f9;
+  background: var(--surface-muted);
   border: 1px solid var(--card-border);
   color: var(--text-secondary);
   border-radius: 6px;
@@ -410,7 +419,7 @@ input::placeholder, textarea::placeholder {
 }
 
 .isv-tag:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-raised);
   color: var(--text-primary);
   border-color: var(--accent-blue);
   transform: translateY(-1px);
@@ -502,7 +511,7 @@ input::placeholder, textarea::placeholder {
 
 .search-box input {
   width: 100%;
-  background: #ffffff;
+  background: var(--surface-muted);
   border: 1px solid var(--card-border);
   border-radius: 8px;
   padding: 0.75rem 1rem 0.75rem 2.75rem;
@@ -517,7 +526,7 @@ input::placeholder, textarea::placeholder {
 
 .search-box input:focus {
   border-color: var(--accent-blue);
-  box-shadow: 0 0 10px rgba(0, 191, 255, 0.15);
+  box-shadow: 0 0 10px rgba(76, 154, 255, 0.15);
 }
 
 .filters-row {
@@ -539,7 +548,7 @@ input::placeholder, textarea::placeholder {
 }
 
 .filter-group select {
-  background: #ffffff;
+  background: var(--surface-muted);
   border: 1px solid var(--card-border);
   color: var(--text-primary);
   border-radius: 6px;
@@ -568,7 +577,7 @@ input::placeholder, textarea::placeholder {
 }
 
 .isv-table th {
-  background: #f8fafc;
+  background: var(--surface-muted);
   padding: 1rem 1.5rem;
   font-size: 0.85rem;
   font-weight: 600;
@@ -591,7 +600,7 @@ input::placeholder, textarea::placeholder {
 }
 
 .isv-table tbody tr:hover {
-  background: rgba(0, 0, 0, 0.015);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .isv-table td strong {
@@ -607,7 +616,7 @@ input::placeholder, textarea::placeholder {
   Recommendation Cards (used in Simulator Step 3)
 ---------------------------------------------------- */
 .rec-card {
-  background: #ffffff;
+  background: var(--surface-muted);
   border: 1px solid var(--card-border);
   border-radius: 12px;
   padding: 1.25rem;
@@ -632,7 +641,7 @@ input::placeholder, textarea::placeholder {
 .rec-card:hover {
   transform: translateY(-2px);
   border-color: var(--accent-blue);
-  box-shadow: 0 8px 25px rgba(0, 191, 255, 0.12);
+  box-shadow: 0 8px 25px rgba(76, 154, 255, 0.12);
 }
 
 .rec-badge {
@@ -645,7 +654,7 @@ input::placeholder, textarea::placeholder {
   text-transform: uppercase;
 }
 
-.rec-1 .rec-badge { background: rgba(0, 191, 255, 0.15); color: var(--accent-blue); }
+.rec-1 .rec-badge { background: rgba(76, 154, 255, 0.15); color: var(--accent-blue); }
 .rec-2 .rec-badge { background: rgba(255, 255, 255, 0.1); color: var(--text-secondary); }
 
 .rec-title-row {
@@ -698,7 +707,7 @@ input::placeholder, textarea::placeholder {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(15, 23, 42, 0.4);
+  background: rgba(4, 7, 10, 0.74);
   backdrop-filter: blur(10px);
   z-index: 100;
   display: flex;
@@ -715,11 +724,11 @@ input::placeholder, textarea::placeholder {
   display: flex;
   flex-direction: column;
   position: relative;
-  border: 1px solid var(--card-border);
+  border: 1px solid var(--card-border-strong);
   padding: 2rem;
   overflow: hidden;
-  background: #ffffff;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+  background: var(--surface-color);
+  box-shadow: 0 30px 100px rgba(0,0,0,0.55);
 }
 
 .modal-close-btn {
@@ -798,7 +807,7 @@ input::placeholder, textarea::placeholder {
   display: flex;
   gap: 0.5rem;
   overflow-x: auto;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--card-border);
   padding-bottom: 0.5rem;
   flex-shrink: 0;
 }
@@ -827,12 +836,12 @@ input::placeholder, textarea::placeholder {
 
 .tab-btn:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-muted);
 }
 
 .tab-btn.active {
   color: var(--accent-blue);
-  background: rgba(0, 191, 255, 0.05);
+  background: rgba(76, 154, 255, 0.09);
 }
 
 .tab-content-container {
@@ -886,12 +895,12 @@ input::placeholder, textarea::placeholder {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--card-border-strong);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.16);
+  background: #526172;
 }
 
 /* Utility Hidden */
@@ -951,7 +960,7 @@ input::placeholder, textarea::placeholder {
 }
 
 .overall-checklist-box, .isv-checklist-box {
-  background: #ffffff !important;
+  background: var(--surface-muted) !important;
   border: 1px solid var(--card-border) !important;
   padding: 20px !important;
   border-radius: 10px !important;
@@ -977,7 +986,7 @@ input::placeholder, textarea::placeholder {
 .isv-checklist-box h4 {
   color: var(--accent-blue) !important;
   margin-top: 0;
-  border-bottom: 1px solid rgba(0, 191, 255, 0.1) !important;
+  border-bottom: 1px solid rgba(76, 154, 255, 0.1) !important;
   padding-bottom: 8px;
   display: flex;
   align-items: center;
@@ -989,7 +998,7 @@ input::placeholder, textarea::placeholder {
   align-items: center;
   gap: 6px;
   background: var(--accent-blue);
-  color: white;
+  color: #11171e;
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
@@ -997,22 +1006,22 @@ input::placeholder, textarea::placeholder {
   cursor: pointer;
   font-size: 0.85rem;
   transition: var(--transition-smooth);
-  box-shadow: 0 4px 15px rgba(0, 191, 255, 0.25);
+  box-shadow: 0 4px 15px rgba(76, 154, 255, 0.25);
 }
 
 .download-btn:hover {
   background: hsl(197, 90%, 45%);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(0, 191, 255, 0.35);
+  box-shadow: 0 6px 20px rgba(76, 154, 255, 0.35);
 }
 
 .export-btn {
-  box-shadow: 0 4px 12px rgba(0, 191, 255, 0.2);
+  box-shadow: 0 4px 12px rgba(76, 154, 255, 0.2);
   transition: var(--transition-smooth) !important;
 }
 
 .export-btn:hover {
   background: hsl(197, 90%, 42%) !important;
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(0, 191, 255, 0.35);
+  box-shadow: 0 6px 18px rgba(76, 154, 255, 0.35);
 }

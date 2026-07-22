@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ISSU AI Radar - 로그인</title>
+  <title>ISSU Enablement Hub - 로그인</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
   <!-- CSS Stylesheet -->
   <link rel="stylesheet" href="style.css">
@@ -21,7 +21,7 @@
       width: 100%;
       max-width: 440px;
       padding: 2.5rem;
-      border: 1px solid rgba(0, 191, 255, 0.15);
+      border: 1px solid var(--card-border);
       position: relative;
       overflow: hidden;
     }
@@ -41,17 +41,15 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
+      color: #11171e;
       box-shadow: var(--shadow-glow);
     }
     .login-logo h2 {
       font-family: var(--font-header);
       font-size: 1.8rem;
       font-weight: 800;
-      letter-spacing: -0.5px;
-      background: linear-gradient(to right, var(--text-primary), var(--accent-purple));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      letter-spacing: 0;
+      color: var(--text-primary);
       margin-top: 0.5rem;
     }
     .login-logo p {
@@ -83,7 +81,7 @@
     }
     .form-control {
       width: 100%;
-      background: #ffffff;
+      background: var(--surface-muted);
       border: 1px solid var(--card-border);
       border-radius: 8px;
       min-height: 52px;
@@ -97,12 +95,12 @@
     }
     .form-control:focus {
       border-color: var(--accent-blue);
-      box-shadow: 0 0 10px rgba(0, 191, 255, 0.15);
+      box-shadow: 0 0 10px rgba(76, 154, 255, 0.15);
     }
     .login-btn {
       width: 100%;
       background: var(--gradient-main);
-      color: white;
+      color: #11171e;
       border: none;
       min-height: 50px;
       padding: 0.9rem;
@@ -125,7 +123,7 @@
     .error-box {
       background: rgba(239, 68, 68, 0.08);
       border: 1px solid rgba(239, 68, 68, 0.2);
-      color: #dc2626;
+      color: #fca5a5;
       padding: 0.75rem 1rem;
       border-radius: 6px;
       font-size: 0.85rem;
@@ -149,8 +147,8 @@
         <div class="logo-icon">
           <i data-lucide="shield-check"></i>
         </div>
-        <h2>ISSU AI Radar</h2>
-        <p>사내 AI/ISV 솔루션 지식 SSOT 포털</p>
+        <h2>ISSU Enablement Hub</h2>
+        <p>딜 허브 · AI Radar · 관리자 콘솔 통합 로그인</p>
       </div>
 
       <div class="error-box" id="error-message">
