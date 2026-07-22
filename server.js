@@ -112,10 +112,18 @@ const simulatorStepsData = {
 };
 
 // Supabase & PostgreSQL Pool Initialization
+//
+// Do NOT force an IP family here. Supabase's direct connection host
+// (db.<ref>.supabase.co) is IPv6-only, while the connection pooler host
+// (aws-0-<region>.pooler.supabase.com) is IPv4-only. IPv4-only platforms such
+// as Render must use the pooler, so hardcoding `family: 6` made every DB call
+// time out ("database_unavailable"). Let pg resolve whatever the configured
+// host actually offers; override with DB_IP_FAMILY only if you know you need it.
+const dbIpFamily = Number(process.env.DB_IP_FAMILY) || undefined;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  family: 6,
+  ...(dbIpFamily ? { family: dbIpFamily } : {}),
   connectionTimeoutMillis: 5000
 });
 
