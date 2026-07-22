@@ -1,6 +1,14 @@
 # ISSU AI Radar + Enablement Hub
 
-기존 AI Radar 솔루션 카탈로그에 딜 파이프라인, 외부 진단 포탈, 관리자 운영 필드를 추가한 Node.js/Supabase 애플리케이션입니다.
+외부 고객용 Offering 포탈과 내부 영업용 Deal Hub·AI Radar·관리자 기능을 하나의 Supabase 데이터 흐름으로 연결한 Node.js 애플리케이션입니다.
+
+## 제품 흐름
+
+1. 외부 고객은 공개 Offering에서 AI 준비도 진단과 상담 신청을 제출합니다.
+2. 제출 데이터는 문항별 점수·영역 집계·추천 트랙과 함께 신규 딜로 저장됩니다.
+3. 승인된 내부 사용자는 로그인 후 Deal Hub를 업무 시작 화면으로 사용합니다.
+4. AI Radar는 Hub의 참조자료 메뉴에서 사용하는 내부 영업지원용 솔루션 카탈로그입니다.
+5. 관리자는 승인된 관리자 계정으로 서비스·사용자·운영 상태를 관리합니다.
 
 ## 로컬 실행
 
@@ -15,17 +23,20 @@
 
 화면 진입점:
 
+- 외부 Offering 메인: `/`
 - 내부 딜 허브: `/hub`
-- AI Radar 카탈로그: `/`
+- 내부 AI Radar: `/radar`
 - 관리자: `/admin`
-- 외부 오퍼링: `/offering`
+- 외부 Offering 별칭: `/offering`
+
+`APP_SURFACE=all`인 로컬 개발에서도 `/`는 외부 Offering을 표시합니다. 내부 업무는 `/login`에서 로그인한 뒤 `/hub`로 시작합니다.
 
 ## 배포 표면 분리
 
 `APP_SURFACE`로 배포별 노출 범위를 고정합니다.
 
-- `offering`: 공개 진단·리드 API와 외부 포탈만 노출
-- `hub`: 로그인·딜 허브·내부 카탈로그만 노출
+- `offering`: 공개 진단·리드 API와 외부 Offering만 노출
+- `hub`: 로그인·딜 허브·내부 AI Radar만 노출하며 `/`는 Hub를 표시
 - `admin`: 로그인·관리자 기능만 노출
 - `all`: 로컬 개발용
 

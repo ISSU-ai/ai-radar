@@ -12,4 +12,6 @@ test('login return path is same-origin and restricted to known application entry
   assert.match(source, /destination\.origin === window\.location\.origin/);
   assert.match(source, /allowedPaths\.has\(destination\.pathname\)/);
   assert.doesNotMatch(source, /requestedPath\.startsWith\('\/'\)/);
+  assert.match(source, /new Set\(\['\/hub', '\/radar', '\/about', '\/admin', '\/admin\/usage'\]\)/);
+  assert.doesNotMatch(source, /allowedPaths[^\n]+['"]\/['"]/);
 });

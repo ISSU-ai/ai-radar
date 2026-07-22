@@ -89,7 +89,7 @@ test('AI Radar uses a dedicated embed route instead of recursively loading the h
   assert.match(html, /data-src="\/radar\?embed=hub"/);
   assert.doesNotMatch(html, /id="reference-frame"[^>]+data-src="\/"/);
   assert.match(serverJs, /const radarPath\s*=\s*req\.path === '\/radar'/);
-  assert.match(serverJs, /app\.get\(\['\/radar', '\/radar\/'\][\s\S]*?'index\.html'/);
+  assert.match(serverJs, /app\.get\(\['\/radar', '\/radar\/'\], requirePageAuth\('\/radar'\), sendFrontendFile\('index\.html'\)\)/);
 });
 
 test('embedded AI Radar navigation always escapes or delegates to the parent hub', () => {

@@ -213,18 +213,17 @@ const auditLog = (userId, action, target, query = '') => {
   });
 };
 
-// Auth Authentication Middleware
-const authenticateToken = async (req, res, next) => {
+const readSessionUser = async (req) => {
   const token = req.cookies.token;
   if (!token) {
-    return res.status(401).json({ error: '인증 토큰이 없습니다. 로그인이 필요합니다.' });
+    return { status: 401, error: '인증 토큰이 없습니다. 로그인이 필요합니다.' };
   }
 
   let claims;
   try {
     claims = jwt.verify(token, JWT_SECRET);
   } catch (_error) {
-    return res.status(403).json({ error: '인증 토큰이 만료되었거나 유효하지 않습니다.' });
+    return { status: 403, error: '인증 토큰이 만료되었거나 유효하지 않습니다.', clearCookie: true };
   }
 
   try {
@@ -235,20 +234,53 @@ const authenticateToken = async (req, res, next) => {
     );
     const profile = result.rows[0];
     if (!profile || !profile.approved) {
-      res.clearCookie('token', { path: '/' });
-      return res.status(403).json({ error: '현재 사용 승인이 없는 계정입니다.' });
+      return { status: 403, error: '현재 사용 승인이 없는 계정입니다.', clearCookie: true };
     }
-    req.user = {
-      id: profile.id,
-      email: profile.email,
-      name: profile.full_name || '사내 임직원',
-      role: profile.role
+    return {
+      user: {
+        id: profile.id,
+        email: profile.email,
+        name: profile.full_name || '사내 임직원',
+        role: profile.role
+      }
     };
-    return next();
   } catch (error) {
     console.error('Session profile verification failed:', error.message);
-    return res.status(503).json({ error: '계정 권한을 확인하지 못했습니다.' });
+    return { status: 503, error: '계정 권한을 확인하지 못했습니다.' };
   }
+};
+
+// API authentication returns JSON errors, while internal pages redirect to login.
+const authenticateToken = async (req, res, next) => {
+  const session = await readSessionUser(req);
+  if (!session.user) {
+    if (session.clearCookie) res.clearCookie('token', { path: '/' });
+    return res.status(session.status).json({ error: session.error });
+  }
+  req.user = session.user;
+  return next();
+};
+
+const requirePageAuth = (canonicalPath, requiredRole = null) => async (req, res, next) => {
+  const session = await readSessionUser(req);
+  if (!session.user) {
+    if (session.clearCookie) res.clearCookie('token', { path: '/' });
+    if (session.status === 503) return res.status(503).send('계정 권한을 확인하지 못했습니다.');
+    const queryIndex = req.originalUrl.indexOf('?');
+    const query = queryIndex >= 0 ? req.originalUrl.slice(queryIndex) : '';
+    return res.redirect(302, `/login.html?next=${encodeURIComponent(`${canonicalPath}${query}`)}`);
+  }
+  if (requiredRole && session.user.role !== requiredRole) {
+    return res.status(403).send('접근 권한이 없습니다. 관리자 전용 기능입니다.');
+  }
+  req.user = session.user;
+  return next();
+};
+
+const requireSurfaceRootAuth = (req, res, next) => {
+  if (APP_SURFACE === 'hub') return requirePageAuth('/hub')(req, res, next);
+  if (APP_SURFACE === 'admin') return requirePageAuth('/admin', 'admin')(req, res, next);
+  return next();
 };
 
 // Admin Only Authorization Middleware
@@ -1208,9 +1240,9 @@ for (const [route, filename] of Object.entries(frontendAssets)) {
   app.get(route, sendFrontendFile(filename, 'public, max-age=300'));
 }
 
-app.get('/', (_req, res) => {
+app.get('/', requireSurfaceRootAuth, (_req, res) => {
   const entrypoints = {
-    all: 'index.html',
+    all: 'offering.html',
     offering: 'offering.html',
     hub: 'hub.html',
     admin: 'admin.html'
@@ -1219,14 +1251,14 @@ app.get('/', (_req, res) => {
   res.sendFile(path.join(__dirname, entrypoints[APP_SURFACE]));
 });
 
-app.get(['/radar', '/radar/'], sendFrontendFile('index.html'));
-app.get('/index.html', sendFrontendFile('index.html'));
+app.get(['/radar', '/radar/'], requirePageAuth('/radar'), sendFrontendFile('index.html'));
+app.get('/index.html', requirePageAuth('/radar'), sendFrontendFile('index.html'));
 app.get(['/login', '/login.html'], sendFrontendFile('login.html'));
-app.get(['/admin', '/admin.html'], sendFrontendFile('admin.html'));
-app.get(['/admin/usage', '/admin-usage.html'], sendFrontendFile('admin-usage.html'));
-app.get(['/hub', '/hub.html'], sendFrontendFile('hub.html'));
+app.get(['/admin', '/admin.html'], requirePageAuth('/admin', 'admin'), sendFrontendFile('admin.html'));
+app.get(['/admin/usage', '/admin-usage.html'], requirePageAuth('/admin/usage', 'admin'), sendFrontendFile('admin-usage.html'));
+app.get(['/hub', '/hub.html'], requirePageAuth('/hub'), sendFrontendFile('hub.html'));
 app.get(['/offering', '/offering.html'], sendFrontendFile('offering.html'));
-app.get(['/about', '/about.html'], sendFrontendFile('about.html'));
+app.get(['/about', '/about.html'], requirePageAuth('/about'), sendFrontendFile('about.html'));
 
 const downloadableDocs = new Set([
   'MZC_AI_솔루션_가이드.docx',

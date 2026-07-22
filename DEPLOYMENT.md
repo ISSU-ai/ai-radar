@@ -2,6 +2,8 @@
 
 이 저장소는 외부 오퍼링, 내부 딜 허브, 관리자 화면을 서로 다른 Render Web Service로 배포합니다. 세 서비스는 하나의 PostgreSQL/Supabase 원본을 공유하지만, `APP_SURFACE`로 각 서비스의 화면과 API 노출 범위를 제한합니다.
 
+운영 사용자 흐름은 `외부 Offering → 준비도 진단·상담 제출 → 신규 딜 생성 → 내부 로그인 → Deal Hub → AI Radar 참조 → Admin 운영`입니다. AI Radar는 공개 랜딩이 아니라 승인된 내부 영업 사용자의 참조 도구이며, 내부 업무 시작 화면은 Deal Hub입니다.
+
 `render.yaml`은 배포 정의일 뿐이며, 파일을 커밋하는 것만으로 Render 서비스가 생성되지는 않습니다. 최초 1회 Render Dashboard에서 이 저장소의 Blueprint를 연결해야 합니다.
 
 ## 배포 흐름

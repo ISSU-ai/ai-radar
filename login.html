@@ -214,7 +214,7 @@
         }
 
         const requestedPath = new URLSearchParams(window.location.search).get('next');
-        const allowedPaths = new Set(['/hub', '/radar', '/admin', '/admin/usage', '/']);
+        const allowedPaths = new Set(['/hub', '/radar', '/about', '/admin', '/admin/usage']);
         let safePath = '/hub';
         try {
           const destination = new URL(requestedPath || '/hub', window.location.origin);

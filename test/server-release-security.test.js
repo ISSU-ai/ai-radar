@@ -39,10 +39,23 @@ test('server contains bounded login throttling and validates complete public dia
 });
 
 test('authenticated requests re-check current approval and role from the database', () => {
+  assert.match(source, /const readSessionUser = async/);
   assert.match(source, /const authenticateToken = async/);
   assert.match(source, /from profiles where id = \$1/);
   assert.match(source, /if \(!profile \|\| !profile\.approved\)/);
   assert.match(source, /role: profile\.role/);
+});
+
+test('public offering and internal sales surfaces have distinct entrypoints', () => {
+  assert.match(source, /all: 'offering\.html'/);
+  assert.match(source, /offering: 'offering\.html'/);
+  assert.match(source, /hub: 'hub\.html'/);
+  assert.match(source, /app\.get\('\/', requireSurfaceRootAuth/);
+  assert.match(source, /APP_SURFACE === 'hub'[\s\S]*?requirePageAuth\('\/hub'\)/);
+  assert.match(source, /APP_SURFACE === 'admin'[\s\S]*?requirePageAuth\('\/admin', 'admin'\)/);
+  assert.match(source, /app\.get\(\['\/hub', '\/hub\.html'\], requirePageAuth\('\/hub'\)/);
+  assert.match(source, /app\.get\(\['\/radar', '\/radar\/'\], requirePageAuth\('\/radar'\)/);
+  assert.match(source, /app\.get\(\['\/admin', '\/admin\.html'\], requirePageAuth\('\/admin', 'admin'\)/);
 });
 
 test('server handles idle pool failures and drains resources on termination', () => {
