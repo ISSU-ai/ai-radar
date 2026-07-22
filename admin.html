@@ -390,6 +390,7 @@
     <main class="editor-section">
       <div class="admin-tabs">
         <button class="admin-tab-btn active" onclick="switchAdminTab('form')">폼 편집기 (Form Editor)</button>
+        <button class="admin-tab-btn" onclick="switchAdminTab('members')">회원 승인</button>
         <button class="admin-tab-btn" onclick="switchAdminTab('ai')">자연어 편집 (AI Propose)</button>
         <button class="admin-tab-btn" onclick="switchAdminTab('history')" id="history-tab-btn">버전 이력 / 롤백 (v1)</button>
       </div>
@@ -446,6 +447,49 @@
           <div class="form-group">
             <label class="control-label" for="sol-jtbd">핵심 JTBD (Job-to-be-done 한 줄)</label>
             <input type="text" id="sol-jtbd" class="form-control" style="padding-left: 12px;">
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="control-label" for="sol-grade">서비스 급 (HALO 1-2)</label>
+              <select id="sol-grade" class="form-control" style="padding-left: 12px; cursor: pointer;">
+                <option value="">미정</option>
+                <option value="0">0급</option><option value="1">1급</option><option value="2">2급</option><option value="3">3급</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="sol-scale">규모급</label>
+              <select id="sol-scale" class="form-control" style="padding-left: 12px; cursor: pointer;">
+                <option value="">미정</option><option value="S">S</option><option value="M">M</option><option value="L">L</option><option value="O">O · 운영형</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="control-label" for="sol-focal">포컬 담당 (HALO 1-3)</label>
+              <div style="display:flex; gap:8px;">
+                <select id="sol-focal" class="form-control" style="padding-left:12px; cursor:pointer; flex:1;"><option value="">미배정</option></select>
+                <button id="add-focal-button" type="button" class="btn-save" style="white-space:nowrap;">+ 담당자</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="sol-status-op">운영 상태</label>
+              <select id="sol-status-op" class="form-control" style="padding-left:12px; cursor:pointer;">
+                <option value="active">운영 중</option><option value="paused">준비중 / 일시중지</option><option value="draft">외부 노출 전</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="control-label" for="sol-tech-note">기술 제약 (HALO 2-1 · 2-2)</label>
+              <textarea id="sol-tech-note" class="textarea-control" style="height:76px;" placeholder="연동, 보안, 제공 범위 제약"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="sol-note">벤더 담당·이력 메모 (HALO 1-1)</label>
+              <textarea id="sol-note" class="textarea-control" style="height:76px;" placeholder="벤더 담당자와 협의 이력"></textarea>
+            </div>
           </div>
 
           <div class="form-grid" style="grid-template-columns: 1fr 2fr; margin-bottom: 1.25rem;">
@@ -540,6 +584,14 @@
           </div>
 
         </form>
+      </div>
+
+      <div id="tab-admin-members" class="glass-card admin-tab-content hidden">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:20px;">
+          <div><h3 style="margin:0 0 7px; color:var(--text-primary);">회원 승인 및 권한</h3><p style="margin:0; color:var(--text-secondary); font-size:.82rem;">가입 계정을 승인하고 관리자·일반 사용자 역할을 관리합니다.</p></div>
+          <button type="button" id="reload-profiles-button" class="btn-save">새로고침</button>
+        </div>
+        <div id="profiles-list" style="display:grid; gap:10px;"></div>
       </div>
 
       <!-- Tab 2: AI Propose (자연어 편집) -->
@@ -649,6 +701,7 @@
     let currentSelectedId = null;
     let currentSelectedSlug = null;
     let solutions = [];
+    let focalContacts = [];
     let originalSnapshot = null; // Form original states to calculate diffs
     let aiProposalTemp = null; // Save proposed edits from AI temporary
 
@@ -722,8 +775,89 @@
 
       renderSimulatorCheckboxes();
       lucide.createIcons();
+      document.getElementById('add-focal-button').addEventListener('click', addFocalContact);
+      document.getElementById('reload-profiles-button').addEventListener('click', loadProfiles);
+      await loadFocalContacts();
       await loadSolutionsList();
     });
+
+    function escapeAdminHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[char]);
+    }
+
+    async function loadProfiles() {
+      const container = document.getElementById('profiles-list');
+      container.innerHTML = '<p style="color:var(--text-secondary);">회원 목록을 불러오는 중입니다.</p>';
+      try {
+        const res = await fetch('/api/admin/profiles');
+        const profiles = await res.json();
+        if (!res.ok) throw new Error(profiles.error || '회원 목록 조회 실패');
+        container.innerHTML = profiles.map(profile => `
+          <div class="profile-admin-row" data-profile-id="${profile.id}" style="display:grid; grid-template-columns:minmax(180px,1.4fr) 1fr 130px 90px 80px; gap:10px; align-items:center; padding:12px; border:1px solid var(--card-border); border-radius:9px; background:#fff;">
+            <div><strong style="display:block;color:var(--text-primary);font-size:.84rem;">${escapeAdminHtml(profile.full_name || '이름 미입력')}</strong><small style="color:var(--text-secondary);">${escapeAdminHtml(profile.email || '')}</small></div>
+            <input class="form-control profile-team" value="${escapeAdminHtml(profile.team || '')}" placeholder="팀" style="padding-left:10px;">
+            <select class="form-control profile-role" style="padding-left:10px;"><option value="viewer" ${profile.role === 'viewer' ? 'selected' : ''}>일반 사용자</option><option value="admin" ${profile.role === 'admin' ? 'selected' : ''}>관리자</option></select>
+            <label style="display:flex;align-items:center;gap:7px;color:var(--text-secondary);font-size:.8rem;"><input class="profile-approved" type="checkbox" ${profile.approved ? 'checked' : ''}> 승인</label>
+            <button type="button" class="btn-save profile-save">저장</button>
+          </div>`).join('') || '<p style="color:var(--text-secondary);">회원이 없습니다.</p>';
+        container.querySelectorAll('.profile-save').forEach(button => button.addEventListener('click', saveProfile));
+      } catch (error) {
+        container.innerHTML = `<p style="color:#dc2626;">${escapeAdminHtml(error.message)}</p>`;
+      }
+    }
+
+    async function saveProfile(event) {
+      const row = event.currentTarget.closest('[data-profile-id]');
+      try {
+        const res = await fetch(`/api/admin/profiles/${row.dataset.profileId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            team: row.querySelector('.profile-team').value,
+            role: row.querySelector('.profile-role').value,
+            approved: row.querySelector('.profile-approved').checked
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '회원 저장 실패');
+        showToast('회원 권한을 저장했습니다.');
+        await loadProfiles();
+      } catch (error) {
+        showToast(error.message, 'alert-circle');
+      }
+    }
+
+    async function loadFocalContacts(selectedId = '') {
+      const res = await fetch('/api/admin/focal-contacts');
+      if (!res.ok) return;
+      focalContacts = await res.json();
+      const select = document.getElementById('sol-focal');
+      select.innerHTML = '<option value="">미배정</option>' + focalContacts.map(contact =>
+        `<option value="${contact.id}">${escapeAdminHtml(contact.name)}${contact.org ? ` · ${escapeAdminHtml(contact.org)}` : ''}</option>`
+      ).join('');
+      select.value = selectedId || '';
+    }
+
+    async function addFocalContact() {
+      const name = prompt('새 포컬 담당자 이름을 입력해주세요.');
+      if (!name || !name.trim()) return;
+      const org = prompt('소속 조직을 입력해주세요. (선택)') || '';
+      try {
+        const res = await fetch('/api/admin/focal-contacts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim(), org: org.trim() })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '담당자 추가 실패');
+        await loadFocalContacts(data.id);
+        showToast('포컬 담당자를 추가했습니다.');
+      } catch (error) {
+        showToast(error.message, 'alert-circle');
+      }
+    }
 
     // Populate simulator mapping checkboxes dynamically
     function renderSimulatorCheckboxes() {
@@ -839,6 +973,12 @@
         document.getElementById('sol-value-chain').value = sol.value_chain;
         document.getElementById('sol-jtbd').value = sol.jtbd;
         document.getElementById('sol-opinion').value = sol.opinion;
+        document.getElementById('sol-grade').value = sol.grade ?? '';
+        document.getElementById('sol-scale').value = sol.scale || '';
+        document.getElementById('sol-focal').value = sol.focal_id || '';
+        document.getElementById('sol-status-op').value = sol.status_op || 'active';
+        document.getElementById('sol-tech-note').value = sol.tech_note || '';
+        document.getElementById('sol-note').value = sol.note || '';
 
         // Clear and Reset Checkboxes
         document.querySelectorAll('input[name="sol-industries"]').forEach(cb => cb.checked = false);
@@ -909,6 +1049,12 @@
         value_chain: document.getElementById('sol-value-chain').value,
         jtbd: document.getElementById('sol-jtbd').value,
         opinion: document.getElementById('sol-opinion').value,
+        grade: document.getElementById('sol-grade').value === '' ? null : Number(document.getElementById('sol-grade').value),
+        scale: document.getElementById('sol-scale').value || null,
+        focal_id: document.getElementById('sol-focal').value || null,
+        status_op: document.getElementById('sol-status-op').value,
+        tech_note: document.getElementById('sol-tech-note').value,
+        note: document.getElementById('sol-note').value,
         sections: secs,
         industries,
         simulator_mappings
@@ -957,6 +1103,7 @@
             name: solName,
             layer: 'L1',
             status: 'draft',
+            status_op: 'draft',
             sections: {
               '1': '솔루션 개요 / 핵심 차별점 기재...',
               '2': 'AI Platform 4-Layer 포지셔닝 매핑 기재...',
@@ -1134,6 +1281,8 @@
       // Trigger specifics
       if (tabName === 'history') {
         loadVersionHistory();
+      } else if (tabName === 'members') {
+        loadProfiles();
       }
     }
 

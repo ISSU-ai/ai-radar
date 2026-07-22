@@ -4,15 +4,27 @@ const { createClient } = require('@supabase/supabase-js');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const path = require('path');
+const { createHubRouter } = require('./routes/hub');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-for-issu-ai-radar';
+const JWT_SECRET = process.env.JWT_SECRET;
 const OPINION_EXPOSE_POLICY = process.env.OPINION_EXPOSE_POLICY || 'B'; // A: Expose to all, B: Admin only
+const APP_SURFACE = process.env.APP_SURFACE || 'all';
 
-if (!process.env.DATABASE_URL || !process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-  console.error('Missing required Supabase environment variables in .env.');
+if (!process.env.DATABASE_URL || !process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY || !JWT_SECRET) {
+  console.error('Missing required environment variables. Copy .env.example to .env and inject secrets locally.');
+  process.exit(1);
+}
+
+if (JWT_SECRET.length < 32) {
+  console.error('JWT_SECRET must contain at least 32 characters.');
+  process.exit(1);
+}
+
+if (!['all', 'hub', 'offering', 'admin'].includes(APP_SURFACE)) {
+  console.error('APP_SURFACE must be one of: all, hub, offering, admin.');
   process.exit(1);
 }
 
@@ -105,8 +117,23 @@ const supabase = createClient(
 
 
 // Middleware
-app.use(express.json());
+app.set('trust proxy', 1);
+app.use(express.json({ limit: '256kb' }));
 app.use(cookieParser());
+
+// Each production deployment can expose one surface only. Local development uses "all".
+app.use((req, res, next) => {
+  if (APP_SURFACE === 'all') return next();
+  const publicApi = req.path.startsWith('/api/hub/public/');
+  const commonPath = req.path === '/style.css' || req.path === '/login' || req.path === '/login.html' || req.path.startsWith('/api/auth/');
+  const allowed = {
+    offering: publicApi || req.path === '/' || req.path === '/offering' || req.path.startsWith('/offering.'),
+    hub: commonPath || req.path === '/' || req.path === '/hub' || req.path.startsWith('/hub.') || req.path.startsWith('/api/hub/') || req.path.startsWith('/api/solutions'),
+    admin: commonPath || req.path === '/' || req.path.startsWith('/admin') || req.path.startsWith('/api/admin/') || req.path.startsWith('/api/solutions')
+  }[APP_SURFACE];
+  if (!allowed) return res.status(404).send('Not found');
+  next();
+});
 
 // Audit Logger
 const auditLog = (userId, action, target, query = '') => {
@@ -188,6 +215,8 @@ app.post('/api/auth/login', async (req, res) => {
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
       maxAge: 8 * 60 * 60 * 1000 // 8 hours
     });
 
@@ -358,7 +387,10 @@ app.get('/api/solutions/:slug', authenticateToken, async (req, res) => {
 // ----------------------------------------------------
 
 app.post('/api/admin/solutions', authenticateToken, adminOnly, async (req, res) => {
-  const { name, delivery, layer, synergy, category, jtbd, value_chain, sections, opinion, simulator_mappings, industries } = req.body;
+  const {
+    name, delivery, layer, synergy, category, jtbd, value_chain, sections, opinion,
+    simulator_mappings, industries, grade, scale, focal_id, tech_note, status_op, note
+  } = req.body;
 
   if (!name || !layer) {
     return res.status(400).json({ error: '솔루션 이름과 레이어는 필수 항목입니다.' });
@@ -378,13 +410,20 @@ app.post('/api/admin/solutions', authenticateToken, adminOnly, async (req, res) 
 
   try {
     const insertQuery = `
-      INSERT INTO solutions (slug, name, delivery, layer, synergy, category, jtbd, value_chain, sections, opinion, status, version, updated_by, updated_at, simulator_mappings, industries)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft', 1, $11, $12, $13, $14)
+      INSERT INTO solutions (
+        slug, name, delivery, layer, synergy, category, jtbd, value_chain, sections, opinion,
+        status, version, updated_by, updated_at, simulator_mappings, industries,
+        grade, scale, focal_id, tech_note, status_op, note
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft', 1, $11, $12, $13, $14,
+              $15, $16, $17, $18, $19, $20)
       RETURNING id;
     `;
     
     const result = await pool.query(insertQuery, [
-      slug, name, delivery, layer, synergy, category, jtbd, value_chain, sectionsJson, opinion, req.user.id, now, simMappingsJson, indJson
+      slug, name, delivery, layer, synergy, category, jtbd, value_chain, sectionsJson, opinion,
+      req.user.id, now, simMappingsJson, indJson,
+      grade ?? null, scale || null, focal_id || null, tech_note || null, status_op || 'draft', note || null
     ]);
     
     const solId = result.rows[0].id;
@@ -402,7 +441,10 @@ app.post('/api/admin/solutions', authenticateToken, adminOnly, async (req, res) 
 
 app.put('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, res) => {
   const solId = req.params.id;
-  const { name, delivery, layer, synergy, category, jtbd, value_chain, sections, opinion, status, simulator_mappings, industries } = req.body;
+  const {
+    name, delivery, layer, synergy, category, jtbd, value_chain, sections, opinion, status,
+    simulator_mappings, industries, grade, scale, focal_id, tech_note, status_op, note
+  } = req.body;
 
   if (!name || !layer) {
     return res.status(400).json({ error: '솔루션 이름과 레이어는 필수 항목입니다.' });
@@ -429,12 +471,18 @@ app.put('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, re
 
     const updateQuery = `
       UPDATE solutions
-      SET slug = $1, name = $2, delivery = $3, layer = $4, synergy = $5, category = $6, jtbd = $7, value_chain = $8, sections = $9, opinion = $10, status = $11, updated_by = $12, updated_at = $13, simulator_mappings = $14, industries = $15
-      WHERE id = $16
+      SET slug = $1, name = $2, delivery = $3, layer = $4, synergy = $5, category = $6,
+          jtbd = $7, value_chain = $8, sections = $9, opinion = $10, status = $11,
+          updated_by = $12, updated_at = $13, simulator_mappings = $14, industries = $15,
+          grade = $16, scale = $17, focal_id = $18, tech_note = $19, status_op = $20, note = $21
+      WHERE id = $22
     `;
     
     await pool.query(updateQuery, [
-      slug, name, delivery, layer, synergy, category, jtbd, value_chain, sectionsJson, opinion, status || current.status, req.user.id, now, simMappingsJson, indJson, solId
+      slug, name, delivery, layer, synergy, category, jtbd, value_chain, sectionsJson, opinion,
+      status || current.status, req.user.id, now, simMappingsJson, indJson,
+      grade ?? current.grade, scale || null, focal_id || null, tech_note || null,
+      status_op || current.status_op || 'active', note || null, solId
     ]);
 
     auditLog(req.user.id, 'edit', slug, 'Updated solution details');
@@ -482,7 +530,13 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
       status: updatedSol.status,
       version: updatedSol.version,
       simulator_mappings: typeof updatedSol.simulator_mappings === 'string' ? JSON.parse(updatedSol.simulator_mappings) : (updatedSol.simulator_mappings || []),
-      industries: typeof updatedSol.industries === 'string' ? JSON.parse(updatedSol.industries) : (updatedSol.industries || [])
+      industries: typeof updatedSol.industries === 'string' ? JSON.parse(updatedSol.industries) : (updatedSol.industries || []),
+      grade: updatedSol.grade,
+      scale: updatedSol.scale,
+      focal_id: updatedSol.focal_id,
+      tech_note: updatedSol.tech_note,
+      status_op: updatedSol.status_op,
+      note: updatedSol.note
     });
 
     await pool.query(`
@@ -515,6 +569,79 @@ app.delete('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req,
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: '솔루션 아카이브 처리에 실패했습니다.' });
+  }
+});
+
+app.get('/api/admin/focal-contacts', authenticateToken, adminOnly, async (_req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, name, org, vendor_scope, assigned_at FROM focal_contacts ORDER BY name'
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '포컬 담당자 목록을 불러오지 못했습니다.' });
+  }
+});
+
+app.post('/api/admin/focal-contacts', authenticateToken, adminOnly, async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const org = String(req.body?.org || '').trim();
+  const vendorScope = String(req.body?.vendor_scope || '').trim();
+  if (!name) return res.status(400).json({ error: '담당자 이름은 필수입니다.' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO focal_contacts (name, org, vendor_scope)
+       VALUES ($1, $2, $3) RETURNING *`,
+      [name.slice(0, 120), org.slice(0, 120), vendorScope.slice(0, 500)]
+    );
+    auditLog(req.user.id, 'create', `focal:${result.rows[0].id}`, name);
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '포컬 담당자를 저장하지 못했습니다.' });
+  }
+});
+
+app.get('/api/admin/profiles', authenticateToken, adminOnly, async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, email, full_name, team, role, approved, created_at
+       FROM profiles ORDER BY approved ASC, created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '회원 목록을 불러오지 못했습니다.' });
+  }
+});
+
+app.patch('/api/admin/profiles/:id', authenticateToken, adminOnly, async (req, res) => {
+  const approved = typeof req.body?.approved === 'boolean' ? req.body.approved : null;
+  const role = ['admin', 'viewer'].includes(req.body?.role) ? req.body.role : null;
+  const team = typeof req.body?.team === 'string' ? req.body.team.trim().slice(0, 120) : null;
+  if (approved === null && role === null && team === null) {
+    return res.status(400).json({ error: '변경할 회원 정보가 없습니다.' });
+  }
+  if (req.params.id === req.user.id && (approved === false || (role && role !== 'admin'))) {
+    return res.status(400).json({ error: '현재 로그인한 관리자 자신의 권한은 해제할 수 없습니다.' });
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE profiles SET
+         approved = COALESCE($1, approved),
+         role = COALESCE($2::app_role, role),
+         team = COALESCE($3, team)
+       WHERE id = $4
+       RETURNING id, email, full_name, team, role, approved, created_at`,
+      [approved, role, team, req.params.id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: '회원을 찾을 수 없습니다.' });
+    auditLog(req.user.id, 'edit', `profile:${req.params.id}`, JSON.stringify({ approved, role, team }));
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '회원 정보를 저장하지 못했습니다.' });
   }
 });
 
@@ -584,8 +711,12 @@ app.post('/api/admin/solutions/:id/rollback', authenticateToken, adminOnly, asyn
 
     const updateQuery = `
       UPDATE solutions
-      SET slug = $1, name = $2, delivery = $3, layer = $4, synergy = $5, category = $6, jtbd = $7, value_chain = $8, sections = $9, opinion = $10, status = 'published', version = $11, updated_by = $12, updated_at = $13, simulator_mappings = $14, industries = $15
-      WHERE id = $16
+      SET slug = $1, name = $2, delivery = $3, layer = $4, synergy = $5, category = $6,
+          jtbd = $7, value_chain = $8, sections = $9, opinion = $10, status = 'published',
+          version = $11, updated_by = $12, updated_at = $13, simulator_mappings = $14,
+          industries = $15, grade = $16, scale = $17, focal_id = $18, tech_note = $19,
+          status_op = $20, note = $21
+      WHERE id = $22
     `;
 
     await pool.query(updateQuery, [
@@ -604,6 +735,12 @@ app.post('/api/admin/solutions/:id/rollback', authenticateToken, adminOnly, asyn
       now,
       simMappingsJson,
       indJson,
+      snapshot.grade ?? null,
+      snapshot.scale || null,
+      snapshot.focal_id || null,
+      snapshot.tech_note || null,
+      snapshot.status_op || 'active',
+      snapshot.note || null,
       solId
     ]);
 
@@ -621,7 +758,13 @@ app.post('/api/admin/solutions/:id/rollback', authenticateToken, adminOnly, asyn
       status: 'published',
       version: nextVersion,
       simulator_mappings: snapshot.simulator_mappings,
-      industries: snapshot.industries
+      industries: snapshot.industries,
+      grade: snapshot.grade,
+      scale: snapshot.scale,
+      focal_id: snapshot.focal_id,
+      tech_note: snapshot.tech_note,
+      status_op: snapshot.status_op,
+      note: snapshot.note
     });
 
     await pool.query(`
@@ -801,6 +944,23 @@ app.post('/api/admin/suggest-edit', authenticateToken, adminOnly, async (req, re
   }
 });
 
+app.use('/api/hub', createHubRouter({
+  pool,
+  authenticateToken,
+  adminOnly,
+  auditLog
+}));
+
+app.get('/', (req, res, next) => {
+  const entrypoints = {
+    offering: 'offering.html',
+    hub: 'hub.html',
+    admin: 'admin.html'
+  };
+  if (!entrypoints[APP_SURFACE]) return next();
+  res.sendFile(path.join(__dirname, entrypoints[APP_SURFACE]));
+});
+
 // Serve static frontend files
 app.use(express.static(path.join(__dirname)));
 
@@ -814,6 +974,14 @@ app.get('/admin', (req, res) => {
 
 app.get('/admin/usage', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin-usage.html'));
+});
+
+app.get('/hub', (req, res) => {
+  res.sendFile(path.join(__dirname, 'hub.html'));
+});
+
+app.get('/offering', (req, res) => {
+  res.sendFile(path.join(__dirname, 'offering.html'));
 });
 
 app.get('/about', (req, res) => {

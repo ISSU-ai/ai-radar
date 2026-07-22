@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ISSU 허브 웹 전환 — 기획서</title>
+<style>
+  :root{
+    --ink:#16202B; --dim:#4C5663; --faint:#8792A0; --line:#E1E5EB;
+    --paper:#FBFAF7; --card:#FFFFFF;
+    --ext:#1F6FEB; --ext-soft:#EBF2FE; --ext-line:#BFD5F7;
+    --int:#B8912F; --int-soft:#F7F1E0; --int-line:#E4D4A6;
+    --navy:#16202B; --live:#2E7D52; --warn:#B0455A;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--paper); color:var(--ink);
+    font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    font-size:15px; line-height:1.7; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px 80px;}
+  code,.mono{font-family:'IBM Plex Mono','SF Mono',monospace;}
+
+  header{background:var(--navy); color:#fff; padding:46px 0 40px; margin-bottom:8px;}
+  header .wrap{padding-bottom:0;}
+  .eyebrow{font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.16em; color:var(--int); font-weight:700; text-transform:uppercase; margin-bottom:14px;}
+  header h1{font-size:30px; line-height:1.25; margin:0 0 14px; font-weight:800; letter-spacing:-.02em;}
+  header p{font-size:15px; color:#C4CDD8; margin:0; max-width:680px;}
+  .meta{display:flex; gap:22px; flex-wrap:wrap; margin-top:22px; padding-top:20px; border-top:1px solid rgba(255,255,255,.14);}
+  .meta div{font-size:12.5px; color:#95A0AD;}
+  .meta b{color:#E6EBF1; font-weight:600; display:block; font-family:'IBM Plex Mono',monospace; font-size:13px; margin-top:2px;}
+
+  section{margin-top:52px;}
+  .sn{font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:700; color:var(--int); letter-spacing:.05em;}
+  h2{font-size:23px; font-weight:800; letter-spacing:-.015em; margin:6px 0 8px; line-height:1.3;}
+  .lead{font-size:15.5px; color:var(--dim); margin:0 0 24px; max-width:760px;}
+  h3{font-size:17px; font-weight:700; margin:30px 0 10px;}
+  p{margin:0 0 14px;}
+  strong{color:var(--ink); font-weight:700;}
+  em{font-style:normal; background:var(--int-soft); padding:1px 5px; border-radius:4px; font-size:.94em;}
+
+  .callout{border-left:3px solid var(--int); background:var(--int-soft); border-radius:0 10px 10px 0; padding:15px 18px; margin:18px 0; font-size:14.5px; color:var(--dim);}
+  .callout b{color:var(--ink);}
+
+  /* 외부/내부 대비 배너 */
+  .split{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:26px 0;}
+  @media(max-width:720px){ .split{grid-template-columns:1fr;} }
+  .swrap{border-radius:14px; padding:20px 20px 22px; border:1px solid;}
+  .swrap.ext{background:var(--ext-soft); border-color:var(--ext-line);}
+  .swrap.int{background:var(--int-soft); border-color:var(--int-line);}
+  .stag{font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:700; letter-spacing:.08em; padding:4px 10px; border-radius:999px; display:inline-block; margin-bottom:12px;}
+  .swrap.ext .stag{background:var(--ext); color:#fff;}
+  .swrap.int .stag{background:var(--int); color:#fff;}
+  .swrap h4{margin:0 0 4px; font-size:17px; font-weight:800;}
+  .swrap .who{font-size:12.5px; color:var(--dim); margin-bottom:14px; font-weight:600;}
+  .swrap ul{margin:0; padding-left:18px;}
+  .swrap li{font-size:13.5px; color:var(--dim); line-height:1.65; margin-bottom:5px;}
+  .swrap li b{color:var(--ink);}
+
+  /* 다이어그램 공통 */
+  .diagram{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:26px 24px; margin:22px 0; overflow-x:auto;}
+  .diagram svg{display:block; margin:0 auto; max-width:100%; height:auto;}
+  .dcap{font-size:12.5px; color:var(--faint); text-align:center; margin-top:14px;}
+
+  /* 카드 그리드 */
+  .grid{display:grid; gap:13px; margin:20px 0;}
+  .g2{grid-template-columns:1fr 1fr;} .g3{grid-template-columns:1fr 1fr 1fr;}
+  @media(max-width:720px){ .g2,.g3{grid-template-columns:1fr;} }
+  .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px;}
+  .card .k{font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:700; color:var(--int); letter-spacing:.05em; margin-bottom:7px;}
+  .card h4{margin:0 0 6px; font-size:15px; font-weight:700;}
+  .card p{font-size:13px; color:var(--dim); margin:0; line-height:1.6;}
+
+  /* 표 */
+  table{width:100%; border-collapse:collapse; margin:18px 0; font-size:13.5px;}
+  th{background:#EEF0F3; color:var(--navy); font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:700; text-align:left; padding:9px 12px; border:1px solid var(--line); letter-spacing:.02em;}
+  td{border:1px solid var(--line); padding:9px 12px; color:var(--dim); vertical-align:top; line-height:1.55;}
+  td b{color:var(--ink);}
+  .pill{font-family:'IBM Plex Mono',monospace; font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:5px; white-space:nowrap;}
+  .p-ext{background:var(--ext-soft); color:var(--ext); border:1px solid var(--ext-line);}
+  .p-int{background:var(--int-soft); color:var(--int); border:1px solid var(--int-line);}
+  .p-now{background:rgba(46,125,82,.1); color:var(--live); border:1px solid rgba(46,125,82,.3);}
+  .p-plan{background:#EEF0F3; color:var(--faint); border:1px solid var(--line);}
+
+  /* 단계 로드맵 */
+  .phase{display:flex; gap:14px; align-items:flex-start; padding:15px 0; border-bottom:1px solid var(--line);}
+  .phase:last-child{border-bottom:none;}
+  .pnum{flex-shrink:0; width:38px; height:38px; border-radius:10px; background:var(--navy); color:#fff; font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center;}
+  .phase.done .pnum{background:var(--live);}
+  .pbody h4{margin:0 0 3px; font-size:15.5px; font-weight:700;}
+  .pbody p{margin:0; font-size:13.5px; color:var(--dim);}
+  .pbody .out{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--faint); margin-top:5px;}
+
+  .foot{margin-top:56px; padding-top:22px; border-top:2px solid var(--navy); font-size:12.5px; color:var(--faint);}
+  .foot b{color:var(--dim);}
+  a{color:var(--ext); text-decoration:none;}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="eyebrow">기획 · 승인 대기 · 개발 전</div>
+    <h1>ISSU 인에이블먼트 허브 — 웹 전환 기획</h1>
+    <p>발표용 PPT 기반 화면을, 사용자 경험 중심의 웹 서비스로 재편합니다. 핵심은 <strong style="color:#fff">보는 사람이 누구냐로 접근을 가르는 것</strong> — 외부 고객, 내부 직원, 그리고 DB에 직접 쓰는 관리자, 셋은 다른 문으로 들어옵니다.</p>
+    <div class="meta">
+      <div>작성<b>원영 (ISSU)</b></div>
+      <div>참고<b>허브 v11-0 사업기획</b></div>
+      <div>기반<b>AI Radar 확장</b></div>
+      <div>DB<b>Supabase</b></div>
+      <div>URL<b>서브도메인 분리</b></div>
+      <div>연동<b>Supabase · 슬랙</b></div>
+      <div>인증<b>이메일·비밀번호</b></div>
+      <div>진행<b>기획 → 승인 → 개발</b></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ══ 1. 핵심 결정 ══ -->
+<section>
+  <div class="sn">01 — 핵심 결정</div>
+  <h2>두 개의 사이트로 가른다</h2>
+  <p class="lead">지금은 세 개의 HTML이 역할 구분 없이 섞여 있습니다. 웹 전환의 첫 결정은 <strong>접근 레벨을 셋으로 가르는 것</strong>입니다 — 외부 고객, 내부 직원, 그리고 <strong>DB를 직접 다루는 관리자</strong>. 보는 사람이 다르면 목적·언어·권한·노출 정보가 전부 달라야 합니다.</p>
+
+  <div class="split">
+    <div class="swrap ext">
+      <span class="stag">EXTERNAL · 외부</span>
+      <h4>오퍼링 포탈</h4>
+      <div class="who">고객 · 잠재 리드 — 로그인 없이 공개</div>
+      <ul>
+        <li><b>목적</b> — 고객이 스스로 진단하고, 자기 상황에 맞는 오퍼링을 이해</li>
+        <li><b>언어</b> — 고객의 페인포인트 언어. 내부 용어·마진·포컬 이름 없음</li>
+        <li><b>흐름</b> — 진단 → 갭 확인 → 조합 이해 → <b>리드 남기기</b></li>
+        <li><b>기반</b> — 지금의 <code>Offering_portal.html</code></li>
+      </ul>
+    </div>
+    <div class="swrap int">
+      <span class="stag">INTERNAL · 내부</span>
+      <h4>인에이블먼트 허브</h4>
+      <div class="who">영업·기술 직원 — 로그인 필요</div>
+      <ul>
+        <li><b>목적</b> — 직원이 딜을 설계하고 실행. 판정·급·포컬·공수까지</li>
+        <li><b>언어</b> — 내부 실무 언어. 트랙 판정, 딜 급, HALO 귀속 매출</li>
+        <li><b>흐름</b> — 영업지원 / 기술지원으로 <b>역할별 분리</b></li>
+        <li><b>기반</b> — <code>presales_hub.html</code> + <code>sales_workflow.html</code> + 허브 v11-0</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="swrap" style="background:#F4F0F7; border-color:#D6C9E4; margin-top:16px;">
+    <span class="stag" style="background:#6B4EA0; color:#fff;">ADMIN · 관리자</span>
+    <h4>DB에 직접 쓴다</h4>
+    <div class="who">기획·운영 관리자 — 최고 권한 로그인</div>
+    <ul style="columns:2; column-gap:28px;">
+      <li><b>목적</b> — 서비스·패키지·포컬·급 기준을 <b>DB에 직접 추가·수정·삭제</b></li>
+      <li><b>권한</b> — 두 사이트가 읽는 원본 데이터를 쓰는 유일한 곳</li>
+      <li><b>반영</b> — 저장하면 외부·내부 양쪽에 즉시 적용 (재배포 없음)</li>
+      <li><b>이력</b> — 누가 언제 무엇을 바꿨는지 audit_log에 남김</li>
+    </ul>
+  </div>
+
+  <div class="callout" style="border-color:#7659B5; background:#F1ECF9;">
+    <b>이 허브는 처음부터 짓지 않습니다 — AI Radar를 확장합니다.</b> 기존에 만든 <b>AI Radar</b>(github.com/ISSU-ai/ai-radar)에 이미 Supabase 스키마·인증(JWT·bcrypt·승인제)·관리자 화면·솔루션 카탈로그 35개·pgvector가 구현돼 있습니다. 허브는 그 위에 <b>딜 파이프라인</b>을 얹는 확장입니다. 인증·관리자·RLS를 새로 짜지 않아 개발량이 크게 줄고 검증된 코드에서 시작합니다. <em>상세는 별첨 통합기획 참조.</em>
+  </div>
+
+  <div class="callout">
+    <b>왜 셋으로 나누나.</b> 외부 포탈에 딜 급·포컬 담당자·HALO 귀속 매출이 노출되면 사고입니다. 반대로 내부 허브를 고객 언어로 순화하면 직원 도구가 무뎌집니다. 그리고 <b>데이터를 바꾸는 일은 화면을 보는 일과 완전히 다른 권한</b>이라 관리자로 따로 뺍니다. <b>같은 데이터를 쓰되, 보는 층·언어·쓰기 권한을 분리</b>하는 게 이 기획의 뼈대입니다.
+  </div>
+</section>
+
+<!-- ══ 2. 전체 구조 ══ -->
+<section>
+  <div class="sn">02 — 전체 구조</div>
+  <h2>한 장으로 보는 아키텍처</h2>
+  <p class="lead">외부·내부 두 사이트가 <strong>하나의 Supabase</strong>를 공유합니다. 데이터는 한 곳, 화면은 둘, 권한으로 가릅니다.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 900 470" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace">
+      <!-- 사용자 층 -->
+      <rect x="60" y="24" width="330" height="66" rx="12" fill="#EBF2FE" stroke="#BFD5F7"/>
+      <text x="225" y="52" text-anchor="middle" font-size="14" font-weight="700" fill="#1F6FEB">고객 · 잠재 리드</text>
+      <text x="225" y="72" text-anchor="middle" font-size="11" fill="#4C5663">로그인 없음 · 공개 접근</text>
+
+      <rect x="510" y="24" width="330" height="66" rx="12" fill="#F7F1E0" stroke="#E4D4A6"/>
+      <text x="675" y="52" text-anchor="middle" font-size="14" font-weight="700" fill="#B8912F">영업·기술 직원</text>
+      <text x="675" y="72" text-anchor="middle" font-size="11" fill="#4C5663">로그인 필요 · 역할 권한</text>
+
+      <!-- 화살표 -->
+      <line x1="225" y1="90" x2="225" y2="126" stroke="#BFD5F7" stroke-width="2"/>
+      <polygon points="225,132 220,122 230,122" fill="#BFD5F7"/>
+      <line x1="675" y1="90" x2="675" y2="126" stroke="#E4D4A6" stroke-width="2"/>
+      <polygon points="675,132 670,122 680,122" fill="#E4D4A6"/>
+
+      <!-- 사이트 층 -->
+      <rect x="60" y="134" width="330" height="96" rx="12" fill="#fff" stroke="#1F6FEB" stroke-width="2"/>
+      <text x="225" y="162" text-anchor="middle" font-size="14.5" font-weight="700" fill="#16202B">오퍼링 포탈</text>
+      <text x="225" y="182" text-anchor="middle" font-size="10.5" fill="#1F6FEB" font-weight="700">EXTERNAL</text>
+      <text x="225" y="204" text-anchor="middle" font-size="10.5" fill="#4C5663">진단 · 갭 · 조합 이해 · 리드</text>
+
+      <rect x="510" y="134" width="330" height="96" rx="12" fill="#fff" stroke="#B8912F" stroke-width="2"/>
+      <text x="675" y="158" text-anchor="middle" font-size="14.5" font-weight="700" fill="#16202B">인에이블먼트 허브</text>
+      <text x="675" y="177" text-anchor="middle" font-size="10.5" fill="#B8912F" font-weight="700">INTERNAL</text>
+      <line x1="595" y1="190" x2="755" y2="190" stroke="#E4D4A6" stroke-dasharray="3 3"/>
+      <text x="637" y="212" text-anchor="middle" font-size="10.5" fill="#4C5663">영업지원</text>
+      <text x="713" y="212" text-anchor="middle" font-size="10.5" fill="#4C5663">기술지원</text>
+      <line x1="675" y1="196" x2="675" y2="222" stroke="#E4D4A6"/>
+
+      <!-- 화살표 to API -->
+      <line x1="225" y1="230" x2="225" y2="270" stroke="#C4CDD8" stroke-width="2"/>
+      <polygon points="225,276 220,266 230,266" fill="#C4CDD8"/>
+      <line x1="675" y1="230" x2="675" y2="270" stroke="#C4CDD8" stroke-width="2"/>
+      <polygon points="675,276 670,266 680,266" fill="#C4CDD8"/>
+
+      <!-- API/권한 층 -->
+      <rect x="60" y="278" width="780" height="70" rx="12" fill="#16202B"/>
+      <text x="450" y="306" text-anchor="middle" font-size="13.5" font-weight="700" fill="#fff">Supabase — 인증 · 행 수준 권한(RLS) · API</text>
+      <text x="450" y="328" text-anchor="middle" font-size="10.5" fill="#95A0AD">외부는 공개 읽기 + 리드 쓰기만 · 내부는 로그인 후 역할별 접근</text>
+
+      <line x1="450" y1="348" x2="450" y2="384" stroke="#C4CDD8" stroke-width="2"/>
+      <polygon points="450,390 445,380 455,380" fill="#C4CDD8"/>
+
+      <!-- DB 층 -->
+      <rect x="60" y="392" width="780" height="62" rx="12" fill="#F7F1E0" stroke="#E4D4A6"/>
+      <text x="450" y="418" text-anchor="middle" font-size="12.5" font-weight="700" fill="#B8912F">데이터베이스 (공유)</text>
+      <text x="450" y="438" text-anchor="middle" font-size="10.5" fill="#4C5663">services · packages · fqa_items · tracks · focal_contacts · leads · audit_log</text>
+    </svg>
+    <div class="dcap">세 접근점이 하나의 DB를 공유합니다. 외부·내부는 <b>읽기</b>, 관리자만 원본에 <b>씁니다</b>. Supabase 권한(RLS)이 각 층을 가릅니다.</div>
+  </div>
+</section>
+
+<!-- ══ 3. URL 구조 ══ -->
+<section>
+  <div class="sn">03 — URL 구조</div>
+  <h2>서브도메인부터 가른다</h2>
+  <p class="lead">권한(RLS)만으로 가르지 않습니다. <strong>외부·내부는 URL부터 분리</strong>합니다 — 같은 도메인 아래 서브도메인으로. 딜 급·포컬·매출이 외부로 새는 최악을 막는 첫 번째 벽은 권한 규칙이 아니라 <strong>애초에 다른 주소</strong>입니다.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 840 250" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace">
+      <!-- 루트 도메인 -->
+      <rect x="310" y="18" width="220" height="46" rx="10" fill="#16202B"/>
+      <text x="420" y="40" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">우리도메인.com</text>
+      <text x="420" y="56" text-anchor="middle" font-size="9" fill="#95A0AD">루트 도메인 (예시)</text>
+
+      <!-- 분기선 -->
+      <line x1="420" y1="64" x2="420" y2="82" stroke="#C4CDD8" stroke-width="2"/>
+      <line x1="140" y1="82" x2="700" y2="82" stroke="#C4CDD8" stroke-width="2"/>
+      <line x1="140" y1="82" x2="140" y2="100" stroke="#C4CDD8" stroke-width="2"/>
+      <line x1="420" y1="82" x2="420" y2="100" stroke="#C4CDD8" stroke-width="2"/>
+      <line x1="700" y1="82" x2="700" y2="100" stroke="#C4CDD8" stroke-width="2"/>
+      <polygon points="140,106 135,96 145,96" fill="#C4CDD8"/>
+      <polygon points="420,106 415,96 425,96" fill="#C4CDD8"/>
+      <polygon points="700,106 695,96 705,96" fill="#C4CDD8"/>
+
+      <!-- 외부 -->
+      <rect x="30" y="108" width="220" height="90" rx="12" fill="#EBF2FE" stroke="#1F6FEB" stroke-width="2"/>
+      <text x="140" y="134" text-anchor="middle" font-size="13" font-weight="700" fill="#1F6FEB">offering.</text>
+      <text x="140" y="152" text-anchor="middle" font-size="10.5" fill="#16202B" font-weight="700">EXTERNAL</text>
+      <text x="140" y="172" text-anchor="middle" font-size="9.5" fill="#4C5663">고객 · 공개</text>
+      <text x="140" y="187" text-anchor="middle" font-size="9" fill="#8792A0">누구나 접근</text>
+
+      <!-- 내부 -->
+      <rect x="310" y="108" width="220" height="90" rx="12" fill="#F7F1E0" stroke="#B8912F" stroke-width="2"/>
+      <text x="420" y="134" text-anchor="middle" font-size="13" font-weight="700" fill="#B8912F">hub.</text>
+      <text x="420" y="152" text-anchor="middle" font-size="10.5" fill="#16202B" font-weight="700">INTERNAL</text>
+      <text x="420" y="172" text-anchor="middle" font-size="9.5" fill="#4C5663">직원 · 로그인</text>
+      <text x="420" y="187" text-anchor="middle" font-size="9" fill="#8792A0">사내망 권장</text>
+
+      <!-- 관리자 -->
+      <rect x="590" y="108" width="220" height="90" rx="12" fill="#F4F0F7" stroke="#6B4EA0" stroke-width="2"/>
+      <text x="700" y="134" text-anchor="middle" font-size="13" font-weight="700" fill="#6B4EA0">admin.</text>
+      <text x="700" y="152" text-anchor="middle" font-size="10.5" fill="#16202B" font-weight="700">ADMIN</text>
+      <text x="700" y="172" text-anchor="middle" font-size="9.5" fill="#4C5663">관리자 · 최고권한</text>
+      <text x="700" y="187" text-anchor="middle" font-size="9" fill="#8792A0">사내망 + 별도 인증</text>
+
+      <!-- 하단 공유 표시 -->
+      <line x1="140" y1="198" x2="140" y2="220" stroke="#D0D5DC" stroke-width="1.5" stroke-dasharray="3 3"/>
+      <line x1="420" y1="198" x2="420" y2="220" stroke="#D0D5DC" stroke-width="1.5" stroke-dasharray="3 3"/>
+      <line x1="700" y1="198" x2="700" y2="220" stroke="#D0D5DC" stroke-width="1.5" stroke-dasharray="3 3"/>
+      <line x1="140" y1="220" x2="700" y2="220" stroke="#D0D5DC" stroke-width="1.5" stroke-dasharray="3 3"/>
+      <text x="420" y="240" text-anchor="middle" font-size="10" fill="#8792A0">↓ 세 주소가 하나의 Supabase를 공유</text>
+    </svg>
+    <div class="dcap">서브도메인으로 주소를 가르되, 데이터 원본은 하나입니다. 도메인 이름은 예시입니다.</div>
+  </div>
+
+  <h3>왜 경로(/portal)가 아니라 서브도메인인가</h3>
+  <table>
+    <tr><th>방식</th><th>예</th><th>판단</th></tr>
+    <tr><td><b>완전 별도 도메인</b></td><td class="mono">offering.com / hub.내부</td><td>가장 안전하나 인증서·브랜딩·관리 2배 <span class="pill p-plan">과함</span></td></tr>
+    <tr><td><b>서브도메인</b> (선택)</td><td class="mono">offering. / hub. / admin.</td><td>주소가 갈려 격리되고, 관리는 한 도메인 <span class="pill p-now">채택</span></td></tr>
+    <tr><td><b>경로 분리</b></td><td class="mono">한도메인/portal · /hub</td><td>한 앱에 공존 → 권한 버그 하나로 유출 <span class="pill" style="background:#FDF3F2;color:var(--warn);border:1px solid rgba(176,69,90,.3)">위험</span></td></tr>
+  </table>
+
+  <div class="callout">
+    <b>서브도메인이 주는 것.</b> ① 외부·내부가 <b>다른 앱으로 분리</b>돼, 내부 코드·데이터가 외부 번들에 아예 안 실립니다. ② 내부·관리자 도메인만 <b>사내망(VPN·IP 제한)</b>으로 묶을 수 있습니다 — 외부에서 주소를 알아도 접근 자체가 막힙니다. ③ 배포·롤백을 각각 독립적으로. <b>DB는 여전히 하나</b>라, 서브도메인이 갈려도 데이터 원본은 공유됩니다.
+  </div>
+
+  <div class="callout" style="border-color:#6B4EA0; background:#F4F0F7;">
+    <b>Supabase 연동 시 준비물.</b> 도메인이 갈리면 각 서브도메인을 Supabase의 <b>허용 목록(CORS·Redirect URL)</b>에 등록해야 합니다. 외부 도메인은 <code>anon key</code>로 공개 읽기 + 리드 쓰기만, 내부·관리자 도메인은 로그인 후 접근. 이건 개발(3단계) 체크리스트에 넣습니다.
+  </div>
+</section>
+
+<!-- ══ 4. 인증 ══ -->
+<section>
+  <div class="sn">04 — 인증</div>
+  <h2>이메일·비밀번호로 시작, SSO는 나중</h2>
+  <p class="lead">SSO 연동은 초기 부담이 커서 뒤로 미룹니다. 지금은 <strong>이메일/비밀번호</strong>로 내부 hub와 admin만 로그인합니다 — 외부 포탈은 로그인 없이 공개. 그리고 <strong>회원은 자체 <code>users</code> 테이블로 직접 관리</strong>합니다. Supabase Auth에 묶지 않아, 나중에 SSO로 갈아탈 여지를 남깁니다.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 840 210" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace">
+      <!-- 외부: 로그인 없음 -->
+      <rect x="30" y="24" width="240" height="80" rx="12" fill="#EBF2FE" stroke="#BFD5F7"/>
+      <text x="150" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1F6FEB">offering. (외부)</text>
+      <text x="150" y="72" text-anchor="middle" font-size="10" fill="#4C5663">로그인 없음</text>
+      <text x="150" y="88" text-anchor="middle" font-size="9" fill="#8792A0">누구나 공개 접근</text>
+
+      <!-- 내부: 로그인 -->
+      <rect x="300" y="24" width="240" height="80" rx="12" fill="#F7F1E0" stroke="#B8912F"/>
+      <text x="420" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#B8912F">hub. (내부)</text>
+      <text x="420" y="72" text-anchor="middle" font-size="10" fill="#4C5663">이메일·비밀번호</text>
+      <text x="420" y="88" text-anchor="middle" font-size="9" fill="#8792A0">직원 로그인</text>
+
+      <!-- admin -->
+      <rect x="570" y="24" width="240" height="80" rx="12" fill="#F4F0F7" stroke="#6B4EA0"/>
+      <text x="690" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#6B4EA0">admin. (관리자)</text>
+      <text x="690" y="72" text-anchor="middle" font-size="10" fill="#4C5663">이메일·비밀번호</text>
+      <text x="690" y="88" text-anchor="middle" font-size="9" fill="#8792A0">최고 권한</text>
+
+      <!-- 내부·admin만 users로 -->
+      <line x1="420" y1="104" x2="420" y2="140" stroke="#C4CDD8" stroke-width="2"/><polygon points="420,146 415,136 425,136" fill="#C4CDD8"/>
+      <line x1="690" y1="104" x2="690" y2="140" stroke="#C4CDD8" stroke-width="2"/><polygon points="690,146 685,136 695,136" fill="#C4CDD8"/>
+
+      <rect x="300" y="148" width="510" height="46" rx="10" fill="#16202B"/>
+      <text x="555" y="169" text-anchor="middle" font-size="11.5" font-weight="700" fill="#fff">users 테이블 — 자체 관리</text>
+      <text x="555" y="185" text-anchor="middle" font-size="9" fill="#95A0AD">email · password_hash(해시만) · role · SSO 컬럼은 나중에 추가</text>
+    </svg>
+    <div class="dcap">외부는 로그인 없음. 내부·admin만 자체 users 테이블로 인증. 비밀번호는 해시로만 저장.</div>
+  </div>
+
+  <div class="grid g3">
+    <div class="card"><div class="k">회원 생성</div><h4>관리자가 발급</h4><p>회원가입 화면 없음. admin이 users에 계정을 직접 추가. 초기엔 <b>테스트 계정 몇 개</b>로 시작.</p></div>
+    <div class="card"><div class="k">역할</div><h4>admin · sales · tech</h4><p>role 컬럼으로 구분. admin은 최고 권한(DB 쓰기), 나머지는 hub 사용.</p></div>
+    <div class="card"><div class="k">SSO 대비</div><h4>테이블만 열어둠</h4><p>나중에 <code>sso_provider·sso_id</code> 컬럼 추가 → 같은 users 테이블로 SSO 흡수.</p></div>
+  </div>
+
+  <div class="callout" style="border-color:var(--warn); background:#FDF3F2;">
+    <b>비밀번호는 절대 평문 저장 안 함 — 타협 불가.</b> <code>users</code> 테이블엔 비밀번호 원문이 아니라 <b>해시값(bcrypt)</b>만 들어갑니다. 로그인 시 입력값을 같은 방식으로 해시해 비교합니다. 평문 저장은 유출 한 번에 전 직원 계정이 그대로 뚫리므로, 자체 관리를 택한 이상 이 원칙이 가장 중요합니다.
+  </div>
+
+  <div class="callout">
+    <b>왜 Supabase Auth를 안 쓰나.</b> Supabase 기본 인증에 묶으면 편하지만, 나중에 사내 SSO로 옮길 때 계정 데이터를 통째로 이전해야 합니다. <b>자체 users 테이블</b>로 두면 SSO는 컬럼 추가로 흡수되고, 기존 계정은 그대로 남습니다. <b>AI Radar가 이미 이 방식(JWT·bcrypt·승인제)으로 구현돼 있어</b>, 인증은 새로 짜지 않고 그대로 재사용합니다 — hub·admin에만 걸고 외부는 공개로 분리.
+  </div>
+</section>
+
+<!-- ══ 3. 외부 포탈 UX ══ -->
+<section>
+  <div class="sn">05 — 외부 · 오퍼링 포탈</div>
+  <h2>고객의 동선 — 스스로 답을 찾게</h2>
+  <p class="lead">외부 포탈은 <strong>고객이 혼자 읽어도 이해되는 흐름</strong>이어야 합니다. 세일즈가 옆에서 설명하지 않아도, 진단부터 리드까지 스크롤 한 번으로 이어집니다. 지금 <code>Offering_portal.html</code>의 9개 섹션이 이미 이 순서입니다.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 860 150" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace">
+      <!-- 5스텝 흐름 -->
+      <g font-size="11.5" fill="#16202B" font-weight="700">
+        <rect x="20" y="40" width="130" height="60" rx="10" fill="#EBF2FE" stroke="#BFD5F7"/>
+        <text x="85" y="66" text-anchor="middle">30초 진단</text>
+        <text x="85" y="84" text-anchor="middle" font-size="9.5" font-weight="400" fill="#4C5663">내 상황 입력</text>
+
+        <rect x="190" y="40" width="130" height="60" rx="10" fill="#EBF2FE" stroke="#BFD5F7"/>
+        <text x="255" y="66" text-anchor="middle">갭 확인</text>
+        <text x="255" y="84" text-anchor="middle" font-size="9.5" font-weight="400" fill="#4C5663">뭐가 부족한가</text>
+
+        <rect x="360" y="40" width="130" height="60" rx="10" fill="#EBF2FE" stroke="#BFD5F7"/>
+        <text x="425" y="66" text-anchor="middle">조합 이해</text>
+        <text x="425" y="84" text-anchor="middle" font-size="9.5" font-weight="400" fill="#4C5663">필요한 것만</text>
+
+        <rect x="530" y="40" width="130" height="60" rx="10" fill="#EBF2FE" stroke="#BFD5F7"/>
+        <text x="595" y="66" text-anchor="middle">패키지</text>
+        <text x="595" y="84" text-anchor="middle" font-size="9.5" font-weight="400" fill="#4C5663">6종 구성</text>
+
+        <rect x="700" y="40" width="140" height="60" rx="10" fill="#1F6FEB" stroke="#1F6FEB"/>
+        <text x="770" y="66" text-anchor="middle" fill="#fff">리드 남기기</text>
+        <text x="770" y="84" text-anchor="middle" font-size="9.5" font-weight="400" fill="#DBE7FB">상담 요청</text>
+      </g>
+      <g stroke="#BFD5F7" stroke-width="2">
+        <line x1="150" y1="70" x2="186" y2="70"/><polygon points="190,70 180,65 180,75" fill="#BFD5F7"/>
+        <line x1="320" y1="70" x2="356" y2="70"/><polygon points="360,70 350,65 350,75" fill="#BFD5F7"/>
+        <line x1="490" y1="70" x2="526" y2="70"/><polygon points="530,70 520,65 520,75" fill="#BFD5F7"/>
+        <line x1="660" y1="70" x2="696" y2="70"/><polygon points="700,70 690,65 690,75" fill="#BFD5F7"/>
+      </g>
+    </svg>
+    <div class="dcap">고객 동선 — 결과를 먼저 보여주고, 연락처는 마지막에. "결과 먼저 → 리드 나중" 원칙.</div>
+  </div>
+
+  <div class="callout" style="border-color:#7659B5; background:#F1ECF9;">
+    <b>솔루션 카탈로그는 내부 전용 — 외부엔 최소 정보만.</b> AI Radar의 솔루션 상세(계층·기능·MZC 의견)엔 "우리가 어떤 ISV를 어떻게 보는지"가 담겨, 벤더·경쟁사에 노출되면 안 됩니다. 외부(offering.)엔 <b>오퍼링·진단·리드</b>만 나가고, 카탈로그 자체는 내부에만 보입니다.
+  </div>
+
+  <h3>외부에서 반드시 가려야 할 것</h3>
+  <table>
+    <tr><th>항목</th><th>내부 허브</th><th>외부 포탈</th></tr>
+    <tr><td><b>딜 급 / 예상 매출</b></td><td>급 3, HALO 귀속 매출 표시</td><td class="mono" style="color:var(--warn)">노출 안 함</td></tr>
+    <tr><td><b>포컬 담당자 이름</b></td><td>승현님 · 배정 담당</td><td class="mono" style="color:var(--warn)">노출 안 함</td></tr>
+    <tr><td><b>MD 공수 / 요율</b></td><td>20~40 MD, 요율 환산</td><td class="mono" style="color:var(--warn)">노출 안 함</td></tr>
+    <tr><td><b>보완 벽 · 내부 판정</b></td><td>빨강 남으면 견적 잠금</td><td>진단 결과는 보여주되 판정 로직은 숨김</td></tr>
+    <tr><td><b>진단 · 갭 · 조합</b></td><td>있음</td><td><b>있음</b> — 고객 언어로</td></tr>
+    <tr><td><b>리드 폼</b></td><td>—</td><td><b>있음</b> — 외부 전용</td></tr>
+  </table>
+</section>
+
+<!-- ══ 4. 내부 허브 UX ══ -->
+<section>
+  <div class="sn">06 — 내부 · 인에이블먼트 허브</div>
+  <h2>딜을 골라 들어가고, 업무 순서대로 흐른다</h2>
+  <p class="lead">지금 허브는 도구 7종이 그리드에 평평하게 놓인 <strong>카탈로그</strong>입니다 — PPT를 그대로 옮긴 구조죠. 실제로 직원은 도구를 고르지 않습니다. <strong>딜 하나를 골라 들어가면, 그 딜이 업무 순서를 따라 흐릅니다.</strong> 한 번 문 데이터는 끝까지 따라다닙니다.</p>
+
+  <h3>먼저 — 딜 목록에서 고른다</h3>
+  <p>허브에 들어오면 도구가 아니라 <strong>딜 목록</strong>이 먼저 뜹니다. 시간이 지나면 여기에 딜이 쌓여, 그 자체가 파이프라인 현황판이 됩니다.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 840 264" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace">
+      <rect x="20" y="16" width="800" height="40" rx="9" fill="#16202B"/>
+      <text x="38" y="41" font-size="12.5" font-weight="700" fill="#fff">딜 목록</text>
+      <text x="620" y="41" font-size="10" fill="#95A0AD">필터: 단계 · 트랙 · 내 딜만</text>
+      <!-- 헤더 -->
+      <g font-size="9.5" fill="#8792A0" font-weight="700">
+        <text x="40" y="78">고객사</text><text x="215" y="78">현재 단계</text>
+        <text x="410" y="78">유형</text><text x="510" y="78">담당</text><text x="640" y="78">수정일</text>
+      </g>
+      <line x1="20" y1="86" x2="820" y2="86" stroke="#E1E5EB"/>
+      <!-- 행들 -->
+      <g font-size="11">
+        <rect x="20" y="92" width="800" height="34" fill="#EBF2FE"/>
+        <text x="40" y="114" font-weight="700" fill="#16202B">A社</text>
+        <text x="215" y="114" fill="#4C5663">② PoC 검증</text>
+        <rect x="405" y="102" width="60" height="16" rx="4" fill="#B0455A"/><text x="435" y="114" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">T-A</text>
+        <text x="510" y="114" fill="#4C5663">김영업</text><text x="640" y="114" fill="#8792A0" font-size="10">오늘</text>
+
+        <text x="40" y="150" font-weight="700" fill="#16202B">B社</text>
+        <text x="215" y="150" fill="#4C5663">④ 딜 사이즈</text>
+        <rect x="405" y="138" width="60" height="16" rx="4" fill="#B8912F"/><text x="435" y="150" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">T-C</text>
+        <text x="510" y="150" fill="#4C5663">이세일</text><text x="640" y="150" fill="#8792A0" font-size="10">어제</text>
+        <line x1="20" y1="162" x2="820" y2="162" stroke="#F0F2F5"/>
+
+        <text x="40" y="186" font-weight="700" fill="#16202B">C社</text>
+        <text x="215" y="186" fill="#4C5663">⑤ 피치 준비</text>
+        <rect x="405" y="174" width="60" height="16" rx="4" fill="#2E7D52"/><text x="435" y="186" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">T-B</text>
+        <text x="510" y="186" fill="#4C5663">김영업</text><text x="640" y="186" fill="#8792A0" font-size="10">3일 전</text>
+        <line x1="20" y1="198" x2="820" y2="198" stroke="#F0F2F5"/>
+
+        <text x="40" y="222" font-weight="700" fill="#1F6FEB">D社</text>
+        <text x="215" y="222" fill="#1F6FEB">① 신규 · 포탈 유입</text>
+        <rect x="405" y="210" width="60" height="16" rx="4" fill="#EEF0F3"/><text x="435" y="222" text-anchor="middle" font-size="9" font-weight="700" fill="#8792A0">미정</text>
+        <text x="510" y="222" fill="#8792A0">미배정</text><text x="640" y="222" fill="#8792A0" font-size="10">방금</text>
+      </g>
+      <rect x="20" y="234" width="150" height="26" rx="7" fill="#16202B"/>
+      <text x="95" y="251" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff">+ 새 딜 시작</text>
+    </svg>
+    <div class="dcap">딜 목록 — 고객사 · 현재 단계(①~⑤) · 유형(트랙) · 담당 · 수정일. 포탈에서 막 들어온 D社는 파란색 "신규"로 뜹니다.</div>
+  </div>
+
+  <div class="callout">
+    <b>"트랙"은 딜 유형입니다.</b> 진단(기존 보안 인프라 + 투자 여력)으로 딜이 4가지로 갈립니다 — <b>T-A</b> 인프라 동반·딜 최대 / <b>T-B</b> 경량·딜 소 / <b>T-C</b> Zscaler 보유·분기 / <b>T-D</b> 타사 SWG·충돌 검토. 목록에서 유형만 봐도 딜 성격과 크기가 짐작됩니다. <em>내부에서 익숙한 다른 이름(예: 딜 유형·케이스)으로 바꿔도 됩니다.</em>
+  </div>
+
+  <h3>그 다음 — 딜을 물고 업무 순서대로 흐른다</h3>
+  <p>딜을 고르면 그 딜의 작업 공간으로 들어가고, <strong>①에서 ⑤까지 한 방향으로 이어집니다.</strong> 각 단계는 앞 단계의 결과를 물고 시작합니다 — 다시 입력하지 않습니다.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 840 300" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace">
+      <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><polygon points="0,0 7,3 0,6" fill="#B8912F"/></marker></defs>
+      <!-- 세로 파이프라인 -->
+      <g font-size="12">
+        <!-- ① -->
+        <rect x="40" y="18" width="760" height="42" rx="9" fill="#EBF2FE" stroke="#BFD5F7"/>
+        <circle cx="66" cy="39" r="13" fill="#1F6FEB"/><text x="66" y="43" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">1</text>
+        <text x="92" y="36" font-size="12.5" font-weight="700" fill="#16202B">들어온 데이터</text>
+        <text x="92" y="51" font-size="9.5" fill="#4C5663">포탈 진단·리드 → 딜에 자동 반영 (고객 상황·기존 보안·투자)</text>
+
+        <line x1="420" y1="60" x2="420" y2="72" stroke="#B8912F" stroke-width="2" marker-end="url(#ar)"/>
+        <text x="440" y="70" font-size="8.5" fill="#8792A0">진단 결과를 물고</text>
+
+        <!-- ② -->
+        <rect x="40" y="74" width="760" height="42" rx="9" fill="#fff" stroke="#E1E5EB"/>
+        <circle cx="66" cy="95" r="13" fill="#16202B"/><text x="66" y="99" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">2</text>
+        <text x="92" y="92" font-size="12.5" font-weight="700" fill="#16202B">PoC 키트 &amp; 검증 체크리스트</text>
+        <text x="92" y="107" font-size="9.5" fill="#4C5663">21항목 진단 완성 → 보완 벽. 미달 항목이 필요한 ISV를 지목</text>
+
+        <line x1="420" y1="116" x2="420" y2="128" stroke="#B8912F" stroke-width="2" marker-end="url(#ar)"/>
+        <text x="440" y="126" font-size="8.5" fill="#8792A0">미달 항목 → 보완 솔루션</text>
+
+        <!-- ③ -->
+        <rect x="40" y="130" width="760" height="42" rx="9" fill="#fff" stroke="#E1E5EB"/>
+        <circle cx="66" cy="151" r="13" fill="#16202B"/><text x="66" y="155" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">3</text>
+        <text x="92" y="148" font-size="12.5" font-weight="700" fill="#16202B">ISV Co-Sell &amp; 가격 가이드</text>
+        <text x="92" y="163" font-size="9.5" fill="#4C5663">지목된 ISV 조합 확정 → 급(級)·포컬 연결</text>
+
+        <line x1="420" y1="172" x2="420" y2="184" stroke="#B8912F" stroke-width="2" marker-end="url(#ar)"/>
+        <text x="440" y="182" font-size="8.5" fill="#8792A0">조합을 물고</text>
+
+        <!-- ④ -->
+        <rect x="40" y="186" width="760" height="42" rx="9" fill="#fff" stroke="#E1E5EB"/>
+        <circle cx="66" cy="207" r="13" fill="#16202B"/><text x="66" y="211" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">4</text>
+        <text x="92" y="204" font-size="12.5" font-weight="700" fill="#16202B">패키지 · 딜 사이즈 확대 모델</text>
+        <text x="92" y="219" font-size="9.5" fill="#4C5663">조합에 MZC 서비스 패키지 얹어 딜 키우기 → 규모급·공수</text>
+
+        <line x1="420" y1="228" x2="420" y2="240" stroke="#B8912F" stroke-width="2" marker-end="url(#ar)"/>
+        <text x="440" y="238" font-size="8.5" fill="#8792A0">확정된 딜을 물고</text>
+
+        <!-- ⑤ -->
+        <rect x="40" y="242" width="760" height="42" rx="9" fill="#F7F1E0" stroke="#E4D4A6"/>
+        <circle cx="66" cy="263" r="13" fill="#B8912F"/><text x="66" y="267" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">5</text>
+        <text x="92" y="260" font-size="12.5" font-weight="700" fill="#16202B">세일즈 피치 &amp; FAQ 스크립트</text>
+        <text x="92" y="275" font-size="9.5" fill="#4C5663">다 정해진 딜로 고객 설득 — 조합·급에 맞춰 스크립트 생성</text>
+      </g>
+    </svg>
+    <div class="dcap">딜 작업 공간 — ①에서 ⑤까지 한 방향. 각 단계가 앞 결과를 물고 시작하니, 같은 걸 다시 입력하지 않습니다.</div>
+  </div>
+
+  <div class="callout">
+    <b>기술지원 도구는 파이프라인 옆에.</b> 레퍼런스 아키텍처·ISV 계층 기능·인증 트랙은 순서에 묶이지 않는 <b>참조 자료</b>라, 파이프라인과 별도로 언제든 열 수 있는 자리에 둡니다. ②·③에서 기술 검증이 필요하면 거기서 펼칩니다.
+  </div>
+
+  <h3>딜은 세 경로로 생긴다</h3>
+  <div class="grid g3">
+    <div class="card"><div class="k">자동 · 포탈 유입</div><h4>고객이 직접</h4><p>외부 포탈에서 진단·리드 → 딜 목록에 "신규"로 자동 등장. 진단값이 ①에 채워진 채 시작.</p></div>
+    <div class="card"><div class="k">수동 · 직접 생성</div><h4>직원이 시작</h4><p>전화·미팅으로 들어온 딜. "새 딜 시작"으로 빈 딜 생성 후 진단 입력.</p></div>
+    <div class="card"><div class="k">수동 · 시트 회수</div><h4>진단 시트 배포</h4><p>포탈에 못 들어오는 고객사엔 진단을 <b>엑셀로 내보내</b> 배포 → 회신 받아 입력.</p></div>
+  </div>
+
+  <div class="callout" style="border-color:#6B4EA0; background:#F4F0F7;">
+    <b>진단은 하나, 형식은 둘.</b> 지금 구글 시트로 운영하는 21항목 진단(FQA)을 <b>허브 안으로 흡수</b>합니다 — 정답 데이터는 DB에 두고, 고객 배포가 필요할 때만 같은 21항목을 <b>엑셀로 내보냅니다</b>. 시트와 화면이 같은 항목·가중치·임계값(A≥3.5·B≥3.0·C≥3.0·D≥3.5)을 쓰므로, 어느 경로로 들어와도 같은 딜이 됩니다.
+  </div>
+</section>
+
+<!-- ══ 5. DB ══ -->
+<section>
+  <div class="sn">07 — 데이터</div>
+  <h2>Supabase — 한 DB, 권한으로 가른다</h2>
+  <p class="lead">외부·내부가 같은 테이블을 쓰되, <strong>행 수준 보안(RLS)</strong>으로 누가 무엇을 보고 쓸지 정합니다. 이번 개정의 핵심은 <strong>deals 테이블</strong> — 딜 하나가 한 행이고, 파이프라인 ①~⑤의 모든 데이터가 여기 묶여 따라다닙니다. 서비스 카탈로그는 <strong>AI Radar의 solutions 테이블을 재사용</strong>하고(급·포컬·기술제약 컬럼 추가), 회원은 AI Radar의 profiles를 씁니다.</p>
+
+  <table>
+    <tr><th>테이블</th><th>담는 것</th><th>외부</th><th>내부</th></tr>
+    <tr><td class="mono"><b>services</b></td><td>ISV·솔루션 (급·상태·포컬)</td><td><span class="pill p-ext">이름·설명만</span></td><td><span class="pill p-int">급·포컬·공수 전부</span></td></tr>
+    <tr><td class="mono"><b>packages</b></td><td>서비스 패키지 6종 세부</td><td><span class="pill p-ext">구성·성과물</span></td><td><span class="pill p-int">+ 규모급·MD</span></td></tr>
+    <tr><td class="mono"><b>fqa_items</b></td><td>진단 21항목·가중치</td><td><span class="pill p-ext">읽기</span></td><td><span class="pill p-int">읽기+판정</span></td></tr>
+    <tr><td class="mono"><b>tracks</b></td><td>트랙 판정 문구</td><td><span class="pill p-ext">고객용 문구</span></td><td><span class="pill p-int">내부 경고 포함</span></td></tr>
+    <tr><td class="mono"><b>focal_contacts</b></td><td>포컬 세일즈 명단</td><td class="mono" style="color:var(--warn)">접근 불가</td><td><span class="pill p-int">전체</span></td></tr>
+    <tr style="background:#F7F1E0;"><td class="mono"><b>deals</b> ★</td><td><b>딜 하나 = 한 행.</b> 고객·진단 21점수·트랙·ISV 조합·패키지·현재 단계·담당</td><td class="mono" style="color:var(--warn)">접근 불가</td><td><span class="pill p-int">읽기·쓰기</span></td></tr>
+    <tr><td class="mono"><b>leads</b></td><td>외부 상담 요청 → deals로 승격</td><td><span class="pill p-ext">쓰기 전용</span></td><td><span class="pill p-int">읽기</span></td></tr>
+    <tr><td class="mono"><b>audit_log</b></td><td>변경 이력</td><td class="mono" style="color:var(--warn)">접근 불가</td><td><span class="pill p-int">관리자</span></td></tr>
+    <tr style="background:#FDF3F2;"><td class="mono"><b>users</b></td><td>직원 계정 · <b>password_hash(해시만)</b> · role · SSO 컬럼은 나중</td><td class="mono" style="color:var(--warn)">접근 불가</td><td><span class="pill p-int">관리자만</span></td></tr>
+  </table>
+
+  <div class="callout">
+    <b>상태(status) 컬럼이 핵심.</b> <code>active</code> / <code>paused</code> / <code>draft</code>로 서비스를 코드 수정 없이 켜고 끕니다. AI Guard처럼 announce 전인 건 <code>paused</code>로 둬서 내부엔 "준비중"으로 보이되 외부엔 안 나오게 합니다.
+  </div>
+
+  <div class="callout" style="border-color:#B8912F; background:#F7F1E0;">
+    <b>deals가 파이프라인을 실어 나릅니다.</b> 딜 하나에 — 고객 정보(포탈에서 온 것) · 진단 21항목 점수 · 트랙 판정 · 선택한 ISV 조합 · 패키지·공수 · <code>stage</code>(①~⑤ 현재 단계) · 담당자 · 이력이 다 담깁니다. 직원이 딜을 열면 이 데이터가 통째로 따라오니 <b>단계마다 다시 입력할 필요가 없습니다.</b> 그리고 딜이 쌓이면 — 나중에 <b>"어떤 조합이 실제로 성사됐나"</b> 분석까지 열립니다. 확장성의 최종 목적지입니다.
+  </div>
+</section>
+
+<!-- ══ 6. 관리자 ══ -->
+<section>
+  <div class="sn">08 — 협업 · 알림</div>
+  <h2>바꾸면 즉시 저장되고, 슬랙으로 알린다</h2>
+  <p class="lead">영업 직원이 딜을 진행하며 내용을 바꾸면, 별도 저장 버튼 없이 <strong>입력하는 대로 DB에 들어갑니다.</strong> 그리고 딜 상태가 바뀌면 <strong>슬랙 채널에 자동으로 알림</strong>이 뜹니다 — 팀이 허브에 안 들어가도 딜 흐름을 놓치지 않습니다.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 840 250" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace">
+      <!-- 담당자 -->
+      <rect x="30" y="30" width="180" height="70" rx="12" fill="#F7F1E0" stroke="#B8912F" stroke-width="2"/>
+      <text x="120" y="58" text-anchor="middle" font-size="12.5" font-weight="700" fill="#16202B">딜 담당자</text>
+      <text x="120" y="76" text-anchor="middle" font-size="9.5" fill="#4C5663">상태 변경·저장</text>
+      <text x="120" y="90" text-anchor="middle" font-size="8.5" fill="#8792A0">담당자만 쓰기</text>
+
+      <line x1="210" y1="65" x2="268" y2="65" stroke="#B8912F" stroke-width="2.5"/><polygon points="274,65 264,60 264,70" fill="#B8912F"/>
+      <text x="240" y="56" text-anchor="middle" font-size="8.5" fill="#8792A0">즉시</text>
+
+      <!-- Supabase -->
+      <rect x="278" y="24" width="200" height="82" rx="12" fill="#16202B"/>
+      <text x="378" y="52" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">Supabase</text>
+      <text x="378" y="70" text-anchor="middle" font-size="9.5" fill="#95A0AD">deals 저장 (자동)</text>
+      <text x="378" y="86" text-anchor="middle" font-size="9" fill="#6FA890">+ Realtime 동기화</text>
+
+      <!-- 두 갈래 -->
+      <line x1="478" y1="45" x2="536" y2="45" stroke="#C4CDD8" stroke-width="2"/><polygon points="542,45 532,40 532,50" fill="#C4CDD8"/>
+      <line x1="478" y1="85" x2="536" y2="85" stroke="#4A154B" stroke-width="2.5"/><polygon points="542,85 532,80 532,90" fill="#4A154B"/>
+
+      <!-- 팀원 화면 (읽기) -->
+      <rect x="546" y="18" width="270" height="52" rx="10" fill="#EBF2FE" stroke="#BFD5F7"/>
+      <text x="562" y="40" font-size="11" font-weight="700" fill="#16202B">다른 팀원 화면</text>
+      <text x="562" y="56" font-size="9" fill="#4C5663">목록에서 즉시 갱신 (읽기)</text>
+
+      <!-- 슬랙 -->
+      <rect x="546" y="76" width="270" height="60" rx="10" fill="#F7EEF7" stroke="#D9B8D9"/>
+      <text x="562" y="98" font-size="11" font-weight="700" fill="#4A154B">슬랙 영업팀 채널</text>
+      <text x="562" y="114" font-size="9" fill="#4C5663">상태 변경 시 자동 알림</text>
+      <text x="562" y="127" font-size="8.5" fill="#8792A0">허브 안 들어가도 흐름 파악</text>
+
+      <!-- 슬랙 메시지 예시 -->
+      <rect x="30" y="150" width="786" height="80" rx="10" fill="#fff" stroke="#E1E5EB"/>
+      <text x="48" y="172" font-size="10" font-weight="700" fill="#4A154B">＃issu-영업 채널 예시</text>
+      <text x="48" y="194" font-size="10.5" fill="#16202B">🔵  D社 신규 딜 유입 (포탈 진단 완료) · 트랙 T-A · 담당 미배정</text>
+      <text x="48" y="212" font-size="10.5" fill="#16202B">🟡  A社 → ⑤ 피치 준비로 이동 · 담당 김영업 · 방금</text>
+    </svg>
+    <div class="dcap">담당자가 바꾸면 즉시 저장 → 다른 팀원 화면은 실시간 갱신(읽기), 슬랙엔 상태 알림. 쓰기는 담당자만.</div>
+  </div>
+
+  <div class="split">
+    <div class="swrap int" style="background:#F7F1E0;">
+      <span class="stag">실시간 저장</span>
+      <h4>바꾸면 바로 DB</h4>
+      <ul>
+        <li><b>자동 저장</b> — 입력·상태 변경이 즉시 deals에 반영</li>
+        <li><b>실시간 동기화</b> — 다른 팀원 목록도 즉시 갱신 (Supabase Realtime)</li>
+        <li><b>담당자만 쓰기</b> — 딜당 편집자 1명, 나머지는 읽기. 동시 편집 충돌 원천 차단</li>
+      </ul>
+    </div>
+    <div class="swrap" style="background:#F7EEF7; border-color:#D9B8D9;">
+      <span class="stag" style="background:#4A154B; color:#fff;">슬랙 알림</span>
+      <h4>상태 바뀌면 채널로</h4>
+      <ul>
+        <li><b>신규 딜</b> — 포탈 유입 시 "새 딜, 담당 미배정"</li>
+        <li><b>단계 이동</b> — ①→⑤ 옮길 때 누가·어디로</li>
+        <li><b>담당 배정</b> — 미배정 딜을 누가 맡았는지</li>
+        <li><span class="pill p-plan">범위</span> 알림만(A). 슬랙에서 조회·입력은 후순위</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>담당자만 저장 — 오히려 단순해집니다.</b> 딜당 편집자를 한 명으로 잠그면 "두 사람이 같은 딜을 동시에 고쳐 충돌"이 아예 안 생깁니다. 실시간 동기화는 <b>"남이 바꾼 걸 즉시 본다(읽기)"</b>에만 쓰이고, 쓰기는 담당자 한 명. 담당을 넘기려면 명시적으로 재배정합니다.
+  </div>
+</section>
+
+<section>
+  <div class="sn">09 — 관리자</div>
+  <h2>DB에 직접 쓰는 유일한 곳</h2>
+  <p class="lead">확장성의 핵심이자, <strong>원본 데이터를 바꿀 수 있는 단 하나의 접근점</strong>입니다. 외부·내부 사이트는 데이터를 <strong>읽기만</strong> 하고, 실제 추가·수정·삭제는 전부 여기서 일어납니다. 세일즈·기획이 개발자 없이 직접 합니다.</p>
+
+  <div class="grid g2">
+    <div class="card"><div class="k">추가 · CREATE</div><h4>새 ISV·패키지·포컬을 DB에 직접</h4><p>폼 입력 → 저장 → <b>외부·내부 양쪽에 즉시 반영</b>. 재배포 없음. 새 SWG(Netskope 등)가 나와도 코드를 안 건드립니다.</p></div>
+    <div class="card"><div class="k">중지 · UPDATE status</div><h4>토글 하나로 켜고 끄기</h4><p>삭제가 아니라 <code>paused</code>. AI Guard처럼 announce 전인 건 숨겨두고, 나오면 다시 켭니다.</p></div>
+    <div class="card"><div class="k">수정 · UPDATE</div><h4>급·포컬·설명 편집</h4><p>포컬 배정(D3)이 나면 이름을 넣습니다 → 딜 설계기의 "포컬 연결"에 바로 반영. MD 요율(D2)도 여기 한 줄.</p></div>
+    <div class="card"><div class="k">삭제 · SOFT DELETE</div><h4>지워도 복구 가능</h4><p>실제로는 <code>status=deleted</code>. 실수로 지워도 되돌립니다. 물리 삭제는 관리자도 별도 확인 후.</p></div>
+  </div>
+
+  <div class="callout" style="border-color:#6B4EA0; background:#F4F0F7;">
+    <b>구현 방식 — 두 단계.</b> 1차는 <b>Supabase가 기본 제공하는 테이블 편집기</b>로 시작합니다 (별도 개발 없이 바로 DB 직접 편집 가능). 운영이 익으면 2차로 <b>ISSU 전용 관리자 화면</b>을 얹어, 급·포컬처럼 자주 바꾸는 것만 폼으로 단순화합니다. <b>모든 쓰기는 audit_log에 기록</b>되어 누가 언제 무엇을 바꿨는지 남습니다.
+  </div>
+
+  <h3>서비스에 넣는 기본 정보 — HALO 회신이 곧 입력값</h3>
+  <p>관리자가 서비스를 추가·수정할 때 채우는 필드는, <strong>HALO 확인 요청서의 회신 항목</strong> 그대로입니다. HALO가 시트에 답을 주면 관리자가 그 값을 서비스에 옮겨 담고, 그 순간 외부·내부 양쪽에 반영됩니다.</p>
+  <table>
+    <tr><th>서비스 필드</th><th>담는 값</th><th>출처 (HALO 확인요청)</th></tr>
+    <tr><td class="mono"><b>name</b></td><td>솔루션 이름 (Portal26·Zscaler…)</td><td>—</td></tr>
+    <tr><td class="mono"><b>grade / scale</b></td><td>급(0~3) 또는 규모급(소·중·대·운영)</td><td>1-2 급 기준선</td></tr>
+    <tr><td class="mono"><b>focal_id</b></td><td>포컬 세일즈 연결 → focal_contacts</td><td>1-3 포컬 배정</td></tr>
+    <tr><td class="mono"><b>tech_note</b></td><td>기술 제약·정합성 (테넌트·연동·설치 조건)</td><td>2-1 기술 정합성 · 2-2 테넌트 케이스</td></tr>
+    <tr><td class="mono"><b>status</b></td><td>active / paused / draft</td><td>내부 판단 (announce 여부 등)</td></tr>
+    <tr><td class="mono"><b>note</b> <span class="pill p-int">메모</span></td><td><b>벤더 접촉 담당자·이력</b> — 입·퇴사로 바뀌므로 고정 필드가 아니라 자유 메모로</td><td>1-1 벤더 접촉 현황</td></tr>
+  </table>
+
+  <div class="callout">
+    <b>왜 벤더 담당자는 메모인가.</b> 접촉 담당자는 입·퇴사로 자주 바뀝니다. 이걸 고정 컬럼으로 두면 사람이 바뀔 때마다 스키마 감각이 흔들립니다. <b>자유 메모(note)</b>로 두면 "지금 누구랑 얘기 중인지"를 부담 없이 갱신할 수 있고, 서비스 카탈로그의 핵심 정보(급·포컬·제약)와 섞이지 않습니다.
+  </div>
+
+  <h3>권한 — 누가 쓸 수 있나</h3>
+  <table>
+    <tr><th>역할</th><th>services·packages</th><th>focal·요율</th><th>leads</th><th>audit_log</th></tr>
+    <tr><td><b>관리자</b> (기획·운영)</td><td><span class="pill p-int">쓰기</span></td><td><span class="pill p-int">쓰기</span></td><td><span class="pill p-int">읽기</span></td><td><span class="pill p-int">조회</span></td></tr>
+    <tr><td><b>내부 직원</b> (영업·기술)</td><td class="mono">읽기</td><td class="mono">읽기</td><td class="mono">읽기</td><td class="mono" style="color:var(--warn)">불가</td></tr>
+    <tr><td><b>외부</b> (고객)</td><td class="mono">이름·설명만</td><td class="mono" style="color:var(--warn)">불가</td><td class="mono">쓰기만</td><td class="mono" style="color:var(--warn)">불가</td></tr>
+  </table>
+</section>
+
+<!-- ══ 7. 로드맵 ══ -->
+<section>
+  <div class="sn">10 — 실행 순서</div>
+  <h2>기획 → 승인 → 개발</h2>
+  <p class="lead">지금은 <strong>1단계(기획)</strong>입니다. 이 문서가 승인되면 아티팩트(화면 시안)를 만들고, 그게 승인되면 개발에 들어갑니다. 한 번에 짓지 않습니다.</p>
+
+  <div style="background:var(--card); border:1px solid var(--line); border-radius:14px; padding:8px 22px; margin:20px 0;">
+    <div class="phase done">
+      <div class="pnum">✓</div>
+      <div class="pbody"><h4>0. 참고본 확정 <span class="pill p-now">완료</span></h4>
+      <p>허브 v11-0 — 딜 설계기·트랙·보완 벽·패키지 카탈로그. 로직 검증 완료.</p></div>
+    </div>
+    <div class="phase">
+      <div class="pnum">1</div>
+      <div class="pbody"><h4>기획 <span class="pill p-now" style="background:var(--int-soft);color:var(--int);border-color:var(--int-line)">지금 여기</span></h4>
+      <p>외부·내부 분리, 동선, DB 권한, 로드맵 — <b>이 문서</b>. 승인 대상.</p>
+      <div class="out">산출물 · 본 기획서</div></div>
+    </div>
+    <div class="phase">
+      <div class="pnum">2</div>
+      <div class="pbody"><h4>아티팩트 (화면 시안)</h4>
+      <p>외부 포탈 첫 화면 + <b>내부 딜 목록 → 딜 작업 공간(①~⑤ 파이프라인)</b> + 관리자 화면을 클릭 가능한 시안으로. 개발 전 눈으로 확인·승인.</p>
+      <div class="out">산출물 · 시안 HTML 2~3종</div></div>
+    </div>
+    <div class="phase">
+      <div class="pnum">3</div>
+      <div class="pbody"><h4>개발 — 데이터 분리부터</h4>
+      <p><b>AI Radar 구동·스키마 파악</b> → solutions에 급·포컬 컬럼 추가 → <b>딜 테이블(deals·fqa·tracks) 신설</b> → 인증 범위 조정(hub·admin만) → 딜 파이프라인 프론트(③에 카탈로그 연결) → 실시간·슬랙 → 외부 포탈(최소 정보) → pgvector 추천은 나중. <b>AI Radar가 기반이라 "새로" 짓는 단계가 대폭 줄어듭니다.</b></p>
+      <div class="out">산출물 · 배포된 두 사이트</div></div>
+    </div>
+  </div>
+
+  <h3>향후 계획 — ISV 추천 고도화</h3>
+  <p>지금 ISV 추천은 진단 결과(FQA 미달 항목)가 필요한 솔루션을 지목하는 <strong>규칙 기반</strong>입니다. 데이터가 없어도 항목별로 근거를 설명할 수 있다는 게 장점입니다. 딜 파이프라인이 돌며 <code>deals</code> 데이터가 쌓이면, "유사 딜에서 성사된 조합" 같은 <strong>데이터 기반 추천</strong>을 더해 정확도를 높입니다.</p>
+  <div class="callout">
+    <b>머신러닝 추천은 데이터가 모인 뒤에.</b> 학습형 추천 시스템은 과거 딜이 충분히 쌓여야 의미가 있습니다. 지금은 모수가 없어 규칙 기반으로 시작하고 — <b>이 도구를 쓰는 것 자체가 나중의 추천을 위한 데이터를 모으는 일</b>입니다. 규칙(설명 가능) → 집계(유사 딜 성사율) → 학습(pg_vector 유사도)의 순서로, 데이터가 차오르는 만큼 단계적으로 올립니다. 매출로 이어지는 추천이라 <b>"왜 이걸 추천했나"를 설명할 수 있는 것</b>이 계속 우선입니다.
+  </div>
+
+  <div class="callout">
+    <b>승인 요청.</b> 이 기획에서 확인받고 싶은 것 여섯 — ① <b>외부·내부·관리자 3접근 레벨</b> 분리 ② <b>서브도메인 URL 분리</b>(offering. / hub. / admin.) ③ 내부를 <b>딜 파이프라인</b>(딜 선택 → ①~⑤)으로 재편 ④ <b>Supabase 단일 DB + 권한 분리</b> ⑤ 관리자가 <b>DB에 직접 쓰는</b> 유일한 접근점 ⑥ <b>실시간 저장(담당자만) + 슬랙 알림(A)</b> ⑦ <b>이메일·비밀번호 인증 + 자체 users 테이블</b>(SSO는 나중). 이 일곱이 정해지면 2단계 시안으로 갑니다.
+  </div>
+</section>
+
+<div class="foot">
+  <b>연계 문서</b> — 참고본 <code>ISSU_인에이블먼트_허브_최종_v11-0.html</code> · 확장성 <code>포탈_배포_확장성_기획서.md</code> · 방향 <code>HALO_방향_및_실행_full.md</code><br>
+  <b>상태</b> — 기획 (승인 대기) · 승인 후 2단계 아티팩트 진행 · DB Supabase 연동 예정
+</div>
+
+</div>
+</body>
+</html>

@@ -213,8 +213,11 @@
           throw new Error(data.error || '로그인에 실패했습니다.');
         }
 
-        // Redirect to main page
-        window.location.href = '/';
+        const requestedPath = new URLSearchParams(window.location.search).get('next');
+        const safePath = requestedPath && requestedPath.startsWith('/') && !requestedPath.startsWith('//')
+          ? requestedPath
+          : '/hub';
+        window.location.href = safePath;
       } catch (err) {
         errorText.textContent = err.message;
         errorBox.style.display = 'flex';

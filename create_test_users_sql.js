@@ -2,6 +2,11 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 require('dotenv').config();
 
+if (!process.env.TEST_USER_PASSWORD) {
+  console.error('TEST_USER_PASSWORD is required to create temporary test accounts.');
+  process.exit(1);
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -9,9 +14,9 @@ const pool = new Pool({
 });
 
 const users = [
-  { email: 'wonzero@mz.co.kr', password: 'admin123!', role: 'admin', approved: true },
-  { email: 'admin@mz.co.kr', password: 'admin123!', role: 'admin', approved: true },
-  { email: 'dataai@mz.co.kr', password: 'dataai123!', role: 'viewer', approved: true }
+  { email: 'wonzero@mz.co.kr', password: process.env.TEST_USER_PASSWORD, role: 'admin', approved: true },
+  { email: 'admin@mz.co.kr', password: process.env.TEST_USER_PASSWORD, role: 'admin', approved: true },
+  { email: 'dataai@mz.co.kr', password: process.env.TEST_USER_PASSWORD, role: 'viewer', approved: true }
 ];
 
 

@@ -13,6 +13,11 @@ if (!process.env.DATABASE_URL || !process.env.SUPABASE_URL || !process.env.SUPAB
   process.exit(1);
 }
 
+if (!process.env.TEST_ADMIN_PASSWORD || !process.env.TEST_VIEWER_PASSWORD) {
+  console.error('TEST_ADMIN_PASSWORD and TEST_VIEWER_PASSWORD are required for integration tests.');
+  process.exit(1);
+}
+
 // Clients for test-level direct DB access
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -123,7 +128,7 @@ async function runTests() {
     await pool.query("DELETE FROM auth.users WHERE email = $1", [tempPendingEmail]);
 
     const salt = bcrypt.genSaltSync(10);
-    const hash = bcrypt.hashSync('admin123!', salt);
+    const hash = bcrypt.hashSync(process.env.TEST_ADMIN_PASSWORD, salt);
 
     const insertAuthQuery = `
       INSERT INTO auth.users (
@@ -153,7 +158,7 @@ async function runTests() {
     // Test 1: login with pending account (should be blocked)
     const loginPending = await makeRequest('/api/auth/login', 'POST', {
       email: tempPendingEmail,
-      password: 'admin123!'
+      password: process.env.TEST_ADMIN_PASSWORD
     });
     assert(loginPending.statusCode === 403, '1. Pending user login should be rejected with 403', loginPending);
     assert(loginPending.body.error && loginPending.body.error.includes('승인'), '1.1 Pending error message should mention approval state', loginPending.body);
@@ -161,14 +166,14 @@ async function runTests() {
     // Test 2: login with wrong password
     const loginWrong = await makeRequest('/api/auth/login', 'POST', {
       email: 'dataai@mz.co.kr',
-      password: 'wrongpassword'
+      password: `${process.env.TEST_VIEWER_PASSWORD}-invalid`
     });
     assert(loginWrong.statusCode === 401, '2. Login with wrong password should return 401', loginWrong);
 
     // Test 3: login with valid viewer account (dataai@mz.co.kr)
     const loginViewer = await makeRequest('/api/auth/login', 'POST', {
       email: 'dataai@mz.co.kr',
-      password: 'dataai123!'
+      password: process.env.TEST_VIEWER_PASSWORD
     });
     assert(loginViewer.statusCode === 200, '3. Viewer login should succeed with 200', loginViewer);
     
@@ -191,7 +196,7 @@ async function runTests() {
     // Test 6: login with admin account (admin@mz.co.kr)
     const loginAdmin = await makeRequest('/api/auth/login', 'POST', {
       email: 'admin@mz.co.kr',
-      password: 'admin123!'
+      password: process.env.TEST_ADMIN_PASSWORD
     });
     assert(loginAdmin.statusCode === 200, '6. Admin login should succeed with 200');
     

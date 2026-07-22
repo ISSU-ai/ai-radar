@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ISSU Enterprise AI Offering</title>
+  <meta name="description" content="Enterprise AI 도입 준비도를 진단하고 실행 가능한 다음 단계를 확인하세요.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/offering.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <header class="site-head">
+    <a class="offering-brand" href="/offering"><span>ISSU</span><small>ENTERPRISE AI</small></a>
+    <nav><a href="#approach">접근 방식</a><a href="#diagnosis">준비도 진단</a><a class="nav-cta" href="#contact">상담 요청</a></nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-orbit orbit-a"></div><div class="hero-orbit orbit-b"></div>
+      <div class="hero-copy">
+        <p class="kicker">FROM AI INTEREST TO OPERATIONAL VALUE</p>
+        <h1>도입할 AI보다 먼저,<br><span>성공할 조건을 찾습니다.</span></h1>
+        <p class="hero-lead">보안, 데이터, 운영, 현업 준비도를 짧게 진단하고 우리 조직에 맞는 Enterprise AI 실행 순서를 확인하세요.</p>
+        <div class="hero-actions"><a class="button primary" href="#diagnosis">무료 준비도 진단 <i data-lucide="arrow-down-right"></i></a><a class="button text" href="#approach">진행 방식 보기</a></div>
+        <div class="trust-row"><span><i data-lucide="shield-check"></i>보안·거버넌스 포함</span><span><i data-lucide="route"></i>실행 로드맵 제시</span><span><i data-lucide="users"></i>현업 도입까지 설계</span></div>
+      </div>
+      <div class="hero-visual" aria-label="Enterprise AI 실행 구조">
+        <div class="signal-card main-signal"><small>AI READINESS</small><strong>4개 영역</strong><p>보안·연동·운영·성과</p><div class="signal-bars"><i style="--v:78%"></i><i style="--v:62%"></i><i style="--v:84%"></i><i style="--v:55%"></i></div></div>
+        <div class="signal-card float-one"><i data-lucide="check-circle-2"></i><span>성공 기준 정렬</span></div>
+        <div class="signal-card float-two"><i data-lucide="blocks"></i><span>필요한 것만 조합</span></div>
+      </div>
+    </section>
+
+    <section id="approach" class="approach section-wrap">
+      <div class="section-heading"><p class="kicker">HOW WE MOVE</p><h2>진단에서 운영까지,<br>끊기지 않는 네 단계</h2><p>제품을 먼저 정하지 않습니다. 현재 조건을 확인한 뒤 가장 작은 검증으로 시작해 운영 가능한 구조까지 이어갑니다.</p></div>
+      <div class="approach-grid">
+        <article><span>01</span><i data-lucide="scan-search"></i><h3>준비도 진단</h3><p>보안·데이터·운영·비즈니스의 현재 수준과 보완 지점을 확인합니다.</p></article>
+        <article><span>02</span><i data-lucide="flask-conical"></i><h3>가치 검증</h3><p>명확한 성공 기준을 두고 실제 업무에서 작게 검증합니다.</p></article>
+        <article><span>03</span><i data-lucide="workflow"></i><h3>구성 설계</h3><p>기존 환경을 살리면서 필요한 기술과 서비스만 조합합니다.</p></article>
+        <article><span>04</span><i data-lucide="activity"></i><h3>확산·운영</h3><p>품질, 비용, 보안, 교육을 함께 관리해 지속 가능한 운영으로 전환합니다.</p></article>
+      </div>
+    </section>
+
+    <section id="diagnosis" class="diagnosis">
+      <div class="section-wrap diagnosis-wrap">
+        <div class="diagnosis-intro">
+          <p class="kicker">AI READINESS CHECK</p><h2>우리 조직의 출발점을<br>확인해보세요.</h2>
+          <p>각 문항에 현재 상태를 1~5점으로 답해주세요. 결과를 먼저 보여드리고, 상담 요청은 그 다음에 받습니다.</p>
+          <div class="diagnosis-legend"><span><b>1</b> 아직 준비되지 않음</span><span><b>3</b> 일부 준비됨</span><span><b>5</b> 운영 가능한 수준</span></div>
+        </div>
+        <div class="diagnosis-panel">
+          <div class="diagnosis-progress"><div><span id="answer-count">0</span> / <span id="question-count">—</span> 응답</div><div class="progress-track"><i id="progress-value"></i></div></div>
+          <div id="questions" class="questions"><div class="loading">진단 항목을 불러오는 중입니다.</div></div>
+          <div class="diagnosis-actions"><p id="diagnosis-error" class="form-error"></p><button id="calculate-result" class="button primary" type="button">내 결과 확인 <i data-lucide="arrow-right"></i></button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="result" class="result section-wrap hidden">
+      <div class="result-head"><div><p class="kicker">YOUR READINESS SNAPSHOT</p><h2>현재 준비도 결과</h2></div><span id="result-summary" class="result-summary"></span></div>
+      <div id="result-grid" class="result-grid"></div>
+      <div class="result-note"><i data-lucide="info"></i><p>이 결과는 현재 상태를 빠르게 확인하는 참고용입니다. 실제 실행 범위는 업무·보안·데이터 환경을 함께 검토해 확정합니다.</p></div>
+    </section>
+
+    <section id="packages" class="packages section-wrap">
+      <div class="section-heading compact"><p class="kicker">WHAT COMES NEXT</p><h2>필요한 만큼 시작하고,<br>검증된 만큼 확장합니다.</h2></div>
+      <div id="package-list" class="package-list"><div class="loading">오퍼링을 불러오는 중입니다.</div></div>
+    </section>
+
+    <section id="contact" class="contact section-wrap">
+      <div class="contact-copy"><p class="kicker">TALK TO ISSU</p><h2>결과를 실행 계획으로<br>바꿔볼까요?</h2><p>진단 결과와 함께 현재 고민을 남겨주세요. 담당자가 검토한 뒤 적합한 다음 단계를 안내합니다.</p><small>입력하신 정보는 상담과 제안 준비에만 사용됩니다.</small></div>
+      <form id="lead-form" class="lead-form">
+        <div class="form-row"><label>회사명<input name="customer" maxlength="120" required placeholder="회사명을 입력해주세요"></label><label>연락처<input name="contact" maxlength="200" required placeholder="업무 이메일 또는 전화번호"></label></div>
+        <div class="form-row"><label>현재 보안 환경<select name="securityStack"><option value="unknown">잘 모르겠음</option><option value="none">별도 보안 게이트웨이 없음</option><option value="zscaler">Zscaler 사용</option><option value="other-swg">타사 보안 게이트웨이 사용</option></select></label><label>투자 준비도<select name="investment"><option value="low">정보 수집 단계</option><option value="medium">PoC 예산 검토</option><option value="high">확산 예산 검토</option></select></label></div>
+        <label>상담 내용<textarea name="message" maxlength="2000" placeholder="검토 중인 업무, 예상 사용자, 일정 등을 알려주세요."></textarea></label>
+        <label class="consent"><input name="consent" type="checkbox" required> 상담을 위한 개인정보 수집·이용에 동의합니다.</label>
+        <p id="lead-error" class="form-error"></p>
+        <button class="button primary" type="submit">상담 요청 보내기 <i data-lucide="send"></i></button>
+      </form>
+      <div id="lead-success" class="lead-success hidden"><i data-lucide="check-circle-2"></i><h3>상담 요청이 접수되었습니다.</h3><p>입력하신 내용을 확인한 뒤 연락드리겠습니다.</p></div>
+    </section>
+  </main>
+
+  <footer><div class="offering-brand"><span>ISSU</span><small>ENTERPRISE AI</small></div><p>Enterprise AI, built for how your business actually works.</p><small>© 2026 ISSU. All rights reserved.</small></footer>
+  <script src="/offering.js" defer></script>
+</body>
+</html>

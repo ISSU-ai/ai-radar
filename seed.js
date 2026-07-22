@@ -10,21 +10,11 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-let poolConfig = {
-  ssl: { rejectUnauthorized: false }
+const poolConfig = {
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  family: 6
 };
-
-if (process.env.DATABASE_URL) {
-  if (process.env.DATABASE_URL.includes('db.dfbxqjjdkaflsihikogw.supabase.co')) {
-    poolConfig.host = '2406:da12:557:f802:f1e4:3665:9254:d0dc';
-    poolConfig.port = 5432;
-    poolConfig.user = 'postgres';
-    poolConfig.password = 'vudckdWlq1!';
-    poolConfig.database = 'postgres';
-  } else {
-    poolConfig.connectionString = process.env.DATABASE_URL;
-  }
-}
 
 const pool = new Pool(poolConfig);
 

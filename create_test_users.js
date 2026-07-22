@@ -2,6 +2,11 @@ const { Pool } = require('pg');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
+if (!process.env.TEST_USER_PASSWORD) {
+  console.error('TEST_USER_PASSWORD is required to create temporary test accounts.');
+  process.exit(1);
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -14,9 +19,9 @@ const supabase = createClient(
 );
 
 const usersToCreate = [
-  { email: 'admin@mzc.co.kr', password: 'vudckdWlq1!', role: 'admin', approved: true },
-  { email: 'viewer@mzc.co.kr', password: 'vudckdWlq1!', role: 'viewer', approved: true },
-  { email: 'pending@mzc.co.kr', password: 'vudckdWlq1!', role: 'viewer', approved: false }
+  { email: 'admin@mzc.co.kr', password: process.env.TEST_USER_PASSWORD, role: 'admin', approved: true },
+  { email: 'viewer@mzc.co.kr', password: process.env.TEST_USER_PASSWORD, role: 'viewer', approved: true },
+  { email: 'pending@mzc.co.kr', password: process.env.TEST_USER_PASSWORD, role: 'viewer', approved: false }
 ];
 
 async function run() {

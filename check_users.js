@@ -1,5 +1,5 @@
 const { Pool } = require('pg');
-require('dotenv').config({ path: '/Users/mz01-wonzero/CC/99. MZ/MZC/OrdinaryWork/Todolist/6월 2주차/ISV service guide/dashboard/.env' });
+require('dotenv').config();
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
