@@ -6,6 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const source = fs.readFileSync(path.resolve(__dirname, '..', 'server.js'), 'utf8');
+const hubRoutes = fs.readFileSync(path.resolve(__dirname, '..', 'routes', 'hub.js'), 'utf8');
+const offeringSource = fs.readFileSync(path.resolve(__dirname, '..', 'offering.js'), 'utf8');
 
 test('server exposes an explicit frontend allowlist instead of the repository root', () => {
   assert.doesNotMatch(source, /express\.static\(path\.join\(__dirname\)/);
@@ -56,6 +58,19 @@ test('public offering and internal sales surfaces have distinct entrypoints', ()
   assert.match(source, /app\.get\(\['\/hub', '\/hub\.html'\], requirePageAuth\('\/hub'\)/);
   assert.match(source, /app\.get\(\['\/radar', '\/radar\/'\], requirePageAuth\('\/radar'\)/);
   assert.match(source, /app\.get\(\['\/admin', '\/admin\.html'\], requirePageAuth\('\/admin', 'admin'\)/);
+});
+
+test('public offering failures do not expose database internals', () => {
+  const fqaEndpoint = hubRoutes.slice(
+    hubRoutes.indexOf("router.get('/public/fqa-items'"),
+    hubRoutes.indexOf("router.get('/public/tracks'")
+  );
+  assert.match(hubRoutes, /const sendPublicUnavailable =/);
+  assert.match(hubRoutes, /Public FQA items failed:/);
+  assert.match(hubRoutes, /준비도 진단 문항을 불러오지 못했습니다/);
+  assert.doesNotMatch(fqaEndpoint, /sendError\(res, error, 500\)/);
+  assert.match(offeringSource, /진단 문항을 불러오지 못했습니다/);
+  assert.doesNotMatch(offeringSource, /questions'\)\.innerHTML = `<div class="loading">\$\{escapeHtml\(error\.message\)\}<\/div>`/);
 });
 
 test('server handles idle pool failures and drains resources on termination', () => {

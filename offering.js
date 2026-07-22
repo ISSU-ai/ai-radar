@@ -40,8 +40,11 @@ async function initOffering() {
     renderQuestions();
     renderPackages();
   } catch (error) {
-    $('#questions').innerHTML = `<div class="loading">${escapeHtml(error.message)}</div>`;
+    console.error('Offering bootstrap failed:', error.message);
+    $('#questions').innerHTML = '<div class="loading">진단 문항을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>';
     $('#package-list').innerHTML = `<div class="loading">오퍼링 정보를 불러오지 못했습니다.</div>`;
+    $('#next-category').disabled = true;
+    $('#calculate-result').disabled = true;
   }
 }
 
@@ -162,7 +165,8 @@ async function calculateResult() {
     $('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
     window.lucide?.createIcons();
   } catch (error) {
-    $('#diagnosis-error').textContent = error.message;
+    console.error('Offering diagnosis failed:', error.message);
+    $('#diagnosis-error').textContent = '진단 결과를 계산하지 못했습니다. 잠시 후 다시 시도해주세요.';
   } finally {
     button.disabled = false;
   }

@@ -32,6 +32,10 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
     return res.status(status).json({ error: message });
   };
 
+  const sendPublicUnavailable = (res, message = '준비도 진단 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.') => (
+    res.status(503).json({ error: message })
+  );
+
   const slackNotify = async (text) => {
     if (!process.env.SLACK_WEBHOOK_URL) return;
     try {
@@ -147,8 +151,8 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
       );
       res.json(result.rows);
     } catch (error) {
-      console.error(error);
-      sendError(res, error, 500);
+      console.error('Public FQA items failed:', error.message);
+      sendPublicUnavailable(res, '준비도 진단 문항을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
     }
   });
 
@@ -157,8 +161,8 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
       const result = await pool.query('select id, name, why from tracks order by id');
       res.json(result.rows);
     } catch (error) {
-      console.error(error);
-      sendError(res, error, 500);
+      console.error('Public tracks failed:', error.message);
+      sendPublicUnavailable(res, '추천 트랙 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
     }
   });
 
@@ -174,8 +178,8 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
       );
       res.json(result.rows);
     } catch (error) {
-      console.error(error);
-      sendError(res, error, 500);
+      console.error('Public packages failed:', error.message);
+      sendPublicUnavailable(res, '오퍼링 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
     }
   });
 
@@ -195,7 +199,8 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
       const summary = average >= 4 ? '확장 준비 단계' : average >= 3 ? '검증 준비 단계' : '기반 정비 단계';
       res.json({ categories, summary });
     } catch (error) {
-      sendError(res, error);
+      console.error('Public diagnosis failed:', error.message);
+      sendPublicUnavailable(res, '준비도 진단 결과를 계산하지 못했습니다. 잠시 후 다시 시도해주세요.');
     }
   });
 
