@@ -167,9 +167,50 @@ let isvData = [];
 let currentSelectedIsv = null;
 let currentActiveTab = "1";
 let currentUser = null;
+const isHubEmbed = window.__ISSU_HUB_EMBED__ === true;
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character]);
+}
+
+function getSolutionStars(solution) {
+  if (String(solution.layer || '').includes('L0')) return '★';
+  if (solution.synergy === '매우 높음') return '★★★';
+  if (solution.synergy === '높음') return '★★';
+  return '★';
+}
+
+function navigateRadar(path) {
+  if (typeof window.__ISSU_RADAR_NAVIGATE__ === 'function') window.__ISSU_RADAR_NAVIGATE__(path);
+  else window.location.href = path;
+}
+
+function bindHubEmbedNavigation() {
+  if (!isHubEmbed || window.parent === window) return;
+  document.addEventListener('click', (event) => {
+    const link = event.target.closest('a[href]');
+    if (!link) return;
+    const url = new URL(link.href, window.location.href);
+    const route = url.origin === window.location.origin && url.pathname === '/hub'
+      ? 'deals'
+      : url.origin === window.location.origin && url.pathname.startsWith('/admin')
+        ? 'admin'
+        : null;
+    if (!route) return;
+    event.preventDefault();
+    window.parent.postMessage({ type: 'issu-hub:navigate', route }, window.location.origin);
+  }, true);
+}
 
 // Init Page
 window.addEventListener("DOMContentLoaded", () => {
+  bindHubEmbedNavigation();
   loadDashboardData();
 });
 
@@ -179,7 +220,7 @@ async function loadDashboardData() {
     // 1. Fetch current user session
     const meRes = await fetch('/api/auth/me');
     if (!meRes.ok) {
-      window.location.href = '/login.html';
+      navigateRadar(window.__ISSU_RADAR_LOGIN_PATH__ || '/login.html');
       return;
     }
     const meData = await meRes.json();
@@ -235,7 +276,7 @@ async function handleLogout() {
   try {
     const res = await fetch('/api/auth/logout', { method: 'POST' });
     if (res.ok) {
-      window.location.href = '/login.html';
+      navigateRadar('/login.html');
     }
   } catch (err) {
     console.error('Logout failed:', err);
@@ -299,20 +340,22 @@ async function showRecommendationsDynamic(optId) {
 
       recs.forEach((isv, idx) => {
         const p_badge = isv.synergy === "매우 높음" || isv.synergy === "높음" ? "추천" : "연계";
-        const stars = isv.layer.includes("L0") ? "★" : (isv.synergy === "매우 높음" ? "★★★" : (isv.synergy === "높음" ? "★★" : "★"));
+        const stars = getSolutionStars(isv);
+        const solutionId = String(isv.id || '');
+        if (!solutionId) return;
         
         html += `
-          <div class="rec-card rec-${idx + 1}" onclick="openModalById(${isv.id})">
+          <div class="rec-card rec-${idx + 1}" data-recommendation-id="${escapeHtml(solutionId)}" role="button" tabindex="0">
             <span class="rec-badge rec-${idx === 0 ? '1' : '2'}">${idx + 1}순위: ${p_badge}</span>
             <div class="rec-title-row">
-              <h4>${isv.name}</h4>
+              <h4>${escapeHtml(isv.name)}</h4>
               <span class="rec-stars lbl-${stars}">${stars}</span>
             </div>
-            <p class="rec-desc">${isv.jtbd}</p>
+            <p class="rec-desc">${escapeHtml(isv.jtbd)}</p>
             <div class="rec-meta">
-              <div class="rec-meta-item"><strong>제공 형태:</strong> ${isv.delivery}</div>
-              <div class="rec-meta-item"><strong>카테고리:</strong> ${isv.category}</div>
-              <div class="rec-meta-item"><strong>시너지:</strong> ${isv.synergy}</div>
+              <div class="rec-meta-item"><strong>제공 형태:</strong> ${escapeHtml(isv.delivery)}</div>
+              <div class="rec-meta-item"><strong>카테고리:</strong> ${escapeHtml(isv.category)}</div>
+              <div class="rec-meta-item"><strong>시너지:</strong> ${escapeHtml(isv.synergy)}</div>
             </div>
           </div>
         `;
@@ -320,8 +363,18 @@ async function showRecommendationsDynamic(optId) {
     }
     
     simResults.innerHTML = html;
+    simResults.querySelectorAll('[data-recommendation-id]').forEach((card) => {
+      const openRecommendation = () => openModalById(card.dataset.recommendationId);
+      card.addEventListener('click', openRecommendation);
+      card.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openRecommendation();
+        }
+      });
+    });
   } catch (err) {
-    simResults.innerHTML = `<p style="color:#ef4444; text-align:center; padding:2rem; width:100%;">오류: ${err.message}</p>`;
+    simResults.innerHTML = `<p style="color:#ef4444; text-align:center; padding:2rem; width:100%;">오류: ${escapeHtml(err.message)}</p>`;
   }
 }
 
@@ -374,11 +427,11 @@ function renderMatrixTags() {
     }
     
     if (targetKey && containers[targetKey]) {
-      const stars = isv.layer.includes("L0") ? "★" : (isv.synergy === "매우 높음" ? "★★★" : (isv.synergy === "높음" ? "★★" : "★"));
+      const stars = getSolutionStars(isv);
       
       const tag = document.createElement("button");
       tag.className = `isv-tag tag-${stars}`;
-      tag.innerHTML = isv.name;
+      tag.textContent = String(isv.name || '');
       tag.onclick = () => openModalById(isv.id);
       containers[targetKey].appendChild(tag);
     }
@@ -398,20 +451,20 @@ function renderISVTable(data) {
   }
   
   data.forEach(isv => {
-    const stars = isv.layer.includes("L0") ? "★" : (isv.synergy === "매우 높음" ? "★★★" : (isv.synergy === "높음" ? "★★" : "★"));
+    const stars = getSolutionStars(isv);
     
     const row = document.createElement("tr");
     row.onclick = () => openModalById(isv.id);
     
     row.innerHTML = `
       <td><span class="lbl-${stars}">${stars}</span></td>
-      <td><strong>${isv.name}</strong></td>
-      <td><span class="layer-badge">${isv.layer}</span></td>
-      <td>${isv.delivery}</td>
-      <td>${isv.synergy}</td>
-      <td>${isv.category}</td>
-      <td>${isv.jtbd}</td>
-      <td style="color: var(--accent-blue); font-weight: 500;">${isv.opinion}</td>
+      <td><strong>${escapeHtml(isv.name)}</strong></td>
+      <td><span class="layer-badge">${escapeHtml(isv.layer)}</span></td>
+      <td>${escapeHtml(isv.delivery)}</td>
+      <td>${escapeHtml(isv.synergy)}</td>
+      <td>${escapeHtml(isv.category)}</td>
+      <td>${escapeHtml(isv.jtbd)}</td>
+      <td style="color: var(--accent-blue); font-weight: 500;">${escapeHtml(isv.opinion)}</td>
     `;
     
     tbody.appendChild(row);
@@ -440,7 +493,7 @@ function filterISVs() {
         const data = await res.json();
         // Filter by priority locally
         const filtered = data.filter(isv => {
-          const stars = isv.layer.includes("L0") ? "★" : (isv.synergy === "매우 높음" ? "★★★" : (isv.synergy === "높음" ? "★★" : "★"));
+          const stars = getSolutionStars(isv);
           return (priorityFilter === "all") || (stars === priorityFilter);
         });
         renderISVTable(filtered);
@@ -455,18 +508,19 @@ function filterISVs() {
 // 4. Modal & Custom Markdown Parser
 // ----------------------------------------------------
 async function openModalById(id) {
-  const isvObj = isvData.find(item => item.id === id);
+  const normalisedId = String(id || '');
+  const isvObj = isvData.find((item) => String(item.id || '') === normalisedId);
   if (!isvObj) return;
   
   try {
-    const res = await fetch(`/api/solutions/${isvObj.slug}`);
+    const res = await fetch(`/api/solutions/${encodeURIComponent(isvObj.slug)}`);
     if (!res.ok) throw new Error('상세 정보를 가져올 수 없습니다.');
     const isv = await res.json();
     
     currentSelectedIsv = isv;
     
     // Set headers
-    const stars = isv.layer.includes("L0") ? "★" : (isv.synergy === "매우 높음" ? "★★★" : (isv.synergy === "높음" ? "★★" : "★"));
+    const stars = getSolutionStars(isv);
     const priorityBadge = document.getElementById("modal-priority");
     priorityBadge.className = `modal-priority-badge ${stars}`;
     priorityBadge.textContent = `우선순위: ${stars}`;
@@ -490,7 +544,14 @@ async function openModalById(id) {
       opDiv.style.paddingTop = "0.5rem";
       modalSpecs.appendChild(opDiv);
     }
-    opDiv.innerHTML = `<span class="label">AI Tech 의견:</span> <span style="color: var(--accent-blue); font-weight: 500;">${isv.opinion}</span>`;
+    opDiv.replaceChildren();
+    const opinionLabel = document.createElement('span');
+    opinionLabel.className = 'label';
+    opinionLabel.textContent = 'AI Tech 의견:';
+    const opinionText = document.createElement('span');
+    opinionText.style.cssText = 'color:var(--accent-blue); font-weight:500;';
+    opinionText.textContent = String(isv.opinion || '');
+    opDiv.append(opinionLabel, document.createTextNode(' '), opinionText);
     
     // Reset tabs to 1
     switchTab(null, "1");
@@ -564,7 +625,8 @@ function downloadChecklist(isvName, overallItems, isvItemsRaw) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `MZC_AI_Checklist_${isvName.replace(/\s+/g, '_')}.txt`;
+  const safeFilename = String(isvName || 'solution').replace(/[^\p{L}\p{N}._-]+/gu, '_').slice(0, 80);
+  a.download = `MZC_AI_Checklist_${safeFilename || 'solution'}.txt`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -575,7 +637,10 @@ function renderTabContent() {
   if (!currentSelectedIsv) return;
   
   const contentContainer = document.getElementById("tab-content");
-  const markdownText = currentSelectedIsv.sections[currentActiveTab] || "상세 정보가 존재하지 않습니다.";
+  const sections = currentSelectedIsv.sections && typeof currentSelectedIsv.sections === 'object'
+    ? currentSelectedIsv.sections
+    : {};
+  const markdownText = String(sections[currentActiveTab] || "상세 정보가 존재하지 않습니다.");
   
   if (currentActiveTab === "7") {
     // Render Checklist tab with split layout and download button
@@ -584,11 +649,11 @@ function renderTabContent() {
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
           <h3 style="margin: 0; color: var(--accent-blue);">도입 검토 체크리스트</h3>
           <div style="display: flex; gap: 10px;">
-            <button class="download-btn" onclick="downloadChecklist('${currentSelectedIsv.name}', overallChecklist, \`${markdownText.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`)" style="display: flex; align-items: center; gap: 6px; background: var(--accent-blue); color: white; border: none; padding: 8px 14px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: background 0.2s;">
+            <button type="button" id="checklist-download-button" class="download-btn" style="display: flex; align-items: center; gap: 6px; background: var(--accent-blue); color: white; border: none; padding: 8px 14px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: background 0.2s;">
               <i data-lucide="download" style="width: 14px; height: 14px;"></i>
               체크리스트 (.txt)
             </button>
-            <a href="./[공통] AI도입_요구사항_질의서.docx" download="[공통] AI도입_요구사항_질의서.docx" class="download-btn" style="display: inline-flex; align-items: center; gap: 6px; background: var(--accent-purple); color: white; border: none; padding: 8px 14px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: background 0.2s; text-decoration: none;">
+            <a href="/docs/[공통] AI도입_요구사항_질의서.docx" download="[공통] AI도입_요구사항_질의서.docx" class="download-btn" style="display: inline-flex; align-items: center; gap: 6px; background: var(--accent-purple); color: white; border: none; padding: 8px 14px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: background 0.2s; text-decoration: none;">
               <i data-lucide="file-text" style="width: 14px; height: 14px;"></i>
               공통 질의서 (.docx)
             </a>
@@ -604,7 +669,7 @@ function renderTabContent() {
     `;
     
     overallChecklist.forEach(item => {
-      html += `<li>${item}</li>`;
+      html += `<li>${escapeHtml(item)}</li>`;
     });
     
     html += `
@@ -613,7 +678,7 @@ function renderTabContent() {
           <div class="isv-checklist-box" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 16px; border-radius: 8px;">
             <h4 style="margin-top: 0; color: var(--accent-blue); display: flex; align-items: center; gap: 6px; font-size: 0.95rem;">
               <i data-lucide="check-square" style="width: 16px; height: 16px;"></i>
-              [2] ${currentSelectedIsv.name} 전용 체크리스트
+              [2] ${escapeHtml(currentSelectedIsv.name)} 전용 체크리스트
             </h4>
             ${parseMarkdownToHTML(markdownText)}
           </div>
@@ -621,6 +686,9 @@ function renderTabContent() {
       </div>
     `;
     contentContainer.innerHTML = html;
+    document.getElementById('checklist-download-button')?.addEventListener('click', () => {
+      downloadChecklist(String(currentSelectedIsv.name || 'solution'), overallChecklist, markdownText);
+    });
     lucide.createIcons();
   } else if (currentActiveTab === "8") {
     let html = `
@@ -665,16 +733,16 @@ function parseMarkdownToHTML(md) {
       continue;
     }
     
-    // Header 3/4
-    if (trimmed.startsWith("###")) {
+    // Header 4/3
+    if (trimmed.startsWith("####")) {
       closeLists(0);
-      html.push(`<h3>${trimmed.replace(/###/g, "").trim()}</h3>`);
+      html.push(`<h4>${parseBoldText(trimmed.slice(4).trim())}</h4>`);
       continue;
     }
     
-    if (trimmed.startsWith("####")) {
+    if (trimmed.startsWith("###")) {
       closeLists(0);
-      html.push(`<h4>${trimmed.replace(/####/g, "").trim()}</h4>`);
+      html.push(`<h3>${parseBoldText(trimmed.slice(3).trim())}</h3>`);
       continue;
     }
     
@@ -714,17 +782,17 @@ function parseMarkdownToHTML(md) {
 }
 
 function parseBoldText(text) {
-  // Replace **text** with <strong>text</strong>
-  return text.replace(/\*\*(.*?)\*\"/g, "<strong>$1</strong>").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+  // Escape database-authored markdown first, then opt in to the one supported rich-text token.
+  return escapeHtml(text).replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
 }
 
 function exportSolutionWord() {
   if (!currentSelectedIsv) return;
-  const cleanName = currentSelectedIsv.name.replace(/ /g, "_").replace(/\./g, "");
+  const cleanName = String(currentSelectedIsv.name || 'solution').replace(/[^\p{L}\p{N}_-]+/gu, '_').slice(0, 80);
   const docxFilename = `MZC_AI_솔루션_가이드_${cleanName}.docx`;
   
   const a = document.createElement("a");
-  a.href = `./docs/${docxFilename}`;
+  a.href = `/docs/${encodeURIComponent(docxFilename)}`;
   a.download = docxFilename;
   document.body.appendChild(a);
   a.click();

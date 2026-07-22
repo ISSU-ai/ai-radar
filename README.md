@@ -10,6 +10,7 @@
    - `issu_ai_radar_schema.sql`
    - `issu_ai_radar_seed.sql`
    - `db/migrations/001_enablement_hub.sql`
+   - `db/migrations/002_release_hardening.sql`
 4. `npm install` 후 `npm run dev`를 실행합니다.
 
 화면 진입점:
@@ -32,7 +33,7 @@
 
 ## 보안 체크리스트
 
-- 이 저장소의 과거 커밋에 `.env`가 포함됐습니다. 삭제만으로 폐기되지 않으므로 Supabase 키, DB 비밀번호, JWT secret을 모두 재발급해야 합니다.
+- 공개 저장소의 기존 `main`과 Git 이력에 `.env`와 `radar.db`가 포함된 적이 있습니다. 기본 브랜치에서 삭제하는 것만으로 폐기되지 않으므로, 조직 관리자가 모든 공개 ref의 이력을 정리하고 DB 비밀번호·JWT secret·영향받은 사용자 자격 증명을 재발급한 뒤에만 프로덕션을 공개합니다.
 - `.env`와 모든 파생 비밀 파일은 Git에 커밋하지 않습니다.
 - 외부 포탈은 `solutions`, `deals`, 포컬, 급, 공수 데이터를 조회하지 않습니다.
 - 딜 수정은 담당자 또는 관리자만 가능하며, 미배정 딜은 명시적으로 `담당하기`를 실행합니다.
@@ -45,4 +46,4 @@ npm test
 npm run check
 ```
 
-`db/migrations/001_enablement_hub.sql`의 FQA 21항목은 현재 기획 기준의 초기 베이스라인입니다. 운영 적용 전 승인된 FQA 원본 시트와 문구·가중치·임계값을 대조하세요.
+`db/migrations/001_enablement_hub.sql`의 FQA 21항목은 현재 기획 기준의 초기 베이스라인입니다. 운영 적용 전 승인된 FQA 원본 시트와 문구·가중치·임계값을 대조하세요. `002_release_hardening.sql`은 브라우저 역할의 PostgREST 직접 접근을 철회하므로 애플리케이션 API 배포와 함께 적용해야 합니다.

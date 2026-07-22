@@ -4,116 +4,116 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0f141a">
   <title>ISSU Enablement Hub</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&amp;display=swap">
   <link rel="stylesheet" href="/hub.css">
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
-  <div class="ambient ambient-a"></div>
-  <div class="ambient ambient-b"></div>
-
-  <header class="topbar">
-    <a class="brand" href="/hub" aria-label="ISSU Enablement Hub 홈">
-      <span class="brand-mark"><i data-lucide="radar"></i></span>
-      <span><b>ISSU</b><small>ENABLEMENT HUB</small></span>
-    </a>
-    <nav class="topnav" aria-label="주요 메뉴">
-      <a class="active" href="/hub">딜 파이프라인</a>
-      <a href="/">AI Radar</a>
-      <a id="admin-link" class="hidden" href="/admin">관리자</a>
-    </nav>
-    <div class="session">
-      <span class="live-dot" title="실시간 연결"></span>
-      <span id="session-name">사용자</span>
-      <button id="logout-button" class="icon-button" type="button" aria-label="로그아웃"><i data-lucide="log-out"></i></button>
-    </div>
-  </header>
-
-  <main class="shell">
-    <section id="deal-index" class="index-view">
-      <div class="page-heading">
-        <div>
-          <p class="eyebrow">PIPELINE CONTROL</p>
-          <h1>딜이 어디까지 왔는지,<br><span>한눈에 이어서 봅니다.</span></h1>
-          <p class="subcopy">진단부터 ISV 조합, 패키지와 피치까지. 한 번 입력한 데이터가 딜과 함께 이동합니다.</p>
-        </div>
-        <button id="new-deal-button" class="primary-button" type="button"><i data-lucide="plus"></i> 새 딜 시작</button>
+  <div id="app" class="portal-app">
+    <aside class="app-rail" aria-label="허브 주요 메뉴">
+      <div class="rail-logo" aria-hidden="true"><span>I</span></div>
+      <nav class="rail-nav">
+        <button id="deal-mode-button" class="rail-button active" type="button" title="딜" aria-label="딜"><i data-lucide="layout-list"></i></button>
+        <button id="reference-mode-button" class="rail-button" type="button" title="참조자료 · AI Radar" aria-label="참조자료"><i data-lucide="radar"></i></button>
+        <button id="admin-mode-button" class="rail-button hidden" type="button" title="관리자" aria-label="관리자"><i data-lucide="settings-2"></i></button>
+      </nav>
+      <div class="rail-session">
+        <span id="rail-user-avatar" class="rail-avatar" title="사용자">U</span>
+        <button id="logout-button" class="rail-button" type="button" title="로그아웃" aria-label="로그아웃"><i data-lucide="log-out"></i></button>
       </div>
+    </aside>
 
-      <div class="metric-grid" aria-label="파이프라인 요약">
-        <article><span>전체 딜</span><strong id="metric-total">—</strong><small>현재 파이프라인</small></article>
-        <article><span>신규 유입</span><strong id="metric-new">—</strong><small>담당 미배정</small></article>
-        <article><span>검증 진행</span><strong id="metric-poc">—</strong><small>PoC · 조합 단계</small></article>
-        <article><span>피치 준비</span><strong id="metric-pitch">—</strong><small>최종 제안 단계</small></article>
-      </div>
+    <aside id="deal-sidebar" class="deal-sidebar" aria-label="딜 목록">
+      <header class="deal-sidebar-head">
+        <div class="sidebar-title-row">
+          <div><h1>딜</h1><span id="deal-count" class="count-badge">0</span></div>
+          <button id="new-deal-button" class="new-deal-button" type="button"><i data-lucide="plus"></i><span>새 딜</span></button>
+        </div>
+        <div class="sidebar-search"><i data-lucide="search"></i><input id="deal-search" type="search" placeholder="고객사 검색" autocomplete="off"></div>
+        <div id="deal-filter" class="deal-segments" role="group" aria-label="딜 필터">
+          <button class="active" type="button" data-filter="all" aria-pressed="true">전체</button>
+          <button type="button" data-filter="mine" aria-pressed="false">내 딜</button>
+          <button type="button" data-filter="new" aria-pressed="false">신규</button>
+        </div>
+        <div id="sync-status" class="sync-status"><span></span> 실시간 연결 대기</div>
+      </header>
+      <div id="deal-list" class="deal-card-list" aria-live="polite"></div>
+    </aside>
 
-      <section class="deal-board panel">
-        <div class="board-toolbar">
-          <div class="search-wrap"><i data-lucide="search"></i><input id="deal-search" type="search" placeholder="고객사 검색"></div>
-          <select id="stage-filter" aria-label="단계 필터">
-            <option value="">모든 단계</option>
-            <option value="0">① 들어온 데이터</option>
-            <option value="1">② PoC 검증</option>
-            <option value="2">③ ISV 조합</option>
-            <option value="3">④ 딜 사이즈</option>
-            <option value="4">⑤ 피치 준비</option>
-          </select>
-          <select id="track-filter" aria-label="트랙 필터"><option value="">모든 트랙</option></select>
-          <label class="mine-toggle"><input id="mine-filter" type="checkbox"> 내 딜만</label>
-          <span id="sync-status" class="sync-status"><i data-lucide="radio"></i> 실시간 대기</span>
-        </div>
-        <div class="deal-table-head" aria-hidden="true">
-          <span>고객사</span><span>현재 단계</span><span>유형</span><span>담당</span><span>수정일</span><span></span>
-        </div>
-        <div id="deal-list" class="deal-list" aria-live="polite"></div>
+    <main class="app-main">
+      <section id="empty-workspace" class="empty-workspace">
+        <div class="empty-workspace-icon"><i data-lucide="panel-left"></i></div>
+        <h2>딜을 선택하세요</h2>
+        <p>왼쪽 목록에서 딜을 클릭하면<br>이곳에서 바로 작업할 수 있습니다.</p>
       </section>
-    </section>
 
-    <section id="workspace" class="workspace hidden" aria-live="polite">
-      <div class="workspace-head">
-        <button id="back-to-list" class="ghost-button" type="button"><i data-lucide="arrow-left"></i> 딜 목록</button>
-        <div class="workspace-title">
-          <div><span id="workspace-source" class="source-badge"></span><h1 id="workspace-customer">고객사</h1></div>
+      <section id="workspace" class="workspace hidden" aria-live="polite">
+        <header class="workspace-topbar">
+          <button id="list-toggle" class="workspace-icon-button" type="button" title="딜 목록 접기" aria-label="딜 목록 접기" aria-controls="deal-sidebar" aria-expanded="true"><i data-lucide="panel-left-close"></i></button>
+          <div class="workspace-identity">
+            <div class="workspace-title-line"><h1 id="workspace-customer">고객사</h1><span id="workspace-track" class="track-badge">미정</span></div>
+            <p><span id="workspace-owner">담당 미배정</span><i></i><span id="workspace-source">유입 —</span></p>
+          </div>
           <div class="workspace-actions">
-            <span id="save-state" class="save-state">저장됨</span>
+            <span id="save-state" class="save-state"><i></i> 자동 저장됨</span>
             <button id="claim-button" class="secondary-button hidden" type="button"><i data-lucide="user-check"></i> 담당하기</button>
           </div>
-        </div>
-        <div id="stage-rail" class="stage-rail"></div>
-      </div>
+        </header>
 
-      <div class="workspace-grid">
-        <article class="workspace-main panel">
-          <div id="stage-content"></div>
-        </article>
-        <aside class="workspace-side">
-          <section class="panel context-card">
-            <p class="eyebrow">DEAL CONTEXT</p>
-            <dl>
-              <div><dt>담당</dt><dd id="context-owner">미배정</dd></div>
-              <div><dt>트랙</dt><dd id="context-track">미정</dd></div>
-              <div><dt>유입</dt><dd id="context-source">—</dd></div>
-              <div><dt>업데이트</dt><dd id="context-updated">—</dd></div>
-            </dl>
-          </section>
-          <section id="readiness-card" class="panel readiness-card"></section>
-          <section class="panel guard-card">
-            <i data-lucide="shield-check"></i>
-            <div><b>담당자 쓰기 원칙</b><p>모든 승인 사용자가 읽을 수 있지만 수정은 담당자와 관리자만 가능합니다.</p></div>
-          </section>
-        </aside>
-      </div>
-    </section>
-  </main>
+        <nav id="stage-rail" class="stage-rail" aria-label="딜 파이프라인 단계"></nav>
+
+        <div id="workspace-scroll" class="workspace-scroll">
+          <div id="carry-badge" class="carry-badge"><i data-lucide="corner-left-down"></i><span>앞 단계 결과를 이어서 시작합니다.</span></div>
+          <div class="workspace-grid">
+            <article class="workspace-main panel-card"><div id="stage-content"></div></article>
+            <aside class="workspace-side">
+              <section class="panel-card context-card">
+                <p class="eyebrow">DEAL CONTEXT</p>
+                <dl>
+                  <div><dt>담당</dt><dd id="context-owner">미배정</dd></div>
+                  <div><dt>트랙</dt><dd id="context-track">미정</dd></div>
+                  <div><dt>유입</dt><dd id="context-source">—</dd></div>
+                  <div><dt>업데이트</dt><dd id="context-updated">—</dd></div>
+                </dl>
+              </section>
+              <section id="readiness-card" class="panel-card readiness-card"></section>
+              <section class="panel-card guard-card">
+                <i data-lucide="shield-check"></i>
+                <div><b>담당자 쓰기 원칙</b><p>승인 사용자는 읽을 수 있고, 담당자와 관리자만 수정합니다.</p></div>
+              </section>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section id="reference-workspace" class="reference-workspace hidden" aria-live="polite">
+        <header class="workspace-topbar reference-topbar">
+          <button id="reference-list-toggle" class="workspace-icon-button" type="button" title="딜 목록 접기" aria-label="딜 목록 접기" aria-controls="deal-sidebar"><i data-lucide="panel-left-close"></i></button>
+          <div class="workspace-identity"><div class="workspace-title-line"><h1>참조자료</h1><span class="reference-badge">AI RADAR</span></div><p>솔루션 카탈로그 · 매칭 기준 · 기술 참고</p></div>
+          <a class="secondary-button" href="/radar" target="_blank" rel="noopener"><i data-lucide="external-link"></i> 새 창에서 열기</a>
+        </header>
+        <div class="reference-frame-wrap"><iframe id="reference-frame" title="ISSU AI Radar 참조자료" data-src="/radar?embed=hub"></iframe></div>
+      </section>
+
+      <section id="admin-workspace" class="admin-workspace hidden" aria-live="polite">
+        <header class="workspace-topbar admin-topbar">
+          <button id="admin-list-toggle" class="workspace-icon-button" type="button" title="딜 목록 펼치기" aria-label="딜 목록 펼치기"><i data-lucide="panel-left-open"></i></button>
+          <div class="workspace-identity"><div class="workspace-title-line"><h1>관리자</h1><span class="admin-badge">SERVICE CONTROL</span></div><p>서비스 CRUD · 상태 · 포컬 · 권한 관리</p></div>
+          <a class="secondary-button" href="/admin" target="_blank" rel="noopener"><i data-lucide="external-link"></i> 새 창에서 열기</a>
+        </header>
+        <div class="admin-frame-wrap"><iframe id="admin-frame" title="ISSU 관리자 서비스 테이블" data-src="/admin?embed=hub"></iframe></div>
+      </section>
+    </main>
+  </div>
 
   <dialog id="new-deal-dialog">
     <form id="new-deal-form" method="dialog">
-      <div class="dialog-head"><div><p class="eyebrow">NEW DEAL</p><h2>새 딜 시작</h2></div><button class="icon-button" data-close-dialog type="button"><i data-lucide="x"></i></button></div>
-      <label>고객사<input id="new-customer" name="customer" maxlength="120" required placeholder="예: A사"></label>
-      <label>업종<input name="industry" maxlength="80" placeholder="예: 금융 / 제조 / 공공"></label>
+      <div class="dialog-head"><div><p class="eyebrow">NEW DEAL</p><h2>새 딜 시작</h2></div><button class="icon-button" data-close-dialog type="button" aria-label="새 딜 창 닫기"><i data-lucide="x"></i></button></div>
+      <label>고객사<input id="new-customer" name="customer" type="text" maxlength="120" required placeholder="예: A사"></label>
+      <label>업종<input name="industry" type="text" maxlength="80" placeholder="예: 금융 / 제조 / 공공"></label>
       <label>유입 경로<select name="source"><option value="manual">미팅·전화 직접 유입</option><option value="sheet">진단 시트 회수</option></select></label>
       <p id="new-deal-error" class="form-error"></p>
       <div class="dialog-actions"><button class="ghost-button" data-close-dialog type="button">취소</button><button class="primary-button" type="submit">딜 만들기</button></div>

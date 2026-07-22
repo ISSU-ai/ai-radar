@@ -11,10 +11,21 @@ const {
 
 const STALE_RATE_LIMIT_MS = 15 * 60 * 1000;
 const PUBLIC_LEAD_LIMIT = 8;
+const PRIVACY_NOTICE = Object.freeze({
+  version: '2026-07-22-v1',
+  purpose: 'AI 준비도 진단 결과를 바탕으로 한 상담 접수, 담당자 연락 및 제안 준비',
+  retention: '상담 요청일로부터 1년'
+});
 
 function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
   const router = express.Router();
   const leadAttempts = new Map();
+  const eventStreams = new Set();
+  let dealListener = null;
+  let dealListenerPromise = null;
+  let dealListenerRetry = null;
+  let dealNotificationHandler = null;
+  let dealListenerErrorHandler = null;
 
   const sendError = (res, error, status = 400) => {
     const message = error instanceof Error ? error.message : '요청을 처리할 수 없습니다.';
@@ -51,6 +62,82 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
     `select id, category, no, name, weight, detail, fix, threshold
      from fqa_items where status = 'active' order by no`
   ).then((result) => result.rows);
+
+  const broadcastDealChange = (payload) => {
+    for (const stream of eventStreams) {
+      if (stream.destroyed || stream.writableEnded) {
+        eventStreams.delete(stream);
+        continue;
+      }
+      stream.write(`event: deal-change\ndata: ${payload || '{}'}\n\n`);
+    }
+  };
+
+  const scheduleDealListener = () => {
+    if (!eventStreams.size || dealListenerRetry) return;
+    dealListenerRetry = setTimeout(() => {
+      dealListenerRetry = null;
+      void ensureDealListener();
+    }, 2000);
+    dealListenerRetry.unref?.();
+  };
+
+  const stopDealListener = async () => {
+    if (dealListenerRetry) {
+      clearTimeout(dealListenerRetry);
+      dealListenerRetry = null;
+    }
+    const client = dealListener;
+    dealListener = null;
+    if (!client) return;
+    if (dealNotificationHandler) client.removeListener('notification', dealNotificationHandler);
+    if (dealListenerErrorHandler) client.removeListener('error', dealListenerErrorHandler);
+    dealNotificationHandler = null;
+    dealListenerErrorHandler = null;
+    try { await client.query('unlisten deal_changes'); } catch (_error) { /* connection may already be closing */ }
+    try { client.release(); } catch (_releaseError) { /* already removed */ }
+  };
+
+  const ensureDealListener = async () => {
+    if (dealListener || dealListenerPromise || !eventStreams.size) return dealListenerPromise;
+    dealListenerPromise = (async () => {
+      let client;
+      try {
+        client = await pool.connect();
+        const onNotification = (message) => broadcastDealChange(message.payload);
+        const onError = (error) => {
+          console.error('Deal event listener disconnected:', error.message);
+          if (dealListener === client) dealListener = null;
+          client.removeListener('notification', onNotification);
+          client.removeListener('error', onError);
+          dealNotificationHandler = null;
+          dealListenerErrorHandler = null;
+          try { client.release(true); } catch (_releaseError) { /* already removed */ }
+          scheduleDealListener();
+        };
+        dealNotificationHandler = onNotification;
+        dealListenerErrorHandler = onError;
+        client.on('notification', onNotification);
+        client.on('error', onError);
+        await client.query('listen deal_changes');
+        dealListener = client;
+        if (!eventStreams.size) await stopDealListener();
+      } catch (error) {
+        if (client) {
+          client.removeAllListeners('notification');
+          client.removeAllListeners('error');
+          try { client.release(true); } catch (_releaseError) { /* already removed */ }
+        }
+        dealNotificationHandler = null;
+        dealListenerErrorHandler = null;
+        console.error('Deal event listener failed:', error.message);
+        scheduleDealListener();
+      }
+    })().finally(() => {
+      dealListenerPromise = null;
+    });
+    return dealListenerPromise;
+  };
 
   router.get('/public/fqa-items', async (_req, res) => {
     try {
@@ -135,9 +222,21 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
         [lead.customer, lead.customer_meta, lead.fqa_scores, fqaTotals, lead.track]
       );
       const leadResult = await client.query(
-        `insert into leads (customer, contact, fqa_scores, message, promoted_deal)
-         values ($1, $2, $3, $4, $5) returning id, created_at`,
-        [lead.customer, lead.contact, lead.fqa_scores, lead.message, dealResult.rows[0].id]
+        `insert into leads
+          (customer, contact, fqa_scores, message, promoted_deal,
+           consent_at, consent_version, consent_purpose, consent_retention)
+         values ($1, $2, $3, $4, $5, now(), $6, $7, $8)
+         returning id, created_at`,
+        [
+          lead.customer,
+          lead.contact,
+          lead.fqa_scores,
+          lead.message,
+          dealResult.rows[0].id,
+          PRIVACY_NOTICE.version,
+          PRIVACY_NOTICE.purpose,
+          PRIVACY_NOTICE.retention
+        ]
       );
       await client.query('commit');
       void slackNotify(`🔵 신규 딜: ${lead.customer} · 포탈 유입 · 담당 미배정`);
@@ -359,37 +458,34 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
   });
 
   router.get('/events', async (req, res) => {
-    let client;
-    try {
-      client = await pool.connect();
-      await client.query('listen deal_changes');
-      res.set({
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive'
-      });
-      res.flushHeaders();
-      res.write(`event: ready\ndata: ${JSON.stringify({ user: req.user.id })}\n\n`);
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive'
+    });
+    res.flushHeaders();
+    eventStreams.add(res);
+    res.write(`event: ready\ndata: ${JSON.stringify({ user: req.user.id })}\n\n`);
+    void ensureDealListener();
 
-      const onNotification = (message) => {
-        res.write(`event: deal-change\ndata: ${message.payload || '{}'}\n\n`);
-      };
-      client.on('notification', onNotification);
-      const keepAlive = setInterval(() => res.write(': keep-alive\n\n'), 25000);
+    const keepAlive = setInterval(() => {
+      if (!res.destroyed && !res.writableEnded) res.write(': keep-alive\n\n');
+    }, 25000);
+    keepAlive.unref?.();
 
-      req.on('close', async () => {
-        clearInterval(keepAlive);
-        client.removeListener('notification', onNotification);
-        try { await client.query('unlisten deal_changes'); } catch (_error) { /* connection is closing */ }
-        client.release();
-      });
-    } catch (error) {
-      if (client) client.release();
-      console.error(error);
-      if (!res.headersSent) sendError(res, error, 500);
-      else res.end();
-    }
+    req.on('close', () => {
+      clearInterval(keepAlive);
+      eventStreams.delete(res);
+      if (!eventStreams.size) void stopDealListener();
+    });
   });
+
+  router.dispose = async () => {
+    for (const stream of eventStreams) stream.end();
+    eventStreams.clear();
+    if (dealListenerPromise) await dealListenerPromise.catch(() => {});
+    await stopDealListener();
+  };
 
   return router;
 }

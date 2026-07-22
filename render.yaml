@@ -1,0 +1,81 @@
+services:
+  - type: web
+    name: issu-ai-radar-offering
+    runtime: node
+    region: singapore
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: npm ci && npm run check && npm test
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: APP_SURFACE
+        value: offering
+      - key: OPINION_EXPOSE_POLICY
+        value: B
+
+  - type: web
+    name: issu-ai-radar-hub
+    runtime: node
+    region: singapore
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: npm ci && npm run check && npm test
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: APP_SURFACE
+        value: hub
+      - key: OPINION_EXPOSE_POLICY
+        value: B
+
+  - type: web
+    name: issu-ai-radar-admin
+    runtime: node
+    region: singapore
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: npm ci && npm run check && npm test
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: APP_SURFACE
+        value: admin
+      - key: OPINION_EXPOSE_POLICY
+        value: B

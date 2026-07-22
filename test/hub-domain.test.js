@@ -41,6 +41,7 @@ test('validateLead normalises public input and blocks missing contact', () => {
   assert.deepEqual(validateLead({
     customer: '  A사\n 본사 ',
     contact: ' owner@example.com ',
+    consent: true,
     customer_meta: { securityStack: 'zscaler' },
     fqa_scores: { 1: 4 }
   }), {
@@ -49,9 +50,11 @@ test('validateLead normalises public input and blocks missing contact', () => {
     message: '',
     customer_meta: { securityStack: 'zscaler' },
     fqa_scores: { 1: 4 },
-    track: 'T-C'
+    track: 'T-C',
+    consent: true
   });
-  assert.throws(() => validateLead({ customer: 'A사' }), /연락처/);
+  assert.throws(() => validateLead({ customer: 'A사', consent: true }), /연락처/);
+  assert.throws(() => validateLead({ customer: 'A사', contact: 'a@example.com' }), /동의/);
 });
 
 test('deal validation permits only known patch shapes', () => {
@@ -64,4 +67,5 @@ test('deal validation permits only known patch shapes', () => {
   assert.equal(clampStage(0), 0);
   assert.throws(() => normaliseDealPatch({ stage: 5 }), /0부터 4/);
   assert.throws(() => normaliseDealPatch({ owner_id: 'not-allowed' }), /변경사항/);
+  assert.throws(() => normaliseDealPatch({ fqa_totals: { '<img src=x>': { score: 5 } } }), /변경사항/);
 });

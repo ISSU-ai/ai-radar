@@ -4,10 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ISSU AI Radar - 사용 로그 대시보드</title>
-  <!-- Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
   <!-- CSS Stylesheet -->
   <link rel="stylesheet" href="../style.css">
   <link rel="stylesheet" href="style.css">
@@ -264,17 +261,18 @@
       try {
         const meRes = await fetch('/api/auth/me');
         if (!meRes.ok) {
-          window.location.href = '/login.html';
+          window.location.href = '/login.html?next=/admin/usage';
           return;
         }
         const meData = await meRes.json();
         if (meData.user.role !== 'admin') {
-          alert('관리자 권한이 없습니다. 홈으로 리다이렉트합니다.');
-          window.location.href = '/';
+          alert('관리자 권한이 없습니다.');
+          await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+          window.location.href = '/login.html?next=/admin/usage';
           return;
         }
       } catch (e) {
-        window.location.href = '/login.html';
+        window.location.href = '/login.html?next=/admin/usage';
         return;
       }
 
@@ -296,91 +294,75 @@
 
         // 2. Popular Solutions Chart (TOP 5)
         const solChart = document.getElementById('solution-chart');
-        solChart.innerHTML = '';
+        solChart.replaceChildren();
         const topSolutions = data.solutionRanking.slice(0, 5);
         if (topSolutions.length === 0) {
-          solChart.innerHTML = `<p style="color:var(--text-secondary); font-size:0.85rem; text-align:center;">조회 이력이 없습니다.</p>`;
+          appendEmptyMessage(solChart, '조회 이력이 없습니다.');
         } else {
-          const maxVal = topSolutions[0].cnt;
+          const maxVal = Math.max(1, Number(topSolutions[0].cnt) || 0);
           topSolutions.forEach(s => {
-            const pct = Math.max(10, Math.round((s.cnt / maxVal) * 100));
-            
-            const row = document.createElement('div');
-            row.className = 'bar-row';
-            row.innerHTML = `
-              <div class="bar-label-row">
-                <strong>${s.target}</strong>
-                <span>${s.cnt}회 조회</span>
-              </div>
-              <div class="bar-bg">
-                <div class="bar-fill blue" style="width: ${pct}%"></div>
-              </div>
-            `;
-            solChart.appendChild(row);
+            const count = Number(s.cnt) || 0;
+            const pct = Math.min(100, Math.max(10, Math.round((count / maxVal) * 100)));
+            solChart.appendChild(createBarRow(s.target, `${count}회 조회`, pct, 'blue'));
           });
         }
 
         // 3. Popular Search Keywords Chart (TOP 5)
         const kwChart = document.getElementById('keyword-chart');
-        kwChart.innerHTML = '';
+        kwChart.replaceChildren();
         const topKeywords = data.keywordRanking.slice(0, 5);
         if (topKeywords.length === 0) {
-          kwChart.innerHTML = `<p style="color:var(--text-secondary); font-size:0.85rem; text-align:center;">검색 이력이 없습니다.</p>`;
+          appendEmptyMessage(kwChart, '검색 이력이 없습니다.');
         } else {
-          const maxVal = topKeywords[0].cnt;
+          const maxVal = Math.max(1, Number(topKeywords[0].cnt) || 0);
           topKeywords.forEach(k => {
-            const pct = Math.max(10, Math.round((k.cnt / maxVal) * 100));
-            
-            const row = document.createElement('div');
-            row.className = 'bar-row';
-            row.innerHTML = `
-              <div class="bar-label-row">
-                <strong>"${k.query}"</strong>
-                <span>${k.cnt}회 검색</span>
-              </div>
-              <div class="bar-bg">
-                <div class="bar-fill purple" style="width: ${pct}%"></div>
-              </div>
-            `;
-            kwChart.appendChild(row);
+            const count = Number(k.cnt) || 0;
+            const pct = Math.min(100, Math.max(10, Math.round((count / maxVal) * 100)));
+            kwChart.appendChild(createBarRow(`"${k.query || ''}"`, `${count}회 검색`, pct, 'purple'));
           });
         }
 
         // 4. Audit Log Table Populate
         const tbody = document.getElementById('audit-log-tbody');
-        tbody.innerHTML = '';
+        tbody.replaceChildren();
 
         if (data.recentLogs.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-secondary);">감사 로그가 비어 있습니다.</td></tr>`;
+          const row = document.createElement('tr');
+          const cell = document.createElement('td');
+          cell.colSpan = 6;
+          cell.style.cssText = 'text-align:center; padding:2rem; color:var(--text-secondary);';
+          cell.textContent = '감사 로그가 비어 있습니다.';
+          row.appendChild(cell);
+          tbody.appendChild(row);
         } else {
           data.recentLogs.forEach(log => {
             const tr = document.createElement('tr');
-            
-            // Format Action badge
-            let actionBadge = `<span class="layer-badge">${log.action}</span>`;
-            if (log.action === 'publish') {
-              actionBadge = `<span class="layer-badge" style="background:rgba(168, 85, 247, 0.15); color:var(--accent-purple);">PUBLISH</span>`;
-            } else if (log.action === 'edit') {
-              actionBadge = `<span class="layer-badge" style="background:rgba(249, 115, 22, 0.15); color:var(--accent-orange);">EDIT</span>`;
-            } else if (log.action === 'view') {
-              actionBadge = `<span class="layer-badge" style="background:rgba(34, 197, 94, 0.15); color:var(--accent-green);">VIEW</span>`;
-            } else if (log.action === 'search') {
-              actionBadge = `<span class="layer-badge" style="background:rgba(14, 165, 233, 0.15); color:var(--accent-blue);">SEARCH</span>`;
-            } else if (log.action === 'login') {
-              actionBadge = `<span class="layer-badge" style="background:rgba(255,255,255,0.1); color:var(--text-primary);">LOGIN</span>`;
-            }
-
-            const time = new Date(log.created_at).toLocaleString();
+            const timestamp = new Date(log.created_at);
+            const time = Number.isNaN(timestamp.getTime()) ? '-' : timestamp.toLocaleString();
             const emailText = log.user_name ? `${log.user_name} (${log.user_team || 'N/A'})` : '탈퇴한 사용자';
-            
-            tr.innerHTML = `
-              <td style="font-size: 0.8rem; color: var(--text-secondary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${time}</td>
-              <td style="color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;"><strong>${emailText}</strong></td>
-              <td><span class="layer-badge" style="background:${log.user_role === 'admin' ? 'rgba(168,85,247,0.1)' : 'rgba(255,255,255,0.05)'}; color:${log.user_role === 'admin' ? 'var(--accent-purple)' : 'var(--text-secondary)'};">${log.user_role ? log.user_role.toUpperCase() : 'N/A'}</span></td>
-              <td>${actionBadge}</td>
-              <td style="color: var(--accent-blue); font-weight:600; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${log.target}</td>
-              <td style="color: var(--text-secondary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${log.query || '-'}</td>
-            `;
+
+            tr.appendChild(createTextCell(time, 'font-size:0.8rem; color:var(--text-secondary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;'));
+
+            const userCell = createTextCell('', 'color:var(--text-primary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;');
+            const userName = document.createElement('strong');
+            userName.textContent = emailText;
+            userCell.appendChild(userName);
+            tr.appendChild(userCell);
+
+            const roleCell = document.createElement('td');
+            const roleBadge = document.createElement('span');
+            roleBadge.className = 'layer-badge';
+            roleBadge.style.background = log.user_role === 'admin' ? 'rgba(168,85,247,0.1)' : 'rgba(255,255,255,0.05)';
+            roleBadge.style.color = log.user_role === 'admin' ? 'var(--accent-purple)' : 'var(--text-secondary)';
+            roleBadge.textContent = log.user_role ? String(log.user_role).toUpperCase() : 'N/A';
+            roleCell.appendChild(roleBadge);
+            tr.appendChild(roleCell);
+
+            const actionCell = document.createElement('td');
+            actionCell.appendChild(createActionBadge(log.action));
+            tr.appendChild(actionCell);
+            tr.appendChild(createTextCell(log.target || '-', 'color:var(--accent-blue); font-weight:600; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;'));
+            tr.appendChild(createTextCell(log.query || '-', 'color:var(--text-secondary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;'));
             tbody.appendChild(tr);
           });
         }
@@ -388,6 +370,60 @@
       } catch (err) {
         alert(err.message);
       }
+    }
+
+    function appendEmptyMessage(container, message) {
+      const paragraph = document.createElement('p');
+      paragraph.style.cssText = 'color:var(--text-secondary); font-size:0.85rem; text-align:center;';
+      paragraph.textContent = message;
+      container.appendChild(paragraph);
+    }
+
+    function createBarRow(label, countLabel, percent, colorClass) {
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      const labelRow = document.createElement('div');
+      labelRow.className = 'bar-label-row';
+      const strong = document.createElement('strong');
+      strong.textContent = String(label ?? '');
+      const count = document.createElement('span');
+      count.textContent = countLabel;
+      labelRow.append(strong, count);
+
+      const background = document.createElement('div');
+      background.className = 'bar-bg';
+      const fill = document.createElement('div');
+      fill.className = `bar-fill ${colorClass}`;
+      fill.style.width = `${percent}%`;
+      background.appendChild(fill);
+      row.append(labelRow, background);
+      return row;
+    }
+
+    function createTextCell(value, styles = '') {
+      const cell = document.createElement('td');
+      cell.style.cssText = styles;
+      cell.textContent = String(value ?? '');
+      return cell;
+    }
+
+    function createActionBadge(action) {
+      const styles = {
+        publish: ['rgba(168, 85, 247, 0.15)', 'var(--accent-purple)'],
+        edit: ['rgba(249, 115, 22, 0.15)', 'var(--accent-orange)'],
+        view: ['rgba(34, 197, 94, 0.15)', 'var(--accent-green)'],
+        search: ['rgba(14, 165, 233, 0.15)', 'var(--accent-blue)'],
+        login: ['rgba(255,255,255,0.1)', 'var(--text-primary)']
+      };
+      const normalized = String(action || '').toLowerCase();
+      const badge = document.createElement('span');
+      badge.className = 'layer-badge';
+      badge.textContent = normalized ? normalized.toUpperCase() : 'N/A';
+      if (styles[normalized]) {
+        badge.style.background = styles[normalized][0];
+        badge.style.color = styles[normalized][1];
+      }
+      return badge;
     }
   </script>
 </body>

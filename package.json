@@ -8,7 +8,7 @@
     "dev": "nodemon server.js",
     "seed": "node seed.js",
     "test": "node --test",
-    "check": "node --check server.js && node --check routes/hub.js && node --check lib/hub-domain.js && node --check hub.js && node --check offering.js",
+    "check": "node --check server.js && node --check routes/hub.js && node --check lib/hub-domain.js && node --check hub.js && node --check app.js && node --check offering.js",
     "mock": "node scripts/mock-ui-server.js"
   },
   "dependencies": {

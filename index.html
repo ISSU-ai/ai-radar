@@ -5,24 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ISSU AI Radar</title>
 
-  <!-- Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
   <!-- CSS Stylesheet -->
   <link rel="stylesheet" href="style.css">
   <!-- Lucide Icons CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>
+    window.__ISSU_HUB_EMBED__ = new URLSearchParams(window.location.search).get('embed') === 'hub';
+    if (window.__ISSU_HUB_EMBED__) document.documentElement.classList.add('hub-embed');
+    const radarReturnPath = window.__ISSU_HUB_EMBED__
+      ? '/hub?mode=reference'
+      : `${window.location.pathname}${window.location.search}`;
+    window.__ISSU_RADAR_LOGIN_PATH__ = `/login.html?next=${encodeURIComponent(radarReturnPath)}`;
+    window.__ISSU_RADAR_NAVIGATE__ = (path) => {
+      const target = window.__ISSU_HUB_EMBED__ && window.top !== window ? window.top : window;
+      target.location.href = path;
+    };
     // 로그인 즉시 체크
     (async function() {
       try {
         const res = await fetch('/api/auth/me');
         if (!res.ok) {
-          window.location.href = '/login.html';
+          window.__ISSU_RADAR_NAVIGATE__(window.__ISSU_RADAR_LOGIN_PATH__);
         }
       } catch (err) {
-        window.location.href = '/login.html';
+        window.__ISSU_RADAR_NAVIGATE__(window.__ISSU_RADAR_LOGIN_PATH__);
       }
     })();
   </script>
@@ -58,13 +65,13 @@
           <span id="session-email" style="font-size: 0.8rem; color: var(--text-secondary);">user@mzc.co.kr</span>
         </div>
         <div class="session-actions" style="display: flex; gap: 8px; align-items: center;">
-          <a href="/hub" class="back-btn" style="margin-top: 0; padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; border-color: var(--accent-blue); color: var(--accent-blue);">
+          <a href="/hub" target="_top" class="back-btn" style="margin-top: 0; padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; border-color: var(--accent-blue); color: var(--accent-blue);">
             <i data-lucide="briefcase-business" style="width: 14px; height: 14px;"></i>딜 허브
           </a>
-          <a href="/about" class="back-btn" style="margin-top: 0; padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
+          <a href="/about" target="_top" class="back-btn" style="margin-top: 0; padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none;">
             <i data-lucide="info" style="width: 14px; height: 14px;"></i>소개
           </a>
-          <a href="/admin" id="admin-btn" class="back-btn hidden" style="margin-top: 0; padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; border-color: var(--accent-blue); color: var(--accent-blue);">
+          <a href="/admin" target="_top" id="admin-btn" class="back-btn hidden" style="margin-top: 0; padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; border-color: var(--accent-blue); color: var(--accent-blue);">
             <i data-lucide="settings" style="width: 14px; height: 14px;"></i>어드민
           </a>
           <button onclick="handleLogout()" class="back-btn" style="margin-top: 0; padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px;">

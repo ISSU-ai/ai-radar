@@ -4,10 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ISSU AI Radar - 로그인</title>
-  <!-- Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
   <!-- CSS Stylesheet -->
   <link rel="stylesheet" href="style.css">
   <!-- Lucide Icons -->
@@ -58,7 +55,7 @@
       margin-top: 0.5rem;
     }
     .login-logo p {
-      font-size: 0.85rem;
+      font-size: 0.95rem;
       color: var(--text-secondary);
     }
     .form-group {
@@ -68,9 +65,9 @@
       gap: 0.5rem;
     }
     .form-group label {
-      font-size: 0.85rem;
+      font-size: 0.95rem;
       color: var(--text-secondary);
-      font-weight: 500;
+      font-weight: 600;
     }
     .input-wrapper {
       position: relative;
@@ -89,10 +86,12 @@
       background: #ffffff;
       border: 1px solid var(--card-border);
       border-radius: 8px;
-      padding: 0.75rem 1rem 0.75rem 2.5rem;
+      min-height: 52px;
+      padding: 0.85rem 1rem 0.85rem 2.75rem;
       color: var(--text-primary);
       font-family: var(--font-main);
-      font-size: 0.9rem;
+      font-size: 1rem;
+      line-height: 1.5;
       outline: none;
       transition: var(--transition-smooth);
     }
@@ -105,10 +104,11 @@
       background: var(--gradient-main);
       color: white;
       border: none;
-      padding: 0.85rem;
+      min-height: 50px;
+      padding: 0.9rem;
       border-radius: 8px;
       font-weight: 600;
-      font-size: 0.95rem;
+      font-size: 1rem;
       cursor: pointer;
       box-shadow: var(--shadow-glow);
       transition: var(--transition-smooth);
@@ -214,10 +214,17 @@
         }
 
         const requestedPath = new URLSearchParams(window.location.search).get('next');
-        const safePath = requestedPath && requestedPath.startsWith('/') && !requestedPath.startsWith('//')
-          ? requestedPath
-          : '/hub';
-        window.location.href = safePath;
+        const allowedPaths = new Set(['/hub', '/radar', '/admin', '/admin/usage', '/']);
+        let safePath = '/hub';
+        try {
+          const destination = new URL(requestedPath || '/hub', window.location.origin);
+          if (destination.origin === window.location.origin && allowedPaths.has(destination.pathname)) {
+            safePath = `${destination.pathname}${destination.search}${destination.hash}`;
+          }
+        } catch (_error) {
+          // Keep the safe default when the requested URL cannot be parsed.
+        }
+        window.location.assign(safePath);
       } catch (err) {
         errorText.textContent = err.message;
         errorBox.style.display = 'flex';

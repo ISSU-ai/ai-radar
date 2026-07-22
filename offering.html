@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ISSU Enterprise AI Offering</title>
   <meta name="description" content="Enterprise AI 도입 준비도를 진단하고 실행 가능한 다음 단계를 확인하세요.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
   <link rel="stylesheet" href="/offering.css">
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
@@ -52,9 +50,20 @@
           <div class="diagnosis-legend"><span><b>1</b> 아직 준비되지 않음</span><span><b>3</b> 일부 준비됨</span><span><b>5</b> 운영 가능한 수준</span></div>
         </div>
         <div class="diagnosis-panel">
-          <div class="diagnosis-progress"><div><span id="answer-count">0</span> / <span id="question-count">—</span> 응답</div><div class="progress-track"><i id="progress-value"></i></div></div>
+          <div id="category-tabs" class="category-tabs" aria-label="진단 영역 진행 상태"></div>
+          <div class="diagnosis-progress">
+            <div><b id="current-category-label">A 영역</b><span><span id="answer-count">0</span> / <span id="question-count">—</span> 응답</span></div>
+            <div class="progress-track"><i id="progress-value"></i></div>
+          </div>
           <div id="questions" class="questions"><div class="loading">진단 항목을 불러오는 중입니다.</div></div>
-          <div class="diagnosis-actions"><p id="diagnosis-error" class="form-error"></p><button id="calculate-result" class="button primary" type="button">내 결과 확인 <i data-lucide="arrow-right"></i></button></div>
+          <div class="diagnosis-actions">
+            <p id="diagnosis-error" class="form-error"></p>
+            <div class="step-actions">
+              <button id="previous-category" class="button secondary hidden" type="button"><i data-lucide="arrow-left"></i> 이전 영역</button>
+              <button id="next-category" class="button primary" type="button" disabled>다음 영역 <i data-lucide="arrow-right"></i></button>
+              <button id="calculate-result" class="button primary hidden" type="button" disabled>내 결과 확인 <i data-lucide="arrow-right"></i></button>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -76,7 +85,16 @@
         <div class="form-row"><label>회사명<input name="customer" maxlength="120" required placeholder="회사명을 입력해주세요"></label><label>연락처<input name="contact" maxlength="200" required placeholder="업무 이메일 또는 전화번호"></label></div>
         <div class="form-row"><label>현재 보안 환경<select name="securityStack"><option value="unknown">잘 모르겠음</option><option value="none">별도 보안 게이트웨이 없음</option><option value="zscaler">Zscaler 사용</option><option value="other-swg">타사 보안 게이트웨이 사용</option></select></label><label>투자 준비도<select name="investment"><option value="low">정보 수집 단계</option><option value="medium">PoC 예산 검토</option><option value="high">확산 예산 검토</option></select></label></div>
         <label>상담 내용<textarea name="message" maxlength="2000" placeholder="검토 중인 업무, 예상 사용자, 일정 등을 알려주세요."></textarea></label>
-        <label class="consent"><input name="consent" type="checkbox" required> 상담을 위한 개인정보 수집·이용에 동의합니다.</label>
+        <div class="privacy-notice" aria-labelledby="privacy-notice-title">
+          <strong id="privacy-notice-title">개인정보 수집·이용 안내</strong>
+          <ul>
+            <li><b>수집 항목</b> 회사명, 연락처, 상담 내용, 준비도 문항별 점수와 영역별 결과, 보안 환경 및 투자 준비도</li>
+            <li><b>이용 목적</b> 상담 접수, 담당자 연락 및 제안 준비</li>
+            <li><b>보유 기간</b> 상담 요청일로부터 1년</li>
+          </ul>
+          <p>동의를 거부할 수 있으나, 거부하면 상담 요청을 접수할 수 없습니다.</p>
+        </div>
+        <label class="consent"><input name="consent" type="checkbox" required> 위 개인정보 수집·이용에 동의합니다. <span>(필수)</span></label>
         <p id="lead-error" class="form-error"></p>
         <button class="button primary" type="submit">상담 요청 보내기 <i data-lucide="send"></i></button>
       </form>

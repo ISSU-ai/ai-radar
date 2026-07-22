@@ -12,6 +12,23 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET;
 const OPINION_EXPOSE_POLICY = process.env.OPINION_EXPOSE_POLICY || 'B'; // A: Expose to all, B: Admin only
 const APP_SURFACE = process.env.APP_SURFACE || 'all';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_ATTEMPT_LIMIT = 10;
+const HEALTH_QUERY_TIMEOUT_MS = 3000;
+let isShuttingDown = false;
+
+function parseJsonColumn(value, fallback) {
+  if (value == null) return fallback;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+app.disable('x-powered-by');
 
 if (!process.env.DATABASE_URL || !process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY || !JWT_SECRET) {
   console.error('Missing required environment variables. Copy .env.example to .env and inject secrets locally.');
@@ -98,7 +115,14 @@ const simulatorStepsData = {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  family: 6
+  family: 6,
+  connectionTimeoutMillis: 5000
+});
+
+// PostgreSQL emits an `error` event when an idle pooled client loses its
+// connection. Without a listener Node treats that event as uncaught and exits.
+pool.on('error', (error) => {
+  console.error('Unexpected PostgreSQL pool error:', error.message);
 });
 
 // Run DB Migrations
@@ -121,18 +145,61 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '256kb' }));
 app.use(cookieParser());
 
+app.use((_req, res, next) => {
+  res.set({
+    'Content-Security-Policy': [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'self'",
+      "frame-src 'self'",
+      "form-action 'self'",
+      "script-src 'self' 'unsafe-inline' https://unpkg.com",
+      "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+      "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com",
+      "img-src 'self' data:",
+      "connect-src 'self'"
+    ].join('; '),
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'SAMEORIGIN'
+  });
+  if (IS_PRODUCTION) {
+    res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
 // Each production deployment can expose one surface only. Local development uses "all".
 app.use((req, res, next) => {
   if (APP_SURFACE === 'all') return next();
   const publicApi = req.path.startsWith('/api/hub/public/');
-  const commonPath = req.path === '/style.css' || req.path === '/login' || req.path === '/login.html' || req.path.startsWith('/api/auth/');
+  const commonPath = req.path === '/healthz' || req.path === '/style.css' || req.path === '/login' || req.path === '/login.html' || req.path.startsWith('/api/auth/');
+  const radarPath = req.path === '/radar' || req.path === '/radar/' || req.path === '/index.html' || req.path === '/app.js' || req.path === '/about' || req.path === '/about.html' || req.path.startsWith('/docs/');
+  const embeddedAdminPath = req.path.startsWith('/admin') || req.path.startsWith('/api/admin/');
   const allowed = {
-    offering: publicApi || req.path === '/' || req.path === '/offering' || req.path.startsWith('/offering.'),
-    hub: commonPath || req.path === '/' || req.path === '/hub' || req.path.startsWith('/hub.') || req.path.startsWith('/api/hub/') || req.path.startsWith('/api/solutions'),
+    offering: req.path === '/healthz' || publicApi || req.path === '/' || req.path === '/offering' || req.path.startsWith('/offering.'),
+    hub: commonPath || radarPath || embeddedAdminPath || req.path === '/' || req.path === '/hub' || req.path.startsWith('/hub.') || req.path.startsWith('/api/hub/') || req.path.startsWith('/api/solutions'),
     admin: commonPath || req.path === '/' || req.path.startsWith('/admin') || req.path.startsWith('/api/admin/') || req.path.startsWith('/api/solutions')
   }[APP_SURFACE];
   if (!allowed) return res.status(404).send('Not found');
   next();
+});
+
+app.get('/healthz', async (_req, res) => {
+  if (isShuttingDown) {
+    return res.status(503).json({ status: 'shutting_down' });
+  }
+  try {
+    await pool.query({ text: 'select 1', query_timeout: HEALTH_QUERY_TIMEOUT_MS });
+    return res.status(200).json({ status: 'ok' });
+  } catch (error) {
+    console.error('Readiness check failed:', error.message);
+    return res.status(503).json({ status: 'database_unavailable' });
+  }
 });
 
 // Audit Logger
@@ -147,19 +214,41 @@ const auditLog = (userId, action, target, query = '') => {
 };
 
 // Auth Authentication Middleware
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   const token = req.cookies.token;
   if (!token) {
     return res.status(401).json({ error: '인증 토큰이 없습니다. 로그인이 필요합니다.' });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ error: '인증 토큰이 만료되었거나 유효하지 않습니다.' });
+  let claims;
+  try {
+    claims = jwt.verify(token, JWT_SECRET);
+  } catch (_error) {
+    return res.status(403).json({ error: '인증 토큰이 만료되었거나 유효하지 않습니다.' });
+  }
+
+  try {
+    const result = await pool.query(
+      `select id, email, full_name, role, approved
+       from profiles where id = $1`,
+      [claims.id]
+    );
+    const profile = result.rows[0];
+    if (!profile || !profile.approved) {
+      res.clearCookie('token', { path: '/' });
+      return res.status(403).json({ error: '현재 사용 승인이 없는 계정입니다.' });
     }
-    req.user = user;
-    next();
-  });
+    req.user = {
+      id: profile.id,
+      email: profile.email,
+      name: profile.full_name || '사내 임직원',
+      role: profile.role
+    };
+    return next();
+  } catch (error) {
+    console.error('Session profile verification failed:', error.message);
+    return res.status(503).json({ error: '계정 권한을 확인하지 못했습니다.' });
+  }
 };
 
 // Admin Only Authorization Middleware
@@ -171,12 +260,62 @@ const adminOnly = (req, res, next) => {
   }
 };
 
+const loginAttempts = new Map();
+
+const getLoginAttemptKey = (req) => req.ip || req.socket?.remoteAddress || 'unknown';
+
+const pruneLoginAttempts = (now) => {
+  if (loginAttempts.size <= 10000) return;
+  for (const [key, attempt] of loginAttempts) {
+    if (attempt.resetAt <= now) loginAttempts.delete(key);
+  }
+  while (loginAttempts.size > 10000) {
+    loginAttempts.delete(loginAttempts.keys().next().value);
+  }
+};
+
+const checkLoginRateLimit = (req, res, next) => {
+  const now = Date.now();
+  pruneLoginAttempts(now);
+  const key = getLoginAttemptKey(req);
+  const current = loginAttempts.get(key);
+  if (current && current.resetAt > now && current.count >= LOGIN_ATTEMPT_LIMIT) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((current.resetAt - now) / 1000));
+    res.set({
+      'Retry-After': String(retryAfterSeconds),
+      'RateLimit-Limit': String(LOGIN_ATTEMPT_LIMIT),
+      'RateLimit-Remaining': '0',
+      'RateLimit-Reset': String(Math.ceil(current.resetAt / 1000))
+    });
+    return res.status(429).json({ error: '로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.' });
+  }
+  req.loginAttemptKey = key;
+  res.set('RateLimit-Limit', String(LOGIN_ATTEMPT_LIMIT));
+  res.set('RateLimit-Remaining', String(Math.max(0, LOGIN_ATTEMPT_LIMIT - (current?.count || 0))));
+  next();
+};
+
+const recordLoginFailure = (req) => {
+  const now = Date.now();
+  const key = req.loginAttemptKey || getLoginAttemptKey(req);
+  const current = loginAttempts.get(key);
+  if (!current || current.resetAt <= now) {
+    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return;
+  }
+  current.count += 1;
+};
+
+const clearLoginFailures = (req) => {
+  loginAttempts.delete(req.loginAttemptKey || getLoginAttemptKey(req));
+};
+
 // ----------------------------------------------------
 // Authentication API Routes (Supabase Auth Integration)
 // ----------------------------------------------------
 
 // POST /api/auth/login
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', checkLoginRateLimit, async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -190,6 +329,7 @@ app.post('/api/auth/login', async (req, res) => {
     });
 
     if (authError || !authData.user) {
+      recordLoginFailure(req);
       return res.status(401).json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.' });
     }
 
@@ -199,10 +339,12 @@ app.post('/api/auth/login', async (req, res) => {
     const profile = profileRes.rows[0];
 
     if (!profile) {
+      recordLoginFailure(req);
       return res.status(403).json({ error: '등록된 사용자 프로필을 찾을 수 없습니다.' });
     }
 
     if (!profile.approved) {
+      recordLoginFailure(req);
       return res.status(403).json({ error: '사내 미승인 계정입니다. 관리자 승인이 필요합니다.' });
     }
 
@@ -221,6 +363,7 @@ app.post('/api/auth/login', async (req, res) => {
     });
 
     auditLog(profile.id, 'login', 'System');
+    clearLoginFailures(req);
 
     res.json({
       message: '로그인 성공',
@@ -496,24 +639,68 @@ app.put('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, re
 app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async (req, res) => {
   const solId = req.params.id;
   const now = new Date().toISOString();
+  const payload = req.body || {};
 
+  if (!payload.name || !payload.layer) {
+    return res.status(400).json({ error: '솔루션 이름과 레이어는 필수 항목입니다.' });
+  }
+
+  let client;
   try {
-    const solRes = await pool.query('SELECT * FROM solutions WHERE id = $1', [solId]);
+    client = await pool.connect();
+    await client.query('begin');
+    const solRes = await client.query('SELECT * FROM solutions WHERE id = $1 FOR UPDATE', [solId]);
     const sol = solRes.rows[0];
 
     if (!sol) {
+      await client.query('rollback');
       return res.status(404).json({ error: '발행할 솔루션을 찾을 수 없습니다.' });
     }
 
-    const newVersion = sol.version + 1;
+    const name = String(payload.name).trim();
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || sol.slug;
+    const newVersion = Number(sol.version || 0) + 1;
+    const sections = parseJsonColumn(payload.sections ?? sol.sections, {});
+    const simulatorMappings = parseJsonColumn(payload.simulator_mappings ?? sol.simulator_mappings, []);
+    const industriesInput = parseJsonColumn(payload.industries ?? sol.industries, []);
+    const formattedIndustries = (Array.isArray(industriesInput) ? industriesInput : []).map((industry) => {
+      if (industry && typeof industry === 'object' && industry.industry) return industry;
+      return { industry, fit: 'high' };
+    });
 
-    await pool.query(`
+    const updatedRes = await client.query(`
       UPDATE solutions
-      SET status = 'published', version = $1, updated_by = $2, updated_at = $3
-      WHERE id = $4
-    `, [newVersion, req.user.id, now, solId]);
-
-    const updatedRes = await pool.query('SELECT * FROM solutions WHERE id = $1', [solId]);
+      SET slug = $1, name = $2, delivery = $3, layer = $4, synergy = $5, category = $6,
+          jtbd = $7, value_chain = $8, sections = $9, opinion = $10, status = 'published',
+          version = $11, updated_by = $12, updated_at = $13, simulator_mappings = $14,
+          industries = $15, grade = $16, scale = $17, focal_id = $18, tech_note = $19,
+          status_op = $20, note = $21
+      WHERE id = $22
+      RETURNING *
+    `, [
+      slug,
+      name,
+      payload.delivery ?? sol.delivery,
+      payload.layer,
+      payload.synergy ?? sol.synergy,
+      payload.category ?? sol.category,
+      payload.jtbd ?? sol.jtbd,
+      payload.value_chain ?? sol.value_chain,
+      JSON.stringify(sections),
+      payload.opinion ?? sol.opinion,
+      newVersion,
+      req.user.id,
+      now,
+      JSON.stringify(Array.isArray(simulatorMappings) ? simulatorMappings : []),
+      JSON.stringify(formattedIndustries),
+      payload.grade ?? sol.grade,
+      payload.scale || null,
+      payload.focal_id || null,
+      payload.tech_note ?? sol.tech_note,
+      payload.status_op || sol.status_op || 'active',
+      payload.note ?? null,
+      solId
+    ]);
     const updatedSol = updatedRes.rows[0];
 
     const snapshot = JSON.stringify({
@@ -525,12 +712,12 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
       category: updatedSol.category,
       jtbd: updatedSol.jtbd,
       value_chain: updatedSol.value_chain,
-      sections: typeof updatedSol.sections === 'string' ? JSON.parse(updatedSol.sections) : (updatedSol.sections || {}),
+      sections: parseJsonColumn(updatedSol.sections, {}),
       opinion: updatedSol.opinion,
       status: updatedSol.status,
       version: updatedSol.version,
-      simulator_mappings: typeof updatedSol.simulator_mappings === 'string' ? JSON.parse(updatedSol.simulator_mappings) : (updatedSol.simulator_mappings || []),
-      industries: typeof updatedSol.industries === 'string' ? JSON.parse(updatedSol.industries) : (updatedSol.industries || []),
+      simulator_mappings: parseJsonColumn(updatedSol.simulator_mappings, []),
+      industries: parseJsonColumn(updatedSol.industries, []),
       grade: updatedSol.grade,
       scale: updatedSol.scale,
       focal_id: updatedSol.focal_id,
@@ -539,16 +726,21 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
       note: updatedSol.note
     });
 
-    await pool.query(`
+    await client.query(`
       INSERT INTO solution_versions (solution_id, snapshot, editor, created_at)
       VALUES ($1, $2, $3, $4)
     `, [solId, snapshot, req.user.id, now]);
 
+    await client.query('commit');
     auditLog(req.user.id, 'publish', updatedSol.slug, `Published Version v${updatedSol.version}`);
     res.json({ message: `성공적으로 발행되었습니다 (버전: v${updatedSol.version})`, version: updatedSol.version });
   } catch (err) {
+    if (client) await client.query('rollback').catch(() => {});
     console.error(err);
+    if (err.code === '23505') return res.status(400).json({ error: '동일한 slug의 솔루션이 이미 존재합니다.' });
     res.status(500).json({ error: '솔루션 발행에 실패했습니다.' });
+  } finally {
+    if (client) client.release();
   }
 });
 
@@ -687,20 +879,25 @@ app.post('/api/admin/solutions/:id/rollback', authenticateToken, adminOnly, asyn
     return res.status(400).json({ error: '롤백할 버전 ID가 누락되었습니다.' });
   }
 
+  let client;
   try {
-    const verRes = await pool.query('SELECT * FROM solution_versions WHERE id = $1 AND solution_id = $2', [versionId, solId]);
+    client = await pool.connect();
+    await client.query('begin');
+    const verRes = await client.query('SELECT * FROM solution_versions WHERE id = $1 AND solution_id = $2', [versionId, solId]);
     const version = verRes.rows[0];
 
     if (!version) {
+      await client.query('rollback');
       return res.status(404).json({ error: '롤백 스냅샷 버전을 찾을 수 없습니다.' });
     }
 
     const snapshot = typeof version.snapshot === 'string' ? JSON.parse(version.snapshot) : (version.snapshot || {});
-    const curRes = await pool.query('SELECT version FROM solutions WHERE id = $1', [solId]);
+    const curRes = await client.query('SELECT version FROM solutions WHERE id = $1 FOR UPDATE', [solId]);
     const curSol = curRes.rows[0];
 
     if (!curSol) {
-      return res.status(500).json({ error: '현재 솔루션 조회 실패' });
+      await client.query('rollback');
+      return res.status(404).json({ error: '현재 솔루션 조회 실패' });
     }
 
     const nextVersion = curSol.version + 1;
@@ -719,7 +916,7 @@ app.post('/api/admin/solutions/:id/rollback', authenticateToken, adminOnly, asyn
       WHERE id = $22
     `;
 
-    await pool.query(updateQuery, [
+    await client.query(updateQuery, [
       snapshot.slug,
       snapshot.name,
       snapshot.delivery,
@@ -767,16 +964,20 @@ app.post('/api/admin/solutions/:id/rollback', authenticateToken, adminOnly, asyn
       note: snapshot.note
     });
 
-    await pool.query(`
+    await client.query(`
       INSERT INTO solution_versions (solution_id, snapshot, editor, created_at)
       VALUES ($1, $2, $3, $4)
     `, [solId, newSnapshot, req.user.id, now]);
 
+    await client.query('commit');
     auditLog(req.user.id, 'publish', snapshot.slug, `Rollback to version v${snapshot.version} (Created v${nextVersion})`);
     res.json({ message: `버전 v${snapshot.version}으로 롤백이 승인 및 발행되었습니다 (신규 버전: v${nextVersion})` });
   } catch (err) {
+    if (client) await client.query('rollback').catch(() => {});
     console.error(err);
     res.status(500).json({ error: '롤백을 적용하는 데 실패했습니다.' });
+  } finally {
+    if (client) client.release();
   }
 });
 
@@ -944,54 +1145,181 @@ app.post('/api/admin/suggest-edit', authenticateToken, adminOnly, async (req, re
   }
 });
 
-app.use('/api/hub', createHubRouter({
+const requireCompleteFqaScores = async (req, res, next) => {
+  const rawScores = req.body?.fqa_scores;
+  if (!rawScores || typeof rawScores !== 'object' || Array.isArray(rawScores)) {
+    return res.status(400).json({ error: '모든 준비도 문항의 점수를 입력해주세요.' });
+  }
+
+  try {
+    const result = await pool.query(
+      "select no from fqa_items where status = 'active' order by no"
+    );
+    if (!result.rows.length) {
+      return res.status(503).json({ error: '준비도 진단 문항을 불러올 수 없습니다.' });
+    }
+
+    const expected = new Set(result.rows.map((item) => String(item.no)));
+    const provided = Object.keys(rawScores);
+    const hasUnknownQuestion = provided.some((no) => !expected.has(no));
+    const hasMissingOrInvalidScore = result.rows.some((item) => {
+      const score = rawScores[item.no] ?? rawScores[String(item.no)];
+      return typeof score !== 'number' || !Number.isInteger(score) || score < 1 || score > 5;
+    });
+
+    if (hasUnknownQuestion || hasMissingOrInvalidScore) {
+      return res.status(400).json({ error: '모든 준비도 문항에 1~5점으로 답해주세요.' });
+    }
+    return next();
+  } catch (error) {
+    console.error('FQA validation failed:', error.message);
+    return res.status(503).json({ error: '준비도 진단 문항을 확인하지 못했습니다.' });
+  }
+};
+
+app.post([
+  '/api/hub/public/diagnose',
+  '/api/hub/public/leads'
+], requireCompleteFqaScores);
+
+const hubRouter = createHubRouter({
   pool,
   authenticateToken,
   adminOnly,
   auditLog
-}));
+});
+app.use('/api/hub', hubRouter);
 
-app.get('/', (req, res, next) => {
+const sendFrontendFile = (filename, cacheControl = 'no-store') => (_req, res) => {
+  res.set('Cache-Control', cacheControl);
+  res.sendFile(path.join(__dirname, filename), { dotfiles: 'deny' });
+};
+
+const frontendAssets = Object.freeze({
+  '/style.css': 'style.css',
+  '/app.js': 'app.js',
+  '/hub.css': 'hub.css',
+  '/hub.js': 'hub.js',
+  '/offering.css': 'offering.css',
+  '/offering.js': 'offering.js'
+});
+
+for (const [route, filename] of Object.entries(frontendAssets)) {
+  app.get(route, sendFrontendFile(filename, 'public, max-age=300'));
+}
+
+app.get('/', (_req, res) => {
   const entrypoints = {
+    all: 'index.html',
     offering: 'offering.html',
     hub: 'hub.html',
     admin: 'admin.html'
   };
-  if (!entrypoints[APP_SURFACE]) return next();
+  res.set('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, entrypoints[APP_SURFACE]));
 });
 
-// Serve static frontend files
-app.use(express.static(path.join(__dirname)));
+app.get(['/radar', '/radar/'], sendFrontendFile('index.html'));
+app.get('/index.html', sendFrontendFile('index.html'));
+app.get(['/login', '/login.html'], sendFrontendFile('login.html'));
+app.get(['/admin', '/admin.html'], sendFrontendFile('admin.html'));
+app.get(['/admin/usage', '/admin-usage.html'], sendFrontendFile('admin-usage.html'));
+app.get(['/hub', '/hub.html'], sendFrontendFile('hub.html'));
+app.get(['/offering', '/offering.html'], sendFrontendFile('offering.html'));
+app.get(['/about', '/about.html'], sendFrontendFile('about.html'));
 
-app.get('/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'login.html'));
+const downloadableDocs = new Set([
+  'MZC_AI_솔루션_가이드.docx',
+  'MZC_AI_솔루션_가이드_Anaconda.docx',
+  'MZC_AI_솔루션_가이드_Anthropic_Claude.docx',
+  'MZC_AI_솔루션_가이드_Articul8.docx',
+  'MZC_AI_솔루션_가이드_CNVRG.docx',
+  'MZC_AI_솔루션_가이드_DataRobot.docx',
+  'MZC_AI_솔루션_가이드_Dataiku.docx',
+  'MZC_AI_솔루션_가이드_Eleven_Labs.docx',
+  'MZC_AI_솔루션_가이드_FollowerRabbit.docx',
+  'MZC_AI_솔루션_가이드_H2O.docx',
+  'MZC_AI_솔루션_가이드_IBM.docx',
+  'MZC_AI_솔루션_가이드_LiteLLM.docx',
+  'MZC_AI_솔루션_가이드_MeshyAI.docx',
+  'MZC_AI_솔루션_가이드_OpenAI_Enterprise.docx',
+  'MZC_AI_솔루션_가이드_Replit.docx',
+  'MZC_AI_솔루션_가이드_Tigergraph.docx',
+  'MZC_AI_솔루션_가이드_Twelve_Labs.docx',
+  'MZC_AI_솔루션_가이드_Unique.docx',
+  'MZC_AI_솔루션_가이드_Wandai.docx',
+  '[공통] AI도입_요구사항_질의서.docx'
+]);
+
+app.get('/docs/:filename', authenticateToken, (req, res) => {
+  const filename = String(req.params.filename || '');
+  if (filename !== path.basename(filename) || !downloadableDocs.has(filename)) {
+    return res.status(404).send('Not found');
+  }
+  res.set('Cache-Control', 'private, no-store');
+  res.attachment(filename);
+  return res.sendFile(filename, {
+    root: path.join(__dirname, 'docs'),
+    dotfiles: 'deny'
+  }, (error) => {
+    if (!error) return;
+    if (!res.headersSent) {
+      res.status(error.statusCode === 404 ? 404 : 500).send('Document unavailable');
+    } else {
+      res.end();
+    }
+  });
 });
 
-app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin.html'));
-});
-
-app.get('/admin/usage', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin-usage.html'));
-});
-
-app.get('/hub', (req, res) => {
-  res.sendFile(path.join(__dirname, 'hub.html'));
-});
-
-app.get('/offering', (req, res) => {
-  res.sendFile(path.join(__dirname, 'offering.html'));
-});
-
-app.get('/about', (req, res) => {
-  res.sendFile(path.join(__dirname, 'about.html'));
+app.use((req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: '요청한 API를 찾을 수 없습니다.' });
+  }
+  return res.status(404).send('Not found');
 });
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`====================================================`);
   console.log(` ISSU AI Radar Server running on http://localhost:${PORT}`);
+  console.log(` APP_SURFACE: ${APP_SURFACE}`);
   console.log(` OPINION_EXPOSE_POLICY: ${OPINION_EXPOSE_POLICY}`);
   console.log(`====================================================`);
 });
+
+const shutdown = (signal) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`${signal} received. Closing HTTP and database connections.`);
+
+  const forceExit = setTimeout(() => {
+    console.error('Graceful shutdown timed out.');
+    process.exit(1);
+  }, 10000);
+  forceExit.unref();
+
+  const closeActiveConnections = setTimeout(() => {
+    server.closeAllConnections?.();
+  }, 5000);
+  closeActiveConnections.unref();
+
+  void hubRouter.dispose().catch((error) => {
+    console.error('Failed to close hub event listener:', error.message);
+  }).finally(() => {
+    server.close(async (serverError) => {
+      try {
+        await pool.end();
+      } catch (poolError) {
+        console.error('Failed to close PostgreSQL pool:', poolError.message);
+      } finally {
+        clearTimeout(closeActiveConnections);
+        clearTimeout(forceExit);
+        process.exit(serverError ? 1 : 0);
+      }
+    });
+    server.closeIdleConnections?.();
+  });
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
