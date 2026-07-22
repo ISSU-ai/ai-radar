@@ -178,7 +178,12 @@ function renderPackages() {
 
 async function submitLead(event) {
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
+  // Capture the form element now: event.currentTarget becomes null after the
+  // first await below (the event has finished dispatching by then), which was
+  // throwing "Cannot read properties of null (reading 'classList')" on the
+  // success path even though the lead had already been saved.
+  const formEl = event.currentTarget;
+  const form = new FormData(formEl);
   const errorNode = $('#lead-error');
   errorNode.textContent = '';
   if (!offeringState.resultReady) {
@@ -187,7 +192,7 @@ async function submitLead(event) {
     return;
   }
 
-  const submitButton = $('button[type="submit"]', event.currentTarget);
+  const submitButton = $('button[type="submit"]', formEl);
   submitButton.disabled = true;
   submitButton.textContent = '접수 중…';
   try {
@@ -206,7 +211,7 @@ async function submitLead(event) {
         }
       })
     });
-    event.currentTarget.classList.add('hidden');
+    formEl.classList.add('hidden');
     $('#lead-success').classList.remove('hidden');
     window.lucide?.createIcons();
   } catch (error) {
