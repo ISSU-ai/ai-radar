@@ -436,7 +436,8 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
         ).then((r) => r.rows),
         pool.query(
           `select s.id, s.slug, s.name, s.category, s.jtbd, s.grade, s.scale,
-                  s.tech_note, s.status_op, f.name as focal_name, f.org as focal_org
+                  s.tech_note, s.status_op, s.price_type, s.unit_price,
+                  f.name as focal_name, f.org as focal_org
            from solutions s left join focal_contacts f on f.id = s.focal_id
            where s.is_archived = false and s.status = 'published'
              and coalesce(s.status_op, 'active') <> 'draft'

@@ -26,6 +26,7 @@ const state = {
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const sourceNames = { portal: '포탈 유입', manual: '직접 생성', sheet: '시트 회수' };
+const DEAL_SIM_TYPE_LABEL = { seat: '좌석 라이선스', once: '일회성', mrr: '운영 MRR' };
 const fqaCategoryLabels = Object.freeze({
   A: '보안·데이터',
   B: '연동·기술',
@@ -626,7 +627,7 @@ function renderPackages() {
       <div class="md-control"><input type="number" min="0" max="999" step="1" data-package-md="${pkg.id}" value="${checked && typeof value === 'object' ? escapeHtml(value.md || '') : ''}" placeholder="0" aria-label="${escapeHtml(pkg.name)} 조정 공수" ${checked && isOwner() ? '' : 'disabled'}><span>조정 공수(MD)</span></div>
     </label>`;
   }).join('');
-  return `${stageHeader('04', '패키지와 딜 사이즈', '확정한 ISV 조합 위에 필요한 서비스 패키지를 얹습니다. 조정 공수는 딜별로 저장되고, 가견적은 (기준MD + 조정MD) × MD 단가로 합산됩니다.')}<div class="selection-grid">${cards}</div><div id="quote-estimate" class="quote-estimate">${quoteEstimateMarkup()}</div>`;
+  return `${stageHeader('04', '패키지와 딜 사이즈', '확정한 ISV 조합 위에 필요한 서비스 패키지를 얹습니다. 조정 공수는 딜별로 저장되고, 가견적은 (기준MD + 조정MD) × MD 단가로 합산됩니다.')}<div class="selection-grid">${cards}</div><div id="quote-estimate" class="quote-estimate">${quoteEstimateMarkup()}</div>${dealSimMarkup()}`;
 }
 
 function computeQuote() {
@@ -670,6 +671,93 @@ function quoteEstimateMarkup() {
 function renderQuoteEstimate() {
   const node = document.getElementById('quote-estimate');
   if (node) node.innerHTML = quoteEstimateMarkup();
+}
+
+function getDealSeats() {
+  const seats = Number(state.deal?.customer_meta?.sim?.seats);
+  return Number.isFinite(seats) && seats > 0 ? Math.round(seats) : 100;
+}
+
+function computeDealSim() {
+  const seats = getDealSeats();
+  const selected = new Set(state.deal?.isv_combo || []);
+  const rows = (state.refs.solutions || [])
+    .filter((sol) => selected.has(sol.id) && sol.price_type && Number(sol.unit_price) > 0)
+    .map((sol) => {
+      const unit = Number(sol.unit_price) || 0;
+      let annual = 0;
+      let formula = '';
+      if (sol.price_type === 'seat') { annual = seats * unit * 12; formula = `좌석 ${seats} × ${formatKRW(unit)}/월 × 12`; }
+      else if (sol.price_type === 'once') { annual = unit; formula = '일회성'; }
+      else if (sol.price_type === 'mrr') { annual = unit * 12; formula = `${formatKRW(unit)}/월 × 12`; }
+      return { id: sol.id, name: sol.name, type: sol.price_type, unit, annual, formula };
+    });
+  const sumByType = (type) => rows.filter((row) => row.type === type).reduce((sum, row) => sum + row.annual, 0);
+  const license = sumByType('seat');
+  const once = sumByType('once');
+  const mrr = sumByType('mrr');
+  const total = license + once + mrr;
+  return {
+    seats, rows, license, once, mrr, total,
+    multiplier: license > 0 ? total / license : 0,
+    anySelected: selected.size > 0,
+    hasPriced: rows.length > 0
+  };
+}
+
+function dealSimSummaryMarkup() {
+  const { rows, license, once, mrr, total, multiplier, anySelected, hasPriced } = computeDealSim();
+  if (!anySelected) return '<div class="quote-empty">STEP 03에서 ISV 솔루션을 선택하면 딜 규모가 계산됩니다.</div>';
+  if (!hasPriced) return '<div class="quote-empty">선택한 솔루션에 단가가 없습니다. admin에서 솔루션 가격(종류·단가)을 입력하세요.</div>';
+  const lineRows = rows.map((row) => `<tr>
+    <td>${escapeHtml(row.name)}</td>
+    <td>${DEAL_SIM_TYPE_LABEL[row.type] || row.type}</td>
+    <td class="num">${escapeHtml(row.formula)}</td>
+    <td class="num amount">${formatKRW(row.annual)}</td>
+  </tr>`).join('');
+  return `<div class="deal-sim-metrics">
+      <div class="dsm"><span>라이선스(연)</span><b>${formatKRW(license)}</b></div>
+      <div class="dsm"><span>일회성 구축</span><b>${formatKRW(once)}</b></div>
+      <div class="dsm"><span>운영 MRR(연환산)</span><b>${formatKRW(mrr)}</b></div>
+      <div class="dsm dsm-total"><span>1년차 총 딜</span><b>${formatKRW(total)}</b></div>
+    </div>
+    <div class="quote-scroll"><table class="quote-table">
+      <thead><tr><th>솔루션</th><th>유형</th><th class="num">산식</th><th class="num">연 금액</th></tr></thead>
+      <tbody>${lineRows}</tbody>
+    </table></div>
+    ${multiplier > 0 ? `<p class="deal-sim-mult">라이선스 단독 대비 <b>${multiplier.toFixed(1)}배</b> — 결합 판매로 딜 사이즈가 확대됩니다.</p>` : ''}`;
+}
+
+function dealSimMarkup() {
+  const seats = getDealSeats();
+  return `<div class="deal-sim">
+    <div class="quote-head"><h3>딜 사이즈 시뮬레이터<span> · 내부 참고용</span></h3></div>
+    <div class="deal-sim-dummy">⚠ 더미 단가 · 구조 시연용. 실단가 확정 전 견적서 인용 금지.</div>
+    <div class="deal-sim-seats">
+      <label for="deal-sim-seat-num">좌석 수 (SEATS)</label>
+      <input type="range" id="deal-sim-seat-range" min="10" max="3000" step="10" value="${Math.min(3000, Math.max(10, seats))}">
+      <input type="number" id="deal-sim-seat-num" min="1" max="100000" step="10" value="${seats}">
+    </div>
+    <div id="deal-sim-summary">${dealSimSummaryMarkup()}</div>
+  </div>`;
+}
+
+function renderDealSimulator() {
+  const node = document.getElementById('deal-sim-summary');
+  if (node) node.innerHTML = dealSimSummaryMarkup();
+}
+
+function setDealSeats(value, source) {
+  const seats = Math.max(1, Math.round(Number(value) || 0));
+  const meta = { ...(state.deal.customer_meta || {}) };
+  meta.sim = { ...(meta.sim || {}), seats };
+  state.deal.customer_meta = meta;
+  const range = document.getElementById('deal-sim-seat-range');
+  const num = document.getElementById('deal-sim-seat-num');
+  if (source !== 'range' && range) range.value = Math.min(Number(range.max), Math.max(Number(range.min), seats));
+  if (source !== 'num' && num) num.value = seats;
+  renderDealSimulator();
+  scheduleSave({ customer_meta: meta });
 }
 
 function buildPitch() {
@@ -764,6 +852,8 @@ function bindStageEvents() {
     renderQuoteEstimate();
     scheduleSave({ packages: state.deal.packages });
   }));
+  $('#deal-sim-seat-range')?.addEventListener('input', (event) => setDealSeats(event.target.value, 'range'));
+  $('#deal-sim-seat-num')?.addEventListener('input', (event) => setDealSeats(event.target.value, 'num'));
   $('#copy-pitch')?.addEventListener('click', async () => {
     await navigator.clipboard.writeText(buildPitch());
     toast('피치 가이드를 복사했습니다.');

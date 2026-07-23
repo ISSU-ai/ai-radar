@@ -523,6 +523,22 @@
 
           <div class="form-grid">
             <div class="form-group">
+              <label class="control-label" for="sol-price-type">가격 종류 (딜 시뮬레이터)</label>
+              <select id="sol-price-type" class="form-control" style="padding-left:12px; cursor:pointer;">
+                <option value="">미설정 (시뮬레이터 제외)</option>
+                <option value="seat">좌석 라이선스 (1좌석·월)</option>
+                <option value="once">일회성 (구축·서비스)</option>
+                <option value="mrr">운영 MRR (월)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="sol-unit-price">단가 (₩)</label>
+              <input type="number" id="sol-unit-price" class="form-control" min="0" step="1000" style="padding-left:12px;" placeholder="seat=90000 / once=30000000 / mrr=8000000">
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
               <label class="control-label" for="sol-tech-note">기술 제약 (HALO 2-1 · 2-2)</label>
               <textarea id="sol-tech-note" class="textarea-control" style="height:76px;" placeholder="연동, 보안, 제공 범위 제약"></textarea>
             </div>
@@ -1179,6 +1195,8 @@
         document.getElementById('sol-status-op').value = sol.status_op || 'active';
         document.getElementById('sol-tech-note').value = sol.tech_note || '';
         document.getElementById('sol-note').value = sol.note || '';
+        document.getElementById('sol-price-type').value = sol.price_type || '';
+        document.getElementById('sol-unit-price').value = sol.unit_price ?? '';
 
         // Clear and Reset Checkboxes
         document.querySelectorAll('input[name="sol-industries"]').forEach(cb => cb.checked = false);
@@ -1273,6 +1291,8 @@
         status_op: document.getElementById('sol-status-op').value,
         tech_note: document.getElementById('sol-tech-note').value,
         note: document.getElementById('sol-note').value,
+        price_type: document.getElementById('sol-price-type').value || null,
+        unit_price: document.getElementById('sol-unit-price').value === '' ? 0 : Number(document.getElementById('sol-unit-price').value),
         sections: secs,
         industries,
         simulator_mappings
@@ -1722,7 +1742,9 @@
         { label: '카테고리', key: 'category' },
         { label: '밸류체인', key: 'value_chain' },
         { label: 'JTBD', key: 'jtbd' },
-        { label: 'MZC 내부의견', key: 'opinion' }
+        { label: 'MZC 내부의견', key: 'opinion' },
+        { label: '가격 종류', key: 'price_type' },
+        { label: '단가(₩)', key: 'unit_price' }
       ];
 
       // 1. Meta Fields Diff
