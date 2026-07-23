@@ -787,6 +787,7 @@ function dealSimMarkup() {
       <input type="range" id="deal-sim-seat-range" min="10" max="3000" step="10" value="${Math.min(3000, Math.max(10, seats))}">
       <input type="number" id="deal-sim-seat-num" min="1" max="100000" step="10" value="${seats}">
     </div>
+    <p class="deal-sim-seathint">좌석 수는 <b>좌석 라이선스(seat)</b> 유형에만 반영됩니다. 일회성·월 운영·고정 구간은 좌석수와 무관하게 고정입니다.</p>
     <div id="deal-sim-summary">${dealSimSummaryMarkup()}</div>
   </div>`;
 }
