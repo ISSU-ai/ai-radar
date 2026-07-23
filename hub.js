@@ -25,6 +25,9 @@ const state = {
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+// jsonb array fields (isv_combo, packages) can come back as a non-array object
+// for malformed deals; coerce so `new Set(...)`/`.map(...)` never throw.
+const asArray = (value) => (Array.isArray(value) ? value : []);
 const sourceNames = { portal: '포탈 유입', manual: '직접 생성', sheet: '시트 회수' };
 const DEAL_SIM_TYPE_LABEL = { seat: '좌석 라이선스', once: '일회성', mrr: '운영 MRR' };
 const fqaCategoryLabels = Object.freeze({
@@ -607,7 +610,7 @@ function renderFqa() {
 }
 
 function renderSolutions() {
-  const selected = new Set(state.deal.isv_combo || []);
+  const selected = new Set(asArray(state.deal.isv_combo));
   const query = state.catalogQuery.toLowerCase();
   const filtered = state.refs.solutions.filter((solution) => `${solution.name} ${solution.category} ${solution.jtbd}`.toLowerCase().includes(query));
   const cards = filtered.map((solution) => `<label class="select-card ${selected.has(solution.id) ? 'selected' : ''}">
@@ -629,7 +632,7 @@ function updateFqaProgress(category, scores) {
 }
 
 function renderPackages() {
-  const selected = new Map((state.deal.packages || []).map((item) => [typeof item === 'string' ? item : item.id, item]));
+  const selected = new Map((asArray(state.deal.packages)).map((item) => [typeof item === 'string' ? item : item.id, item]));
   const cards = state.refs.packages.map((pkg) => {
     const value = selected.get(pkg.id);
     const checked = Boolean(value);
@@ -646,7 +649,7 @@ function renderPackages() {
 
 function computeQuote() {
   const priceById = new Map(state.refs.packages.map((pkg) => [pkg.id, pkg]));
-  const rows = (state.deal.packages || []).map((item) => {
+  const rows = (asArray(state.deal.packages)).map((item) => {
     const id = typeof item === 'string' ? item : item.id;
     const adjMd = (item && typeof item === 'object' && item.md != null) ? Number(item.md) || 0 : 0;
     const pkg = priceById.get(id);
@@ -694,7 +697,7 @@ function getDealSeats() {
 
 function computeDealSim() {
   const seats = getDealSeats();
-  const selected = new Set(state.deal?.isv_combo || []);
+  const selected = new Set(asArray(state.deal?.isv_combo));
   const rows = (state.refs.solutions || [])
     .filter((sol) => selected.has(sol.id) && sol.price_type && Number(sol.unit_price) > 0)
     .map((sol) => {
@@ -776,9 +779,9 @@ function setDealSeats(value, source) {
 
 function buildPitch() {
   const meta = state.deal.customer_meta || {};
-  const selectedSolutions = state.refs.solutions.filter((solution) => (state.deal.isv_combo || []).includes(solution.id));
+  const selectedSolutions = state.refs.solutions.filter((solution) => (asArray(state.deal.isv_combo)).includes(solution.id));
   const packageMap = new Map(state.refs.packages.map((pkg) => [pkg.id, pkg]));
-  const selectedPackages = (state.deal.packages || []).map((item) => packageMap.get(typeof item === 'string' ? item : item.id)).filter(Boolean);
+  const selectedPackages = (asArray(state.deal.packages)).map((item) => packageMap.get(typeof item === 'string' ? item : item.id)).filter(Boolean);
   const track = state.refs.tracks.find((item) => item.id === state.deal.track);
   const failing = Object.entries(state.deal.fqa_totals || {}).filter(([, value]) => !value.ready).map(([key]) => key);
   return `${state.deal.customer} 제안 대화 가이드
@@ -845,21 +848,21 @@ function bindStageEvents() {
     input.setSelectionRange(input.value.length, input.value.length);
   });
   $$('[data-solution-id]').forEach((input) => input.addEventListener('change', () => {
-    const selected = new Set(state.deal.isv_combo || []);
+    const selected = new Set(asArray(state.deal.isv_combo));
     input.checked ? selected.add(input.dataset.solutionId) : selected.delete(input.dataset.solutionId);
     state.deal.isv_combo = [...selected];
     scheduleSave({ isv_combo: state.deal.isv_combo }, true);
     renderStage();
   }));
   $$('[data-package-id]').forEach((input) => input.addEventListener('change', () => {
-    const map = new Map((state.deal.packages || []).map((item) => [typeof item === 'string' ? item : item.id, typeof item === 'string' ? { id: item } : item]));
+    const map = new Map((asArray(state.deal.packages)).map((item) => [typeof item === 'string' ? item : item.id, typeof item === 'string' ? { id: item } : item]));
     input.checked ? map.set(input.dataset.packageId, { id: input.dataset.packageId, md: null }) : map.delete(input.dataset.packageId);
     state.deal.packages = [...map.values()];
     scheduleSave({ packages: state.deal.packages }, true);
     renderStage();
   }));
   $$('[data-package-md]').forEach((input) => input.addEventListener('input', () => {
-    state.deal.packages = (state.deal.packages || []).map((item) => {
+    state.deal.packages = (asArray(state.deal.packages)).map((item) => {
       const normal = typeof item === 'string' ? { id: item } : item;
       return normal.id === input.dataset.packageMd ? { ...normal, md: input.value ? Number(input.value) : null } : normal;
     });
