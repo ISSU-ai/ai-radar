@@ -3,8 +3,8 @@ require('dotenv').config();
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-  family: 6
+  ssl: { rejectUnauthorized: false }
+  // No forced IP family: the Supabase pooler host is IPv4-only. See server.js.
 });
 
 async function check() {
