@@ -428,7 +428,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
 
   router.get('/reference-data', async (_req, res) => {
     try {
-      const [fqaItems, tracks, packages, solutions] = await Promise.all([
+      const [fqaItems, tracks, packages, solutions, settings] = await Promise.all([
         loadFqaItems(),
         pool.query('select id, name, why, warn, ask from tracks order by id').then((r) => r.rows),
         pool.query(
@@ -440,15 +440,16 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
         ).then((r) => r.rows),
         pool.query(
           `select s.id, s.slug, s.name, s.category, s.jtbd, s.grade, s.scale,
-                  s.tech_note, s.status_op, s.price_type, s.unit_price,
+                  s.tech_note, s.status_op, s.price_type, s.unit_price, s.currency, s.price_tiers,
                   f.name as focal_name, f.org as focal_org
            from solutions s left join focal_contacts f on f.id = s.focal_id
            where s.is_archived = false and s.status = 'published'
              and coalesce(s.status_op, 'active') <> 'draft'
            order by coalesce(s.grade, 0) desc, s.name`
-        ).then((r) => r.rows)
+        ).then((r) => r.rows),
+        pool.query('select usd_krw from hub_settings where id = true').then((r) => r.rows[0] || { usd_krw: 1400 })
       ]);
-      res.json({ stages: PIPELINE_STAGES, fqaItems, tracks, packages, solutions });
+      res.json({ stages: PIPELINE_STAGES, fqaItems, tracks, packages, solutions, settings });
     } catch (error) {
       console.error(error);
       sendError(res, error, 500);

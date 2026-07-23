@@ -24,7 +24,8 @@ const MIGRATIONS = [
   '001_enablement_hub.sql',
   '002_release_hardening.sql',
   '003_package_pricing.sql',
-  '005_solution_pricing.sql'
+  '005_solution_pricing.sql',
+  '008_tiered_pricing.sql'
 ];
 
 async function main() {

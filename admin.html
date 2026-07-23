@@ -533,8 +533,22 @@
               </select>
             </div>
             <div class="form-group">
-              <label class="control-label" for="sol-unit-price">단가 (₩)</label>
+              <label class="control-label" for="sol-unit-price">단가 (통화 기준)</label>
               <input type="number" id="sol-unit-price" class="form-control" min="0" step="1000" style="padding-left:12px;" placeholder="seat=90000 / once=30000000 / mrr=8000000">
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="control-label" for="sol-currency">통화</label>
+              <select id="sol-currency" class="form-control" style="padding-left:12px; cursor:pointer;">
+                <option value="KRW">KRW (₩)</option>
+                <option value="USD">USD ($) · 전역 환율로 환산</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="sol-price-tiers">구간(볼륨) 단가 티어 · JSON — seat 전용, 있으면 단가 대신 사용</label>
+              <textarea id="sol-price-tiers" class="textarea-control" style="height:120px; font-family:monospace; font-size:12px;" placeholder='[{"up_to":75,"flat":10000},{"up_to":1000,"per_user":146},{"up_to":null,"per_user":59}]  · up_to=최대좌석(null=이상), per_user=1인당 연단가, flat=구간 고정 연가'></textarea>
             </div>
           </div>
 
@@ -701,6 +715,11 @@
         <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
           hub STEP 04의 MD 가견적에 쓰이는 패키지별 <b>기준 공수(MD)</b>와 <b>MD당 단가</b>입니다. 가견적 = (기준MD + 딜별 조정MD) × MD 단가.
         </p>
+        <div style="display:flex; align-items:center; gap:10px; padding:12px; margin-bottom:16px; border:1px solid var(--card-border); border-radius:9px; background:var(--surface-muted);">
+          <div style="flex:1;"><strong style="display:block;color:var(--text-primary);font-size:.84rem;">전역 환율 · USD → KRW</strong><small style="color:var(--text-secondary);">딜 사이즈 시뮬레이터에서 USD 단가를 환산할 때 사용</small></div>
+          <input id="setting-usd-krw" type="number" min="1" step="10" class="form-control" style="width:120px;padding-left:10px;" value="1400">
+          <button type="button" id="setting-usd-krw-save" class="btn-save">환율 저장</button>
+        </div>
         <div id="packages-list">
           <!-- Loaded via API -->
         </div>
@@ -989,6 +1008,19 @@
       })[char]);
     }
 
+    // Parse the price-tiers JSON textarea into a clean array. Invalid JSON -> [].
+    function parsePriceTiers(text) {
+      const raw = String(text || '').trim();
+      if (!raw) return [];
+      let parsed;
+      try { parsed = JSON.parse(raw); } catch (_e) { return []; }
+      if (!Array.isArray(parsed)) return [];
+      const num = (v) => (v === null || v === undefined || v === '') ? null : Number(v);
+      return parsed
+        .filter(tier => tier && typeof tier === 'object')
+        .map(tier => ({ up_to: num(tier.up_to), per_user: num(tier.per_user), flat: num(tier.flat) }));
+    }
+
     async function loadProfiles() {
       const container = document.getElementById('profiles-list');
       container.innerHTML = '<p style="color:var(--text-secondary);">회원 목록을 불러오는 중입니다.</p>';
@@ -1065,6 +1097,31 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || '패키지 저장 실패');
         showToast('패키지 단가를 저장했습니다.');
+      } catch (error) {
+        showToast(error.message, 'alert-circle');
+      }
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/admin/settings');
+        const data = await res.json();
+        if (res.ok) document.getElementById('setting-usd-krw').value = Number(data.usd_krw) || 1400;
+      } catch (_e) { /* keep default */ }
+      const btn = document.getElementById('setting-usd-krw-save');
+      if (btn && !btn.dataset.bound) { btn.dataset.bound = '1'; btn.addEventListener('click', saveSettings); }
+    }
+
+    async function saveSettings() {
+      try {
+        const res = await fetch('/api/admin/settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ usd_krw: Number(document.getElementById('setting-usd-krw').value) || 1400 })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '환율 저장 실패');
+        showToast('환율을 저장했습니다.');
       } catch (error) {
         showToast(error.message, 'alert-circle');
       }
@@ -1247,6 +1304,8 @@
         document.getElementById('sol-note').value = sol.note || '';
         document.getElementById('sol-price-type').value = sol.price_type || '';
         document.getElementById('sol-unit-price').value = sol.unit_price ?? '';
+        document.getElementById('sol-currency').value = sol.currency || 'KRW';
+        document.getElementById('sol-price-tiers').value = Array.isArray(sol.price_tiers) && sol.price_tiers.length ? JSON.stringify(sol.price_tiers, null, 2) : '';
 
         // Clear and Reset Checkboxes
         document.querySelectorAll('input[name="sol-industries"]').forEach(cb => cb.checked = false);
@@ -1343,6 +1402,8 @@
         note: document.getElementById('sol-note').value,
         price_type: document.getElementById('sol-price-type').value || null,
         unit_price: document.getElementById('sol-unit-price').value === '' ? 0 : Number(document.getElementById('sol-unit-price').value),
+        currency: document.getElementById('sol-currency').value || 'KRW',
+        price_tiers: parsePriceTiers(document.getElementById('sol-price-tiers').value),
         sections: secs,
         industries,
         simulator_mappings
@@ -1581,6 +1642,7 @@
         loadProfiles();
       } else if (tabName === 'packages') {
         loadPackages();
+        loadSettings();
       }
     }
 

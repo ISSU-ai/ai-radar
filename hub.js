@@ -695,20 +695,46 @@ function getDealSeats() {
   return Number.isFinite(seats) && seats > 0 ? Math.round(seats) : 100;
 }
 
+// Pick the volume tier that applies at `seats`. Tiers are ordered by up_to
+// ascending; up_to null is the top/unbounded tier.
+function pickTier(tiers, seats) {
+  const usable = tiers.filter((tier) => tier && (tier.per_user != null || tier.flat != null));
+  for (const tier of usable) {
+    if (tier.up_to == null) return tier;
+    if (seats <= Number(tier.up_to)) return tier;
+  }
+  return usable.length ? usable[usable.length - 1] : null;
+}
+
 function computeDealSim() {
   const seats = getDealSeats();
+  const fx = Number(state.refs.settings?.usd_krw) || 1400;
   const selected = new Set(asArray(state.deal?.isv_combo));
   const rows = (state.refs.solutions || [])
-    .filter((sol) => selected.has(sol.id) && sol.price_type && Number(sol.unit_price) > 0)
+    .filter((sol) => selected.has(sol.id) && sol.price_type)
     .map((sol) => {
       const unit = Number(sol.unit_price) || 0;
-      let annual = 0;
+      const tiers = asArray(sol.price_tiers);
+      const isUsd = sol.currency === 'USD';
+      const cur = isUsd ? '$' : '₩';
+      const money = (n) => `${cur}${Math.round(Number(n) || 0).toLocaleString('ko-KR')}`;
+      let local = 0;         // annual amount in the solution's own currency
       let formula = '';
-      if (sol.price_type === 'seat') { annual = seats * unit * 12; formula = `좌석 ${seats} × ${formatKRW(unit)}/월 × 12`; }
-      else if (sol.price_type === 'once') { annual = unit; formula = '일회성'; }
-      else if (sol.price_type === 'mrr') { annual = unit * 12; formula = `${formatKRW(unit)}/월 × 12`; }
-      return { id: sol.id, name: sol.name, type: sol.price_type, unit, annual, formula };
-    });
+      if (sol.price_type === 'seat' && tiers.length) {
+        const tier = pickTier(tiers, seats);
+        if (tier && tier.flat != null) { local = Number(tier.flat) || 0; formula = `고정 ${money(tier.flat)}/년 (≤${tier.up_to ?? '∞'})`; }
+        else if (tier) { const pu = Number(tier.per_user) || 0; local = seats * pu; formula = `${seats}석 × ${money(pu)}/인·년`; }
+      } else if (sol.price_type === 'seat') {
+        local = seats * unit * 12; formula = `${seats}석 × ${money(unit)}/월 × 12`;
+      } else if (sol.price_type === 'once') {
+        local = unit; formula = `일회성 ${money(unit)}`;
+      } else if (sol.price_type === 'mrr') {
+        local = unit * 12; formula = `${money(unit)}/월 × 12`;
+      }
+      const annual = isUsd ? local * fx : local;
+      return { id: sol.id, name: sol.name, type: sol.price_type, annual, formula: formula + (isUsd ? ` ×${fx.toLocaleString('ko-KR')}` : '') };
+    })
+    .filter((row) => row.annual > 0);
   const sumByType = (type) => rows.filter((row) => row.type === type).reduce((sum, row) => sum + row.annual, 0);
   const license = sumByType('seat');
   const once = sumByType('once');

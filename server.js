@@ -573,7 +573,7 @@ app.post('/api/admin/solutions', authenticateToken, adminOnly, async (req, res) 
   const {
     name, delivery, layer, synergy, category, jtbd, value_chain, sections, opinion,
     simulator_mappings, industries, grade, scale, focal_id, tech_note, status_op, note,
-    price_type, unit_price
+    price_type, unit_price, currency, price_tiers
   } = req.body;
 
   if (!name || !layer) {
@@ -586,6 +586,8 @@ app.post('/api/admin/solutions', authenticateToken, adminOnly, async (req, res) 
   const simMappingsJson = JSON.stringify(simulator_mappings || []);
   const priceType = ['seat', 'once', 'mrr'].includes(price_type) ? price_type : null;
   const unitPrice = Math.max(0, Math.round(Number(unit_price) || 0));
+  const currencyVal = ['KRW', 'USD'].includes(currency) ? currency : 'KRW';
+  const priceTiersJson = JSON.stringify(Array.isArray(price_tiers) ? price_tiers : []);
 
   // industries 데이터를 [{ industry, fit: 'high' }] 구조로 하이브리드 포맷팅
   const formattedIndustries = (industries || []).map(ind => {
@@ -599,10 +601,10 @@ app.post('/api/admin/solutions', authenticateToken, adminOnly, async (req, res) 
       INSERT INTO solutions (
         slug, name, delivery, layer, synergy, category, jtbd, value_chain, sections, opinion,
         status, version, updated_by, updated_at, simulator_mappings, industries,
-        grade, scale, focal_id, tech_note, status_op, note, price_type, unit_price
+        grade, scale, focal_id, tech_note, status_op, note, price_type, unit_price, currency, price_tiers
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft', 1, $11, $12, $13, $14,
-              $15, $16, $17, $18, $19, $20, $21, $22)
+              $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
       RETURNING id;
     `;
 
@@ -610,7 +612,7 @@ app.post('/api/admin/solutions', authenticateToken, adminOnly, async (req, res) 
       slug, name, delivery, layer, synergy, category, jtbd, value_chain, sectionsJson, opinion,
       req.user.id, now, simMappingsJson, indJson,
       grade ?? null, scale || null, focal_id || null, tech_note || null, status_op || 'draft', note || null,
-      priceType, unitPrice
+      priceType, unitPrice, currencyVal, priceTiersJson
     ]);
     
     const solId = result.rows[0].id;
@@ -631,7 +633,7 @@ app.put('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, re
   const {
     name, delivery, layer, synergy, category, jtbd, value_chain, sections, opinion, status,
     simulator_mappings, industries, grade, scale, focal_id, tech_note, status_op, note,
-    price_type, unit_price
+    price_type, unit_price, currency, price_tiers
   } = req.body;
 
   if (!name || !layer) {
@@ -663,6 +665,12 @@ app.put('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, re
     const unitPrice = unit_price === undefined
       ? (current.unit_price ?? 0)
       : Math.max(0, Math.round(Number(unit_price) || 0));
+    const currencyVal = currency === undefined
+      ? (current.currency || 'KRW')
+      : (['KRW', 'USD'].includes(currency) ? currency : 'KRW');
+    const priceTiersJson = price_tiers === undefined
+      ? JSON.stringify(current.price_tiers ?? [])
+      : JSON.stringify(Array.isArray(price_tiers) ? price_tiers : []);
 
     const updateQuery = `
       UPDATE solutions
@@ -670,15 +678,16 @@ app.put('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, re
           jtbd = $7, value_chain = $8, sections = $9, opinion = $10, status = $11,
           updated_by = $12, updated_at = $13, simulator_mappings = $14, industries = $15,
           grade = $16, scale = $17, focal_id = $18, tech_note = $19, status_op = $20, note = $21,
-          price_type = $22, unit_price = $23
-      WHERE id = $24
+          price_type = $22, unit_price = $23, currency = $24, price_tiers = $25
+      WHERE id = $26
     `;
 
     await pool.query(updateQuery, [
       slug, name, delivery, layer, synergy, category, jtbd, value_chain, sectionsJson, opinion,
       status || current.status, req.user.id, now, simMappingsJson, indJson,
       grade ?? current.grade, scale || null, focal_id || null, tech_note || null,
-      status_op || current.status_op || 'active', note || null, priceType, unitPrice, solId
+      status_op || current.status_op || 'active', note || null, priceType, unitPrice,
+      currencyVal, priceTiersJson, solId
     ]);
 
     auditLog(req.user.id, 'edit', slug, 'Updated solution details');
@@ -727,6 +736,12 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
     const unitPrice = payload.unit_price === undefined
       ? (sol.unit_price ?? 0)
       : Math.max(0, Math.round(Number(payload.unit_price) || 0));
+    const currencyVal = payload.currency === undefined
+      ? (sol.currency || 'KRW')
+      : (['KRW', 'USD'].includes(payload.currency) ? payload.currency : 'KRW');
+    const priceTiersJson = payload.price_tiers === undefined
+      ? JSON.stringify(parseJsonColumn(sol.price_tiers, []))
+      : JSON.stringify(Array.isArray(payload.price_tiers) ? payload.price_tiers : []);
 
     const updatedRes = await client.query(`
       UPDATE solutions
@@ -734,8 +749,9 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
           jtbd = $7, value_chain = $8, sections = $9, opinion = $10, status = 'published',
           version = $11, updated_by = $12, updated_at = $13, simulator_mappings = $14,
           industries = $15, grade = $16, scale = $17, focal_id = $18, tech_note = $19,
-          status_op = $20, note = $21, price_type = $22, unit_price = $23
-      WHERE id = $24
+          status_op = $20, note = $21, price_type = $22, unit_price = $23,
+          currency = $24, price_tiers = $25
+      WHERE id = $26
       RETURNING *
     `, [
       slug,
@@ -761,6 +777,8 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
       payload.note ?? null,
       priceType,
       unitPrice,
+      currencyVal,
+      priceTiersJson,
       solId
     ]);
     const updatedSol = updatedRes.rows[0];
@@ -787,7 +805,9 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
       status_op: updatedSol.status_op,
       note: updatedSol.note,
       price_type: updatedSol.price_type,
-      unit_price: updatedSol.unit_price
+      unit_price: updatedSol.unit_price,
+      currency: updatedSol.currency,
+      price_tiers: parseJsonColumn(updatedSol.price_tiers, [])
     });
 
     await client.query(`
@@ -904,6 +924,33 @@ app.patch('/api/admin/packages/:id', authenticateToken, adminOnly, async (req, r
   } catch (err) {
     console.error('Admin package update failed:', err.message);
     res.status(500).json({ error: '패키지 저장에 실패했습니다.' });
+  }
+});
+
+app.get('/api/admin/settings', authenticateToken, adminOnly, async (_req, res) => {
+  try {
+    const result = await pool.query('select usd_krw from hub_settings where id = true');
+    res.json(result.rows[0] || { usd_krw: 1400 });
+  } catch (err) {
+    console.error('Admin settings failed:', err.message);
+    res.status(500).json({ error: '설정을 불러오지 못했습니다.' });
+  }
+});
+
+app.patch('/api/admin/settings', authenticateToken, adminOnly, async (req, res) => {
+  const usdKrw = Math.max(1, Math.round(Number(req.body?.usd_krw) || 0));
+  try {
+    const result = await pool.query(
+      `insert into hub_settings (id, usd_krw) values (true, $1)
+       on conflict (id) do update set usd_krw = $1
+       returning usd_krw`,
+      [usdKrw]
+    );
+    auditLog(req.user.id, 'edit', 'settings', `usd_krw=${usdKrw}`);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Admin settings update failed:', err.message);
+    res.status(500).json({ error: '설정 저장에 실패했습니다.' });
   }
 });
 
@@ -1024,8 +1071,9 @@ app.post('/api/admin/solutions/:id/rollback', authenticateToken, adminOnly, asyn
           jtbd = $7, value_chain = $8, sections = $9, opinion = $10, status = 'published',
           version = $11, updated_by = $12, updated_at = $13, simulator_mappings = $14,
           industries = $15, grade = $16, scale = $17, focal_id = $18, tech_note = $19,
-          status_op = $20, note = $21, price_type = $22, unit_price = $23
-      WHERE id = $24
+          status_op = $20, note = $21, price_type = $22, unit_price = $23,
+          currency = $24, price_tiers = $25
+      WHERE id = $26
     `;
 
     await client.query(updateQuery, [
@@ -1052,6 +1100,8 @@ app.post('/api/admin/solutions/:id/rollback', authenticateToken, adminOnly, asyn
       snapshot.note || null,
       ['seat', 'once', 'mrr'].includes(snapshot.price_type) ? snapshot.price_type : null,
       Math.max(0, Math.round(Number(snapshot.unit_price) || 0)),
+      ['KRW', 'USD'].includes(snapshot.currency) ? snapshot.currency : 'KRW',
+      JSON.stringify(Array.isArray(snapshot.price_tiers) ? snapshot.price_tiers : []),
       solId
     ]);
 
@@ -1077,7 +1127,9 @@ app.post('/api/admin/solutions/:id/rollback', authenticateToken, adminOnly, asyn
       status_op: snapshot.status_op,
       note: snapshot.note,
       price_type: snapshot.price_type,
-      unit_price: snapshot.unit_price
+      unit_price: snapshot.unit_price,
+      currency: snapshot.currency,
+      price_tiers: snapshot.price_tiers
     });
 
     await client.query(`
