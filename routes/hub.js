@@ -366,8 +366,12 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
         patch.fqa_totals = calculateFqaTotals(items, patch.fqa_scores);
       }
 
+      // jsonb columns must receive a JSON string. node-postgres serialises a JS
+      // array as a Postgres array literal ({...}), which jsonb rejects with
+      // "invalid input syntax for type json" — so stringify these explicitly.
+      const JSONB_DEAL_FIELDS = new Set(['isv_combo', 'packages', 'customer_meta', 'fqa_scores', 'fqa_totals']);
       const fields = Object.keys(patch);
-      const values = fields.map((field) => patch[field]);
+      const values = fields.map((field) => (JSONB_DEAL_FIELDS.has(field) ? JSON.stringify(patch[field]) : patch[field]));
       values.push(req.params.id);
       const assignments = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
       const result = await pool.query(
