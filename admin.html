@@ -433,6 +433,7 @@
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="members">회원 승인</button>
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="ai">자연어 편집 (AI Propose)</button>
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="history" id="history-tab-btn">버전 이력 / 롤백 (v1)</button>
+        <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="packages">패키지 단가</button>
       </div>
 
       <!-- Tab 1: Form Editor -->
@@ -691,6 +692,16 @@
           해당 솔루션이 발행될 때마다 자동으로 저장된 스냅샷 히스토리입니다. 원하는 지점으로 롤백 시 즉시 활성 버전으로 복구 발행됩니다.
         </p>
         <div class="timeline" id="version-timeline-container">
+          <!-- Loaded via API -->
+        </div>
+      </div>
+
+      <div id="tab-admin-packages" class="glass-card admin-tab-content hidden">
+        <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.5rem;">패키지 단가 (STEP 04 MD 가견적)</h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
+          hub STEP 04의 MD 가견적에 쓰이는 패키지별 <b>기준 공수(MD)</b>와 <b>MD당 단가</b>입니다. 가견적 = (기준MD + 딜별 조정MD) × MD 단가.
+        </p>
+        <div id="packages-list">
           <!-- Loaded via API -->
         </div>
       </div>
@@ -1015,6 +1026,45 @@
         if (!res.ok) throw new Error(data.error || '회원 저장 실패');
         showToast('회원 권한을 저장했습니다.');
         await loadProfiles();
+      } catch (error) {
+        showToast(error.message, 'alert-circle');
+      }
+    }
+
+    async function loadPackages() {
+      const container = document.getElementById('packages-list');
+      container.innerHTML = '<p style="color:var(--text-secondary);">패키지를 불러오는 중입니다.</p>';
+      try {
+        const res = await fetch('/api/admin/packages');
+        const packages = await res.json();
+        if (!res.ok) throw new Error(packages.error || '패키지 목록 조회 실패');
+        container.innerHTML = packages.map(pkg => `
+          <div class="package-admin-row" data-package-id="${escapeAdminHtml(pkg.id)}" style="display:grid; grid-template-columns:minmax(180px,1.6fr) 110px 150px 90px; gap:10px; align-items:center; padding:12px; margin-bottom:8px; border:1px solid var(--card-border); border-radius:9px; background:var(--surface-muted);">
+            <div><strong style="display:block;color:var(--text-primary);font-size:.84rem;">${escapeAdminHtml(pkg.name)}</strong><small style="color:var(--text-secondary);">${escapeAdminHtml(pkg.id)}${pkg.period ? ` · ${escapeAdminHtml(pkg.period)}` : ''}</small></div>
+            <label style="display:flex;flex-direction:column;gap:3px;color:var(--text-secondary);font-size:.7rem;">기준 MD<input class="form-control package-base-md" type="number" min="0" step="1" value="${Number(pkg.base_md) || 0}" style="padding-left:10px;"></label>
+            <label style="display:flex;flex-direction:column;gap:3px;color:var(--text-secondary);font-size:.7rem;">MD 단가(₩)<input class="form-control package-unit-price" type="number" min="0" step="1000" value="${Number(pkg.unit_price) || 0}" style="padding-left:10px;"></label>
+            <button type="button" class="btn-save package-save">저장</button>
+          </div>`).join('') || '<p style="color:var(--text-secondary);">패키지가 없습니다.</p>';
+        container.querySelectorAll('.package-save').forEach(button => button.addEventListener('click', savePackage));
+      } catch (error) {
+        container.innerHTML = `<p style="color:#dc2626;">${escapeAdminHtml(error.message)}</p>`;
+      }
+    }
+
+    async function savePackage(event) {
+      const row = event.currentTarget.closest('[data-package-id]');
+      try {
+        const res = await fetch(`/api/admin/packages/${encodeURIComponent(row.dataset.packageId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            base_md: Number(row.querySelector('.package-base-md').value) || 0,
+            unit_price: Number(row.querySelector('.package-unit-price').value) || 0
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '패키지 저장 실패');
+        showToast('패키지 단가를 저장했습니다.');
       } catch (error) {
         showToast(error.message, 'alert-circle');
       }
@@ -1529,6 +1579,8 @@
         loadVersionHistory();
       } else if (tabName === 'members') {
         loadProfiles();
+      } else if (tabName === 'packages') {
+        loadPackages();
       }
     }
 

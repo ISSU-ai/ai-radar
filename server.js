@@ -859,6 +859,54 @@ app.post('/api/admin/focal-contacts', authenticateToken, adminOnly, async (req, 
   }
 });
 
+app.get('/api/admin/packages', authenticateToken, adminOnly, async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `select p.id, p.name, p.scale, p.period, p.target, p.sort_order, p.status,
+              p.base_md, p.unit_price,
+              coalesce(json_agg(json_build_object('label', pi.label) order by pi.sort_order)
+                filter (where pi.id is not null), '[]') as items
+       from packages p left join package_items pi on pi.package_id = p.id
+       group by p.id order by p.sort_order, p.id`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Admin packages list failed:', err.message);
+    res.status(500).json({ error: '패키지 목록을 불러오지 못했습니다.' });
+  }
+});
+
+app.patch('/api/admin/packages/:id', authenticateToken, adminOnly, async (req, res) => {
+  const { id } = req.params;
+  const { name, scale, period, target, sort_order, base_md, unit_price } = req.body || {};
+  try {
+    const curRes = await pool.query('SELECT * FROM packages WHERE id = $1', [id]);
+    const cur = curRes.rows[0];
+    if (!cur) return res.status(404).json({ error: '패키지를 찾을 수 없습니다.' });
+
+    const baseMd = base_md === undefined ? cur.base_md : Math.max(0, Math.round(Number(base_md) || 0));
+    const unitPrice = unit_price === undefined ? cur.unit_price : Math.max(0, Math.round(Number(unit_price) || 0));
+    const sortOrder = sort_order === undefined ? cur.sort_order : Math.round(Number(sort_order) || 0);
+
+    const updated = await pool.query(
+      `UPDATE packages
+       SET name = $1, scale = $2, period = $3, target = $4, sort_order = $5,
+           base_md = $6, unit_price = $7
+       WHERE id = $8
+       RETURNING id, name, scale, period, target, sort_order, base_md, unit_price`,
+      [
+        name ?? cur.name, scale ?? cur.scale, period ?? cur.period, target ?? cur.target,
+        sortOrder, baseMd, unitPrice, id
+      ]
+    );
+    auditLog(req.user.id, 'edit', `package:${id}`, 'Updated package pricing');
+    res.json(updated.rows[0]);
+  } catch (err) {
+    console.error('Admin package update failed:', err.message);
+    res.status(500).json({ error: '패키지 저장에 실패했습니다.' });
+  }
+});
+
 app.get('/api/admin/profiles', authenticateToken, adminOnly, async (_req, res) => {
   try {
     const result = await pool.query(
