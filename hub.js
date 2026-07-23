@@ -77,6 +77,10 @@ function formatDate(value) {
   return new Intl.DateTimeFormat('ko-KR', { month: 'short', day: 'numeric' }).format(date);
 }
 
+function formatKRW(value) {
+  return `₩${Math.round(Number(value) || 0).toLocaleString('ko-KR')}`;
+}
+
 function isOwner() {
   return Boolean(state.deal && (state.user.role === 'admin' || state.deal.owner_id === state.user.id));
 }
@@ -614,13 +618,58 @@ function renderPackages() {
   const cards = state.refs.packages.map((pkg) => {
     const value = selected.get(pkg.id);
     const checked = Boolean(value);
+    const baseMd = Number(pkg.base_md) || 0;
+    const unit = Number(pkg.unit_price) || 0;
     return `<label class="select-card package-card ${checked ? 'selected' : ''}"><input type="checkbox" data-package-id="${pkg.id}" ${checked ? 'checked' : ''} ${disabledAttr()}>
       <div class="package-top"><div><h3>${escapeHtml(pkg.name)}</h3><p>${escapeHtml(pkg.target || '')}</p></div><span class="track-badge">${escapeHtml(pkg.scale || '—')}</span></div>
-      <div class="card-meta"><span>${escapeHtml(pkg.period || '기간 협의')}</span>${(pkg.items || []).slice(0,2).map((item) => `<span>${escapeHtml(item.label)}</span>`).join('')}</div>
-      <div class="md-control"><input type="number" min="0" max="999" step="1" data-package-md="${pkg.id}" value="${checked && typeof value === 'object' ? escapeHtml(value.md || '') : ''}" placeholder="MD" aria-label="${escapeHtml(pkg.name)} 조정 공수" ${checked && isOwner() ? '' : 'disabled'}><span>조정 공수(MD)</span></div>
+      <div class="card-meta"><span>${escapeHtml(pkg.period || '기간 협의')}</span><span>기준 ${baseMd}MD</span><span>${unit ? `${formatKRW(unit)}/MD` : '단가 미설정'}</span></div>
+      <div class="md-control"><input type="number" min="0" max="999" step="1" data-package-md="${pkg.id}" value="${checked && typeof value === 'object' ? escapeHtml(value.md || '') : ''}" placeholder="0" aria-label="${escapeHtml(pkg.name)} 조정 공수" ${checked && isOwner() ? '' : 'disabled'}><span>조정 공수(MD)</span></div>
     </label>`;
   }).join('');
-  return `${stageHeader('04', '패키지와 딜 사이즈', '확정한 ISV 조합 위에 필요한 서비스 패키지를 얹습니다. 조정 공수는 딜별로 저장됩니다.')}<div class="selection-grid">${cards}</div>`;
+  return `${stageHeader('04', '패키지와 딜 사이즈', '확정한 ISV 조합 위에 필요한 서비스 패키지를 얹습니다. 조정 공수는 딜별로 저장되고, 가견적은 (기준MD + 조정MD) × MD 단가로 합산됩니다.')}<div class="selection-grid">${cards}</div><div id="quote-estimate" class="quote-estimate">${quoteEstimateMarkup()}</div>`;
+}
+
+function computeQuote() {
+  const priceById = new Map(state.refs.packages.map((pkg) => [pkg.id, pkg]));
+  const rows = (state.deal.packages || []).map((item) => {
+    const id = typeof item === 'string' ? item : item.id;
+    const adjMd = (item && typeof item === 'object' && item.md != null) ? Number(item.md) || 0 : 0;
+    const pkg = priceById.get(id);
+    if (!pkg) return null;
+    const baseMd = Number(pkg.base_md) || 0;
+    const unit = Number(pkg.unit_price) || 0;
+    const totalMd = baseMd + adjMd;
+    return { id, name: pkg.name, baseMd, adjMd, totalMd, unit, amount: totalMd * unit };
+  }).filter(Boolean);
+  const total = rows.reduce((sum, row) => sum + row.amount, 0);
+  return { rows, total, hasUnpriced: rows.some((row) => row.unit === 0) };
+}
+
+function quoteEstimateMarkup() {
+  const { rows, total, hasUnpriced } = computeQuote();
+  if (!rows.length) {
+    return '<div class="quote-empty">패키지를 선택하면 가견적이 여기에 표시됩니다.</div>';
+  }
+  const lines = rows.map((row) => `<tr>
+    <td>${escapeHtml(row.name)}</td>
+    <td class="num">${row.baseMd}</td>
+    <td class="num">${row.adjMd ? `+${row.adjMd}` : '0'}</td>
+    <td class="num">${row.totalMd} MD</td>
+    <td class="num">${row.unit ? formatKRW(row.unit) : '미설정'}</td>
+    <td class="num amount">${formatKRW(row.amount)}</td>
+  </tr>`).join('');
+  return `<div class="quote-head"><h3>가견적<span> · 내부 참고용</span></h3><strong>${formatKRW(total)}</strong></div>
+    <div class="quote-scroll"><table class="quote-table">
+      <thead><tr><th>패키지</th><th class="num">기준MD</th><th class="num">조정MD</th><th class="num">합계</th><th class="num">MD 단가</th><th class="num">금액</th></tr></thead>
+      <tbody>${lines}</tbody>
+      <tfoot><tr><td colspan="5">합계 (VAT 별도)</td><td class="num amount">${formatKRW(total)}</td></tr></tfoot>
+    </table></div>
+    ${hasUnpriced ? '<p class="quote-note">⚠ MD 단가가 설정되지 않은 패키지가 있어 ₩0으로 계산됩니다. 단가를 설정하세요.</p>' : ''}`;
+}
+
+function renderQuoteEstimate() {
+  const node = document.getElementById('quote-estimate');
+  if (node) node.innerHTML = quoteEstimateMarkup();
 }
 
 function buildPitch() {
@@ -707,11 +756,12 @@ function bindStageEvents() {
     scheduleSave({ packages: state.deal.packages }, true);
     renderStage();
   }));
-  $$('[data-package-md]').forEach((input) => input.addEventListener('change', () => {
+  $$('[data-package-md]').forEach((input) => input.addEventListener('input', () => {
     state.deal.packages = (state.deal.packages || []).map((item) => {
       const normal = typeof item === 'string' ? { id: item } : item;
       return normal.id === input.dataset.packageMd ? { ...normal, md: input.value ? Number(input.value) : null } : normal;
     });
+    renderQuoteEstimate();
     scheduleSave({ packages: state.deal.packages });
   }));
   $('#copy-pitch')?.addEventListener('click', async () => {
