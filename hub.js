@@ -82,6 +82,13 @@ function formatKRW(value) {
   return `₩${Math.round(Number(value) || 0).toLocaleString('ko-KR')}`;
 }
 
+function formatKRWCompact(value) {
+  const n = Math.round(Number(value) || 0);
+  if (n >= 100000000) return `₩${(n / 100000000).toFixed(n % 100000000 === 0 ? 0 : 1)}억`;
+  if (n >= 10000) return `₩${Math.round(n / 10000).toLocaleString('ko-KR')}만`;
+  return `₩${n.toLocaleString('ko-KR')}`;
+}
+
 function isOwner() {
   return Boolean(state.deal && (state.user.role === 'admin' || state.deal.owner_id === state.user.id));
 }
@@ -521,6 +528,8 @@ function stageHeader(no, title, copy, action = '') {
   return `<header class="stage-header"><div><p class="eyebrow">STEP ${no}</p><h2>${title}</h2><p>${copy}</p></div>${action}</header>`;
 }
 
+const STAGE_RENDERERS = [renderIntake, renderFqa, renderSolutions, renderPackages, renderPitch];
+
 function renderStage() {
   const stage = state.activeStage;
   const content = $('#stage-content');
@@ -531,14 +540,19 @@ function renderStage() {
     '↑ 선택한 ISV 조합을 이어서 패키지와 공수를 구성합니다.',
     '↑ 앞 단계의 고객·진단·조합·패키지를 한 번에 이어받습니다.'
   ];
-  $('#carry-badge').querySelector('span').textContent = carryMessages[stage];
-  if (stage === 0) content.innerHTML = renderIntake();
-  if (stage === 1) content.innerHTML = renderFqa();
-  if (stage === 2) content.innerHTML = renderSolutions();
-  if (stage === 3) content.innerHTML = renderPackages();
-  if (stage === 4) content.innerHTML = renderPitch();
-  bindStageEvents();
-  window.lucide?.createIcons();
+  // Never let a render exception leave the step blank/stuck: on error, show a
+  // message and log the real error instead of silently aborting mid-render.
+  try {
+    const carryBadge = $('#carry-badge')?.querySelector('span');
+    if (carryBadge) carryBadge.textContent = carryMessages[stage] || '';
+    const renderer = STAGE_RENDERERS[stage];
+    content.innerHTML = renderer ? renderer() : '';
+    bindStageEvents();
+    window.lucide?.createIcons();
+  } catch (error) {
+    console.error(`[hub] renderStage(${stage}) failed:`, error);
+    content.innerHTML = `<div class="empty-state">이 단계를 표시하는 중 문제가 발생했습니다. 새로고침 후 다시 시도해주세요.<br><small>${escapeHtml(error && error.message || '')}</small></div>`;
+  }
 }
 
 function disabledAttr() { return isOwner() ? '' : 'disabled'; }
@@ -716,10 +730,10 @@ function dealSimSummaryMarkup() {
     <td class="num amount">${formatKRW(row.annual)}</td>
   </tr>`).join('');
   return `<div class="deal-sim-metrics">
-      <div class="dsm"><span>라이선스(연)</span><b>${formatKRW(license)}</b></div>
-      <div class="dsm"><span>일회성 구축</span><b>${formatKRW(once)}</b></div>
-      <div class="dsm"><span>운영 MRR(연환산)</span><b>${formatKRW(mrr)}</b></div>
-      <div class="dsm dsm-total"><span>1년차 총 딜</span><b>${formatKRW(total)}</b></div>
+      <div class="dsm" title="${formatKRW(license)}"><span>라이선스(연)</span><b>${formatKRWCompact(license)}</b></div>
+      <div class="dsm" title="${formatKRW(once)}"><span>일회성 구축</span><b>${formatKRWCompact(once)}</b></div>
+      <div class="dsm" title="${formatKRW(mrr)}"><span>운영 MRR(연환산)</span><b>${formatKRWCompact(mrr)}</b></div>
+      <div class="dsm dsm-total" title="${formatKRW(total)}"><span>1년차 총 딜</span><b>${formatKRWCompact(total)}</b></div>
     </div>
     <div class="quote-scroll"><table class="quote-table">
       <thead><tr><th>솔루션</th><th>유형</th><th class="num">산식</th><th class="num">연 금액</th></tr></thead>
