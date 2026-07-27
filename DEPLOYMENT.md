@@ -60,15 +60,23 @@ Blueprint 생성 화면에서 각 서비스의 아래 값을 입력합니다. �
 
 `009_internal_sections_and_price_flags.sql`은 컬럼만 추가하고 본문은 옮기지 않습니다. 적용 후 이관 스크립트를 별도로 실행합니다.
 
+> **순서를 지켜야 합니다: 컬럼 추가 → 코드 배포 → 본문 이관.**
+> 이관을 코드 배포보다 먼저 하면 안 됩니다. 구버전 `/api/solutions/:slug`는 `SELECT *`라서, 옮겨진 `sections_internal`이 응답에 그대로 딸려가 모든 로그인 사용자에게 전송됩니다. 유출을 막는 것은 마이그레이션이 아니라 코드(`stripInternalSections()` + 컬럼 화이트리스트)입니다.
+> 컬럼만 추가된 상태는 안전합니다 — 구버전은 새 컬럼을 무시하고, 값도 비어 있거나 기본값입니다.
+
 ```bash
 # 1) 컬럼 추가
 DATABASE_URL="postgresql://postgres.<ref>:<pw>@<host>:5432/postgres" \
   node scripts/apply-migrations.js
 
-# 2) 내부 문단 이관 — 먼저 미리보기(아무것도 쓰지 않음)
+# 2) 코드 배포 (main 머지 → Render 자동 배포). 배포 확인:
+#    curl -o /dev/null -w '%{http_code}\n' https://<host>/robots.txt   # 200 이면 신버전
+#    curl -o /dev/null -w '%{http_code}\n' https://<host>/app.js       # 401 이면 신버전
+
+# 3) 내부 문단 이관 — 먼저 미리보기(아무것도 쓰지 않음)
 DATABASE_URL="..." node scripts/split-internal-sections.js
 
-# 3) 리포트에 "공개 본문 잔여 위험 키워드: 없음"이 뜨면 반영
+# 4) 리포트에 "공개 본문 잔여 위험 키워드: 없음"이 뜨면 반영
 DATABASE_URL="..." node scripts/split-internal-sections.js --apply
 ```
 
