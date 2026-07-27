@@ -268,7 +268,10 @@ async function openDeal(id, { historyMode = 'replace' } = {}) {
     $('#workspace-scroll').scrollTop = 0;
     updateHistoryForDeal(id, historyMode);
   } catch (error) {
-    toast(error.message);
+    // 상세는 담당자·admin·미배정 딜에만 열린다. 남의 딜은 존재 여부를 숨기려고 404 로 온다.
+    toast(error.message === '딜을 찾을 수 없습니다.'
+      ? '이 딜은 담당자만 열 수 있습니다.'
+      : error.message);
   }
 }
 
@@ -647,6 +650,11 @@ function renderPackages() {
   return `${stageHeader('04', '패키지와 딜 사이즈', '확정한 ISV 조합 위에 필요한 서비스 패키지를 얹습니다. 조정 공수는 딜별로 저장되고, 가견적은 (기준MD + 조정MD) × MD 단가로 합산됩니다.')}<div class="selection-grid">${cards}</div><div id="quote-estimate" class="quote-estimate">${quoteEstimateMarkup()}</div>${dealSimMarkup()}`;
 }
 
+// 003/006 마이그레이션이 심은 단가는 데모용이다. price_is_placeholder 가 true 면
+// 금액을 만들지 않는다 — 화면에 뜬 숫자가 그대로 견적서로 복사되는 것을 막는 게 목적이다.
+// 컬럼이 아직 없으면 서버가 true 로 내려주므로, 마이그레이션 전에도 안전하게 동작한다.
+const isPlaceholderPrice = (row) => row?.price_is_placeholder !== false;
+
 function computeQuote() {
   const priceById = new Map(state.refs.packages.map((pkg) => [pkg.id, pkg]));
   const rows = (asArray(state.deal.packages)).map((item) => {
@@ -655,33 +663,41 @@ function computeQuote() {
     const pkg = priceById.get(id);
     if (!pkg) return null;
     const baseMd = Number(pkg.base_md) || 0;
-    const unit = Number(pkg.unit_price) || 0;
+    const placeholder = isPlaceholderPrice(pkg);
+    const unit = placeholder ? 0 : (Number(pkg.unit_price) || 0);
     const totalMd = baseMd + adjMd;
-    return { id, name: pkg.name, baseMd, adjMd, totalMd, unit, amount: totalMd * unit };
+    return { id, name: pkg.name, baseMd, adjMd, totalMd, unit, placeholder, amount: placeholder ? 0 : totalMd * unit };
   }).filter(Boolean);
   const total = rows.reduce((sum, row) => sum + row.amount, 0);
-  return { rows, total, hasUnpriced: rows.some((row) => row.unit === 0) };
+  return {
+    rows,
+    total,
+    hasUnpriced: rows.some((row) => !row.placeholder && row.unit === 0),
+    hasPlaceholder: rows.some((row) => row.placeholder)
+  };
 }
 
 function quoteEstimateMarkup() {
-  const { rows, total, hasUnpriced } = computeQuote();
+  const { rows, total, hasUnpriced, hasPlaceholder } = computeQuote();
   if (!rows.length) {
     return '<div class="quote-empty">패키지를 선택하면 가견적이 여기에 표시됩니다.</div>';
   }
-  const lines = rows.map((row) => `<tr>
+  const lines = rows.map((row) => `<tr class="${row.placeholder ? 'unpriced' : ''}">
     <td>${escapeHtml(row.name)}</td>
     <td class="num">${row.baseMd}</td>
     <td class="num">${row.adjMd ? `+${row.adjMd}` : '0'}</td>
     <td class="num">${row.totalMd} MD</td>
-    <td class="num">${row.unit ? formatKRW(row.unit) : '미설정'}</td>
-    <td class="num amount">${formatKRW(row.amount)}</td>
+    <td class="num">${row.placeholder ? '<span class="quote-muted">별도협의</span>' : (row.unit ? formatKRW(row.unit) : '미설정')}</td>
+    <td class="num amount">${row.placeholder ? '<span class="quote-muted">별도협의</span>' : formatKRW(row.amount)}</td>
   </tr>`).join('');
-  return `<div class="quote-head"><h3>가견적<span> · 내부 참고용</span></h3><strong>${formatKRW(total)}</strong></div>
+  const headline = hasPlaceholder && total === 0 ? '별도협의' : formatKRW(total);
+  return `<div class="quote-head"><h3>가견적<span> · 내부 참고용</span></h3><strong>${headline}</strong></div>
     <div class="quote-scroll"><table class="quote-table">
       <thead><tr><th>패키지</th><th class="num">기준MD</th><th class="num">조정MD</th><th class="num">합계</th><th class="num">MD 단가</th><th class="num">금액</th></tr></thead>
       <tbody>${lines}</tbody>
-      <tfoot><tr><td colspan="5">합계 (VAT 별도)</td><td class="num amount">${formatKRW(total)}</td></tr></tfoot>
+      <tfoot><tr><td colspan="5">합계 (VAT 별도, 확정 단가만)</td><td class="num amount">${headline}</td></tr></tfoot>
     </table></div>
+    ${hasPlaceholder ? '<p class="quote-note">⚠ MD 단가가 확정되지 않은 패키지는 금액에서 제외되고 <b>별도협의</b>로 표시됩니다. admin에서 실단가를 확정하세요.</p>' : ''}
     ${hasUnpriced ? '<p class="quote-note">⚠ MD 단가가 설정되지 않은 패키지가 있어 ₩0으로 계산됩니다. 단가를 설정하세요.</p>' : ''}`;
 }
 
@@ -715,6 +731,12 @@ function computeDealSim() {
   const rows = (state.refs.solutions || [])
     .filter((sol) => selected.has(sol.id))
     .map((sol) => {
+      if (isPlaceholderPrice(sol)) {
+        return {
+          id: sol.id, name: sol.name, type: sol.price_type || null, annual: 0, priced: false,
+          placeholder: true, formula: '단가 미확정 · 별도협의'
+        };
+      }
       const unit = Number(sol.unit_price) || 0;
       const tiers = asArray(sol.price_tiers);
       const isUsd = sol.currency === 'USD';
@@ -736,7 +758,7 @@ function computeDealSim() {
       const annual = isUsd ? local * fx : local;
       const priced = annual > 0;
       return {
-        id: sol.id, name: sol.name, type: sol.price_type || null, annual, priced,
+        id: sol.id, name: sol.name, type: sol.price_type || null, annual, priced, placeholder: false,
         formula: priced ? formula + (isUsd ? ` ×${fx.toLocaleString('ko-KR')}` : '') : '단가 미설정 · admin에서 설정'
       };
     });
@@ -749,18 +771,19 @@ function computeDealSim() {
     seats, rows, license, once, mrr, total,
     multiplier: license > 0 ? total / license : 0,
     anySelected: selected.size > 0,
-    hasPriced: rows.some((row) => row.priced)
+    hasPriced: rows.some((row) => row.priced),
+    hasPlaceholder: rows.some((row) => row.placeholder)
   };
 }
 
 function dealSimSummaryMarkup() {
-  const { rows, license, once, mrr, total, multiplier, anySelected, hasPriced } = computeDealSim();
+  const { rows, license, once, mrr, total, multiplier, anySelected, hasPriced, hasPlaceholder } = computeDealSim();
   if (!anySelected) return '<div class="quote-empty">STEP 03에서 ISV 솔루션을 선택하면 견적 리스트가 만들어집니다.</div>';
   const lineRows = rows.map((row) => `<tr class="${row.priced ? '' : 'unpriced'}">
     <td>${escapeHtml(row.name)}</td>
     <td>${row.type ? (DEAL_SIM_TYPE_LABEL[row.type] || row.type) : '—'}</td>
     <td class="num">${escapeHtml(row.formula)}</td>
-    <td class="num amount">${row.priced ? formatKRW(row.annual) : '<span class="quote-muted">—</span>'}</td>
+    <td class="num amount">${row.priced ? formatKRW(row.annual) : `<span class="quote-muted">${row.placeholder ? '별도협의' : '—'}</span>`}</td>
   </tr>`).join('');
   return `<div class="deal-sim-metrics">
       <div class="dsm" title="${formatKRW(license)}"><span>라이선스(연)</span><b>${formatKRWCompact(license)}</b></div>
@@ -773,7 +796,8 @@ function dealSimSummaryMarkup() {
       <thead><tr><th>솔루션</th><th>유형</th><th class="num">산식</th><th class="num">연 금액</th></tr></thead>
       <tbody>${lineRows}</tbody>
     </table></div>
-    ${!hasPriced ? '<p class="quote-note">선택한 솔루션에 단가가 없습니다. admin에서 가격(종류·단가/티어)을 설정하면 금액이 계산됩니다.</p>' : ''}
+    ${hasPlaceholder ? '<p class="quote-note">⚠ 단가가 확정되지 않은 솔루션은 <b>별도협의</b>로 표시되고 합계에서 제외됩니다.</p>' : ''}
+    ${!hasPriced && !hasPlaceholder ? '<p class="quote-note">선택한 솔루션에 단가가 없습니다. admin에서 가격(종류·단가/티어)을 설정하면 금액이 계산됩니다.</p>' : ''}
     ${multiplier > 0 ? `<p class="deal-sim-mult">라이선스 단독 대비 <b>${multiplier.toFixed(1)}배</b> — 결합 판매로 딜 사이즈가 확대됩니다.</p>` : ''}`;
 }
 
@@ -1067,7 +1091,20 @@ function connectEvents() {
       && eventUpdatedAt <= knownUpdatedAt;
     const hasLocalSave = state.pendingDealId === change.id || state.inFlightSaves.has(change.id);
     if (state.deal?.id === change.id && !hasLocalSave && !alreadyApplied) {
-      const refreshed = await api(`/api/hub/deals/${change.id}`);
+      // 열어둔 딜을 그 사이 다른 사람이 claim 하면 상세 조회가 404 로 닫힌다.
+      // 미배정 딜은 누구나 열 수 있으므로 정상적인 경합이다 — 워크스페이스만 비운다.
+      let refreshed;
+      try {
+        refreshed = await api(`/api/hub/deals/${change.id}`);
+      } catch (error) {
+        if (state.deal?.id !== change.id) return;
+        state.deal = null;
+        $('#workspace').classList.add('hidden');
+        $('#empty-workspace').classList.remove('hidden');
+        syncDealSelection();
+        toast('이 딜은 다른 담당자가 맡았습니다.');
+        return;
+      }
       const stillHasLocalSave = state.pendingDealId === change.id || state.inFlightSaves.has(change.id);
       if (state.deal?.id !== change.id || stillHasLocalSave) return;
       const currentUpdatedAt = Date.parse(state.deal.updated_at || '');

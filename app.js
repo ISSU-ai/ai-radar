@@ -633,15 +633,34 @@ function downloadChecklist(isvName, overallItems, isvItemsRaw) {
   URL.revokeObjectURL(url);
 }
 
+// 내부 전용 문단(마진·리셀러·PreSales 의견)은 서버가 admin 응답에만 sections_internal
+// 로 실어준다. viewer 응답에는 아예 없으므로 여기서 role 을 따로 확인하지 않는다.
+function renderInternalBlock() {
+  const internal = currentSelectedIsv?.sections_internal;
+  if (!internal || typeof internal !== 'object') return "";
+  const body = String(internal[currentActiveTab] || "").trim();
+  if (!body) return "";
+  return `
+    <div class="internal-only-box" style="background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.25); border-left: 4px solid #ef4444; padding: 12px 14px; margin-top: 18px; border-radius: 4px;">
+      <div style="display: flex; align-items: center; gap: 8px; color: #f87171; font-weight: 700; font-size: 0.82rem; margin-bottom: 8px;">
+        <i data-lucide="lock" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+        <span>관리자 전용 · 내부 전략 코멘트 (대외/사내 공유 금지)</span>
+      </div>
+      ${parseMarkdownToHTML(body)}
+    </div>
+  `;
+}
+
 function renderTabContent() {
   if (!currentSelectedIsv) return;
-  
+
   const contentContainer = document.getElementById("tab-content");
   const sections = currentSelectedIsv.sections && typeof currentSelectedIsv.sections === 'object'
     ? currentSelectedIsv.sections
     : {};
   const markdownText = String(sections[currentActiveTab] || "상세 정보가 존재하지 않습니다.");
-  
+  const internalBlock = renderInternalBlock();
+
   if (currentActiveTab === "7") {
     // Render Checklist tab with split layout and download button
     let html = `
@@ -685,7 +704,7 @@ function renderTabContent() {
         </div>
       </div>
     `;
-    contentContainer.innerHTML = html;
+    contentContainer.innerHTML = html + internalBlock;
     document.getElementById('checklist-download-button')?.addEventListener('click', () => {
       downloadChecklist(String(currentSelectedIsv.name || 'solution'), overallChecklist, markdownText);
     });
@@ -698,10 +717,10 @@ function renderTabContent() {
       </div>
       ${parseMarkdownToHTML(markdownText)}
     `;
-    contentContainer.innerHTML = html;
+    contentContainer.innerHTML = html + internalBlock;
     lucide.createIcons();
   } else {
-    contentContainer.innerHTML = parseMarkdownToHTML(markdownText);
+    contentContainer.innerHTML = parseMarkdownToHTML(markdownText) + internalBlock;
     lucide.createIcons();
   }
 }

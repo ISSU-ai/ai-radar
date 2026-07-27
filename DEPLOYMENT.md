@@ -53,6 +53,31 @@ Blueprint 생성 화면에서 각 서비스의 아래 값을 입력합니다. �
 
 마이그레이션은 애플리케이션 배포와 역호환되게 설계하고, 적용 결과와 anon/authenticated 권한을 별도로 검증합니다. Render의 애플리케이션 롤백은 DB 스키마를 되돌리지 않습니다.
 
+적용 순서: `issu_ai_radar_schema.sql` → `001` → `002` → `003` → `005` → `008` → `009`.
+(`004`는 결번, `006`·`007`은 데모/시드용 1회성이라 `scripts/apply-migrations.js`에 포함하지 않습니다.)
+
+#### 009 적용 절차 (내부 본문 분리 · 미확정 단가 플래그)
+
+`009_internal_sections_and_price_flags.sql`은 컬럼만 추가하고 본문은 옮기지 않습니다. 적용 후 이관 스크립트를 별도로 실행합니다.
+
+```bash
+# 1) 컬럼 추가
+DATABASE_URL="postgresql://postgres.<ref>:<pw>@<host>:5432/postgres" \
+  node scripts/apply-migrations.js
+
+# 2) 내부 문단 이관 — 먼저 미리보기(아무것도 쓰지 않음)
+DATABASE_URL="..." node scripts/split-internal-sections.js
+
+# 3) 리포트에 "공개 본문 잔여 위험 키워드: 없음"이 뜨면 반영
+DATABASE_URL="..." node scripts/split-internal-sections.js --apply
+```
+
+- 이관 규칙은 `lib/section-privacy.js` 한 곳에만 있습니다. 서버도 같은 규칙으로 non-admin 응답을 한 번 더 거르므로, **009 적용 전에도 내부 문단이 노출되지 않습니다.**
+- `price_is_placeholder`는 기존 행 전부 `true`(미확정)로 들어갑니다. 실단가를 확정하기 전까지 hub 가견적·딜사이즈는 금액 대신 **별도협의**를 표시합니다. `/admin` 솔루션 편집기의 "실단가 확정됨" 체크박스와 패키지 단가 화면에서 해제합니다.
+- 되돌리려면 `sections_internal`의 본문을 해당 섹션 끝에 다시 붙이면 됩니다. `--apply` 전에 `solutions` 백업을 권장합니다.
+
+`seed.js`는 프로덕션에서 기본 차단됩니다(`NODE_ENV=production` 또는 편집·발행 이력이 있는 DB). `isv_data.js`가 admin 편집본을 덮어쓰기 때문이며, 강제 실행은 `ALLOW_PROD_SEED=I_UNDERSTAND`가 필요합니다.
+
 ### 3. Render Blueprint 연결
 
 1. Render Dashboard에서 **New > Blueprint**를 선택합니다.

@@ -549,6 +549,10 @@
             <div class="form-group">
               <label class="control-label" for="sol-price-tiers">구간(볼륨) 단가 티어 · JSON — seat 전용, 있으면 단가 대신 사용</label>
               <textarea id="sol-price-tiers" class="textarea-control" style="height:120px; font-family:monospace; font-size:12px;" placeholder='[{"up_to":75,"flat":10000},{"up_to":1000,"per_user":146},{"up_to":null,"per_user":59}]  · up_to=최대좌석(null=이상), per_user=1인당 연단가, flat=구간 고정 연가'></textarea>
+              <label style="display:flex; align-items:center; gap:8px; margin-top:10px; color:#f87171; font-size:0.82rem; font-weight:600; cursor:pointer;">
+                <input type="checkbox" id="sol-price-confirmed" style="cursor:pointer;">
+                <span>실단가 확정됨 — 체크 해제 시 hub 가견적·딜사이즈에 <b>별도협의</b>로 표시되고 금액에서 제외됩니다.</span>
+              </label>
             </div>
           </div>
 
@@ -607,6 +611,8 @@
               <div class="form-group">
                 <label class="control-label">1. 솔루션 개요 / 핵심 차별점</label>
                 <textarea id="sec-1" class="textarea-control"></textarea>
+                <label class="control-label" for="sec-int-1" style="color:#f87171; margin-top:8px;">└ 1번 관리자 전용 내부 코멘트 🔒 viewer 미노출</label>
+                <textarea id="sec-int-1" class="textarea-control" data-section-internal="1" style="border-color: rgba(239,68,68,0.35);"></textarea>
               </div>
               <div class="form-group">
                 <label class="control-label">2. 4-Layer 포지셔닝 매핑</label>
@@ -644,6 +650,8 @@
               <div class="form-group">
                 <label class="control-label">8. 영업 Tip / FAQ</label>
                 <textarea id="sec-8" class="textarea-control"></textarea>
+                <label class="control-label" for="sec-int-8" style="color:#f87171; margin-top:8px;">└ 8번 관리자 전용 내부 코멘트 (마진·딜사이즈 전략) 🔒 viewer 미노출</label>
+                <textarea id="sec-int-8" class="textarea-control" data-section-internal="8" style="border-color: rgba(239,68,68,0.35);"></textarea>
               </div>
             </div>
           </div>
@@ -1306,6 +1314,8 @@
         document.getElementById('sol-unit-price').value = sol.unit_price ?? '';
         document.getElementById('sol-currency').value = sol.currency || 'KRW';
         document.getElementById('sol-price-tiers').value = Array.isArray(sol.price_tiers) && sol.price_tiers.length ? JSON.stringify(sol.price_tiers, null, 2) : '';
+        // 009 적용 전에는 필드가 없다. 그때는 미확정(체크 해제)으로 둔다.
+        document.getElementById('sol-price-confirmed').checked = sol.price_is_placeholder === false;
 
         // Clear and Reset Checkboxes
         document.querySelectorAll('input[name="sol-industries"]').forEach(cb => cb.checked = false);
@@ -1328,6 +1338,12 @@
         for (let i = 1; i <= 8; i++) {
           document.getElementById(`sec-${i}`).value = secs[i] || '';
         }
+
+        // 내부 전용 문단. 서버가 admin 응답에만 실어준다(009 적용 전이면 비어 있다).
+        const internalSecs = sol.sections_internal || {};
+        document.querySelectorAll('[data-section-internal]').forEach((field) => {
+          field.value = internalSecs[field.dataset.sectionInternal] || '';
+        });
 
         // Set Original Snapshot for Diff check
         originalSnapshot = getCurrentFormData();
@@ -1358,7 +1374,13 @@
       for (let i = 1; i <= 8; i++) {
         secs[i] = document.getElementById(`sec-${i}`).value;
       }
-      
+
+      const sections_internal = {};
+      document.querySelectorAll('[data-section-internal]').forEach((field) => {
+        const value = field.value.trim();
+        if (value) sections_internal[field.dataset.sectionInternal] = field.value;
+      });
+
       // Get selected industries
       const selectedIndustries = Array.from(
         document.querySelectorAll('input[name="sol-industries"]:checked'),
@@ -1404,7 +1426,9 @@
         unit_price: document.getElementById('sol-unit-price').value === '' ? 0 : Number(document.getElementById('sol-unit-price').value),
         currency: document.getElementById('sol-currency').value || 'KRW',
         price_tiers: parsePriceTiers(document.getElementById('sol-price-tiers').value),
+        price_is_placeholder: !document.getElementById('sol-price-confirmed').checked,
         sections: secs,
+        sections_internal,
         industries,
         simulator_mappings
       };

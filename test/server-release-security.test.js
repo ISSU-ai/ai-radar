@@ -11,8 +11,55 @@ const offeringSource = fs.readFileSync(path.resolve(__dirname, '..', 'offering.j
 
 test('server exposes an explicit frontend allowlist instead of the repository root', () => {
   assert.doesNotMatch(source, /express\.static\(path\.join\(__dirname\)/);
-  assert.match(source, /const frontendAssets = Object\.freeze\(\{[\s\S]*?'\/style\.css'[\s\S]*?'\/offering\.js'/);
+  assert.match(source, /const publicFrontendAssets = Object\.freeze\(\{[\s\S]*?'\/style\.css'[\s\S]*?'\/offering\.js'/);
   assert.match(source, /app\.use\(\(req, res\) => \{[\s\S]*?res\.status\(404\)/);
+});
+
+test('internal sales bundles are not served to anonymous visitors', () => {
+  // app.js / hub.js 에는 내부 영업 로직(딜사이즈 산식, 벤더 추천 매핑, 내부 배너 문구)이
+  // 들어 있다. 공개 자산 목록에 섞이면 비로그인에게 그대로 배포된다.
+  const publicStart = source.indexOf('const publicFrontendAssets');
+  const publicBlock = source.slice(publicStart, source.indexOf('});', publicStart));
+  assert.doesNotMatch(publicBlock, /app\.js|hub\.js|hub\.css/);
+  assert.match(source, /const authedFrontendAssets = Object\.freeze\(\{[\s\S]*?'\/app\.js'[\s\S]*?'\/hub\.js'/);
+  assert.match(source, /requireAssetAuth\(asset\.canonicalPath\)/);
+  // 자산은 로그인 리다이렉트가 아니라 401 로 끊는다(스크립트가 HTML 을 받으면 안 된다).
+  assert.match(source, /const requireAssetAuth =[\s\S]*?res\.status\(401\)/);
+});
+
+test('crawlers are told to stay out of the internal surfaces', () => {
+  assert.match(source, /app\.get\('\/robots\.txt'/);
+  assert.match(source, /Disallow: \/hub/);
+  assert.match(source, /Disallow: \/radar/);
+  assert.match(source, /Disallow: \/admin/);
+  assert.match(source, /Disallow: \/api\//);
+  assert.match(source, /app\.get\('\/sitemap\.xml'/);
+  // 사이트맵에는 대외 공개 페이지만 넣는다.
+  const sitemapBlock = source.slice(source.indexOf("app.get('/sitemap.xml'"));
+  assert.doesNotMatch(sitemapBlock.slice(0, 900), /'\/hub'|'\/radar'|'\/admin'/);
+});
+
+test('solution detail responses are column-allowlisted by role', () => {
+  // SELECT * 는 opinion 만 지워도 sections·가격·tech_note·focal 이 그대로 나간다.
+  assert.doesNotMatch(source, /SELECT \* FROM solutions WHERE slug/);
+  assert.match(source, /const SOLUTION_COLUMNS_ADMIN_ONLY = Object\.freeze/);
+  assert.match(source, /solutionColumnsFor\(req\.user\.role\)/);
+  // 마이그레이션 적용 전이라도 내부 문단이 non-admin 에게 나가면 안 된다.
+  assert.match(source, /stripInternalSections\(row\.sections\)/);
+});
+
+test('deal detail is limited to the owner, an admin, or an unclaimed deal', () => {
+  assert.match(hubRoutes, /and \(\$2 = 'admin' or d\.owner_id is null or d\.owner_id = \$3\)/);
+  assert.match(hubRoutes, /auditLog\(req\.user\.id, 'view', `deal:\$\{req\.params\.id\}`\)/);
+  // 목록 응답에 고객 연락처·메모가 실리면 안 된다.
+  assert.doesNotMatch(hubRoutes, /select d\.id, d\.customer, d\.customer_meta, d\.track/);
+  assert.match(hubRoutes, /jsonb_build_object\([\s\S]*?'industry'[\s\S]*?'targetUsers'[\s\S]*?\) as customer_meta/);
+});
+
+test('reference-data lists package columns explicitly and flags unconfirmed prices', () => {
+  assert.doesNotMatch(hubRoutes, /select p\.\*,/);
+  assert.match(hubRoutes, /as price_is_placeholder/);
+  assert.match(hubRoutes, /const hasPriceFlag =/);
 });
 
 test('document downloads are authenticated and restricted to an exact docx allowlist', () => {

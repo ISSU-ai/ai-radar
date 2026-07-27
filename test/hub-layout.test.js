@@ -136,6 +136,8 @@ test('asynchronous list, claim, and live-update responses cannot overwrite newer
   assert.match(js, /const requestId = \+\+state\.dealListSequence/);
   assert.match(js, /if \(requestId !== state\.dealListSequence\) return/);
   assert.match(js, /const dealId = state\.deal\?\.id[\s\S]*?if \(state\.deal\?\.id === dealId\)/);
-  assert.match(js, /const refreshed = await api[\s\S]*?if \(state\.deal\?\.id !== change\.id \|\| stillHasLocalSave\) return/);
+  assert.match(js, /refreshed = await api[\s\S]*?if \(state\.deal\?\.id !== change\.id \|\| stillHasLocalSave\) return/);
+  // 열어둔 딜을 남이 claim 하면 상세가 404 로 닫힌다. 던지지 말고 워크스페이스를 비운다.
+  assert.match(js, /refreshed = await api\(`\/api\/hub\/deals\/\$\{change\.id\}`\);\s*\} catch \(error\) \{[\s\S]*?state\.deal = null/);
   assert.match(js, /if \(state\.mode === 'deals'\) renderWorkspace\(\)/);
 });

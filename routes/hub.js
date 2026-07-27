@@ -17,7 +17,10 @@ const PRIVACY_NOTICE = Object.freeze({
   retention: '상담 요청일로부터 1년'
 });
 
-function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
+function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColumn }) {
+  // 009 는 수동 적용이라 컬럼이 아직 없을 수 있다. 없으면 "미확정(true)"으로 본다 —
+  // 모를 때 금액을 감추는 쪽이 견적서에 데모 단가가 인용되는 것보다 안전하다.
+  const hasPriceFlag = async (table) => (hasColumn ? hasColumn(table, 'price_is_placeholder') : false);
   const router = express.Router();
   const leadAttempts = new Map();
   const eventStreams = new Set();
@@ -283,9 +286,16 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
         conditions.push(`d.owner_id = $${params.length}`);
       }
       const where = conditions.length ? `where ${conditions.join(' and ')}` : '';
+      // 사이드바 카드는 업종·규모·대상만 쓴다. customer_meta 를 통째로 내보내면
+      // 연락처·상담 메모 같은 고객 PII 가 목록 응답에 실린다.
       const result = await pool.query(
-        `select d.id, d.customer, d.customer_meta, d.track, d.stage, d.source,
+        `select d.id, d.customer, d.track, d.stage, d.source,
                 d.owner_id, d.updated_at, d.created_at,
+                jsonb_build_object(
+                  'industry',    d.customer_meta -> 'industry',
+                  'companySize', d.customer_meta -> 'companySize',
+                  'targetUsers', d.customer_meta -> 'targetUsers'
+                ) as customer_meta,
                 p.full_name as owner_name, t.name as track_name
          from deals d
          left join profiles p on p.id = d.owner_id
@@ -324,6 +334,9 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
 
   router.get('/deals/:id', async (req, res) => {
     try {
+      // 상세 응답에는 고객 실명·연락처·리드 원문이 들어간다. 담당자(owner)와 admin,
+      // 그리고 아직 주인이 없어 claim 대상인 딜에만 연다. 남의 딜은 존재 여부까지
+      // 숨기려고 403 이 아니라 404 로 답한다.
       const result = await pool.query(
         `select d.*, p.full_name as owner_name, t.name as track_name,
                 lead.contact as lead_contact, lead.message as lead_message
@@ -334,10 +347,12 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
            select l.contact, l.message from leads l
            where l.promoted_deal = d.id order by l.created_at desc limit 1
          ) lead on true
-         where d.id = $1`,
-        [req.params.id]
+         where d.id = $1
+           and ($2 = 'admin' or d.owner_id is null or d.owner_id = $3)`,
+        [req.params.id, req.user.role, req.user.id]
       );
       if (!result.rows[0]) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
+      auditLog(req.user.id, 'view', `deal:${req.params.id}`);
       res.json(result.rows[0]);
     } catch (error) {
       console.error(error);
@@ -428,11 +443,21 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
 
   router.get('/reference-data', async (_req, res) => {
     try {
+      // `p.*` 를 쓰면 packages 에 나중에 추가되는 컬럼(원가성 필드 등)이 자동으로
+      // 전 직원에게 흘러간다. 화면이 실제로 쓰는 컬럼만 명시한다.
+      const [packageFlag, solutionFlag] = await Promise.all([
+        hasPriceFlag('packages'),
+        hasPriceFlag('solutions')
+      ]);
+      const packagePlaceholder = packageFlag ? 'p.price_is_placeholder' : 'true';
+      const solutionPlaceholder = solutionFlag ? 's.price_is_placeholder' : 'true';
+
       const [fqaItems, tracks, packages, solutions, settings] = await Promise.all([
         loadFqaItems(),
         pool.query('select id, name, why, warn, ask from tracks order by id').then((r) => r.rows),
         pool.query(
-          `select p.*,
+          `select p.id, p.name, p.scale, p.period, p.target, p.sort_order,
+                  p.base_md, p.unit_price, ${packagePlaceholder} as price_is_placeholder,
                   coalesce(json_agg(json_build_object('type', pi.type, 'label', pi.label)
                     order by pi.sort_order) filter (where pi.id is not null), '[]') as items
            from packages p left join package_items pi on pi.package_id = p.id
@@ -441,6 +466,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog }) {
         pool.query(
           `select s.id, s.slug, s.name, s.category, s.jtbd, s.grade, s.scale,
                   s.tech_note, s.status_op, s.price_type, s.unit_price, s.currency, s.price_tiers,
+                  ${solutionPlaceholder} as price_is_placeholder,
                   f.name as focal_name, f.org as focal_org
            from solutions s left join focal_contacts f on f.id = s.focal_id
            where s.is_archived = false and s.status = 'published'

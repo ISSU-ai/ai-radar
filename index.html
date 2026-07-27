@@ -7,7 +7,8 @@
 
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="style.css">
+  <!-- 절대 경로 고정: /radar/ (뒤 슬래시)로 들어오면 상대 경로가 /radar/style.css 로 풀려 404 가 난다 -->
+  <link rel="stylesheet" href="/style.css">
   <!-- Lucide Icons CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>
@@ -364,6 +365,6 @@
   </footer>
 
   <!-- Scripts -->
-  <script src="app.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>

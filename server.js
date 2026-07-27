@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const { createHubRouter } = require('./routes/hub');
+const { stripInternalSections } = require('./lib/section-privacy');
 require('dotenv').config();
 
 const app = express();
@@ -16,6 +17,8 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_ATTEMPT_LIMIT = 10;
 const HEALTH_QUERY_TIMEOUT_MS = 3000;
+// robots.txt / sitemap.xml 의 절대 URL 용. 대외 도메인이 정해지면 env 로 덮어쓴다.
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || 'https://ai-radar-7pg2.onrender.com').replace(/\/+$/, '');
 let isShuttingDown = false;
 
 function parseJsonColumn(value, fallback) {
@@ -142,6 +145,78 @@ pool.query('ALTER TABLE public.solutions ADD COLUMN IF NOT EXISTS is_archived BO
   }
 });
 
+// 스키마 마이그레이션은 수동(DEPLOYMENT.md)이라, 코드가 먼저 배포되고 컬럼이 아직
+// 없는 구간이 존재한다. 009 이후 컬럼은 존재 여부를 캐시해두고 있을 때만 참조한다.
+// 있음(true)은 되돌아가지 않으니 영구 캐시한다. 없음(false)은 짧게만 캐시한다 —
+// 마이그레이션은 서버가 떠 있는 상태에서 SQL Editor 로 적용되므로, 영구 캐시하면
+// 적용 후에도 재시작 전까지 새 컬럼을 못 본다.
+const COLUMN_MISS_TTL_MS = 60 * 1000;
+const columnCache = new Map();
+async function hasColumn(table, column) {
+  const key = `${table}.${column}`;
+  const cached = columnCache.get(key);
+  if (cached === true) return true;
+  if (cached && cached.missUntil > Date.now()) return false;
+  try {
+    const result = await pool.query(
+      'select 1 from information_schema.columns where table_schema = current_schema() and table_name = $1 and column_name = $2',
+      [table, column]
+    );
+    const exists = result.rowCount > 0;
+    columnCache.set(key, exists ? true : { missUntil: Date.now() + COLUMN_MISS_TTL_MS });
+    return exists;
+  } catch (error) {
+    console.error(`Column probe failed for ${key}:`, error.message);
+    return false; // 모르면 없는 것으로 취급 = 내부 컬럼을 내보내지 않는 쪽으로 실패(캐시하지 않음)
+  }
+}
+
+// GET /api/solutions/:slug 응답 컬럼. SELECT * 는 내부 컬럼(가격·grade·tech_note·
+// focal·운영상태)을 role 구분 없이 흘려보내므로 쓰지 않는다.
+const SOLUTION_COLUMNS_COMMON = Object.freeze([
+  'id', 'legacy_id', 'slug', 'name', 'delivery', 'layer', 'synergy', 'category',
+  'jtbd', 'value_chain', 'sections', 'simulator_mappings', 'industries',
+  'status', 'updated_at'
+]);
+const SOLUTION_COLUMNS_ADMIN_ONLY = Object.freeze([
+  'opinion', 'sections_internal', 'grade', 'scale', 'status_op', 'note', 'tech_note',
+  'focal_id', 'price_type', 'unit_price', 'currency', 'price_tiers',
+  'price_is_placeholder', 'version', 'updated_by'
+]);
+
+async function solutionColumnsFor(role) {
+  if (role !== 'admin') return [...SOLUTION_COLUMNS_COMMON];
+  const optional = ['sections_internal', 'price_is_placeholder'];
+  const available = [];
+  for (const column of SOLUTION_COLUMNS_ADMIN_ONLY) {
+    if (optional.includes(column) && !(await hasColumn('solutions', column))) continue;
+    available.push(column);
+  }
+  return [...SOLUTION_COLUMNS_COMMON, ...available];
+}
+
+/**
+ * sections_internal 을 별도 UPDATE 로 반영한다. 009 적용 전이면 조용히 건너뛴다.
+ * 값이 undefined 면 손대지 않아, 이 필드를 모르는 클라이언트가 저장해도 내부 본문이 날아가지 않는다.
+ */
+async function persistSectionsInternal(executor, solutionId, value) {
+  if (value === undefined) return;
+  if (!(await hasColumn('solutions', 'sections_internal'))) return;
+  const payload = value && typeof value === 'object' ? value : parseJsonColumn(value, {}) || {};
+  await executor.query('UPDATE solutions SET sections_internal = $1 WHERE id = $2', [
+    JSON.stringify(payload),
+    solutionId
+  ]);
+}
+
+/** solutions.price_is_placeholder 를 반영한다. 009 적용 전이면 조용히 건너뛴다. */
+async function persistPriceFlag(executor, solutionId, value) {
+  if (value === undefined) return;
+  if (!(await hasColumn('solutions', 'price_is_placeholder'))) return;
+  const isPlaceholder = !(value === false || value === 'false');
+  await executor.query('UPDATE solutions SET price_is_placeholder = $1 WHERE id = $2', [isPlaceholder, solutionId]);
+}
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
@@ -185,11 +260,12 @@ app.use((_req, res, next) => {
 app.use((req, res, next) => {
   if (APP_SURFACE === 'all') return next();
   const publicApi = req.path.startsWith('/api/hub/public/');
-  const commonPath = req.path === '/healthz' || req.path === '/style.css' || req.path === '/login' || req.path === '/login.html' || req.path.startsWith('/api/auth/');
+  const crawlerPath = req.path === '/robots.txt' || req.path === '/sitemap.xml';
+  const commonPath = req.path === '/healthz' || req.path === '/style.css' || req.path === '/login' || req.path === '/login.html' || req.path.startsWith('/api/auth/') || crawlerPath;
   const radarPath = req.path === '/radar' || req.path === '/radar/' || req.path === '/index.html' || req.path === '/app.js' || req.path === '/about' || req.path === '/about.html' || req.path.startsWith('/docs/');
   const embeddedAdminPath = req.path.startsWith('/admin') || req.path.startsWith('/api/admin/');
   const allowed = {
-    offering: req.path === '/healthz' || publicApi || req.path === '/' || req.path === '/offering' || req.path.startsWith('/offering.'),
+    offering: req.path === '/healthz' || crawlerPath || publicApi || req.path === '/' || req.path === '/offering' || req.path.startsWith('/offering.'),
     hub: commonPath || radarPath || embeddedAdminPath || req.path === '/' || req.path === '/hub' || req.path.startsWith('/hub.') || req.path.startsWith('/api/hub/') || req.path.startsWith('/api/solutions'),
     admin: commonPath || req.path === '/' || req.path.startsWith('/admin') || req.path.startsWith('/api/admin/') || req.path.startsWith('/api/solutions')
   }[APP_SURFACE];
@@ -280,6 +356,23 @@ const requirePageAuth = (canonicalPath, requiredRole = null) => async (req, res,
   }
   if (requiredRole && session.user.role !== requiredRole) {
     return res.status(403).send('접근 권한이 없습니다. 관리자 전용 기능입니다.');
+  }
+  req.user = session.user;
+  return next();
+};
+
+// 사내 정적 자산용. 페이지처럼 로그인으로 리다이렉트하면 <script> 가 HTML 을 받아
+// 원인 모를 파싱 에러가 나므로, 자산은 401/403 을 그대로 돌려준다.
+const requireAssetAuth = (canonicalPath, requiredRole = null) => async (req, res, next) => {
+  const session = await readSessionUser(req);
+  if (!session.user) {
+    if (session.clearCookie) res.clearCookie('token', { path: '/' });
+    if (session.status === 503) return res.status(503).type('text/plain').send('계정 권한을 확인하지 못했습니다.');
+    res.set('X-Login-Path', `/login.html?next=${encodeURIComponent(canonicalPath)}`);
+    return res.status(401).type('text/plain').send('로그인이 필요합니다.');
+  }
+  if (requiredRole && session.user.role !== requiredRole) {
+    return res.status(403).type('text/plain').send('접근 권한이 없습니다.');
   }
   req.user = session.user;
   return next();
@@ -441,13 +534,21 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 app.get('/api/solutions', authenticateToken, async (req, res) => {
   const { layer, synergy, delivery, category, q, industry, simulator_mapping } = req.query;
   
-  let queryStr = 'SELECT id, legacy_id, slug, name, delivery, layer, synergy, category, jtbd, value_chain, opinion, status, version, updated_at, simulator_mappings, industries FROM solutions';
+  const isAdmin = req.user.role === 'admin';
+  // opinion 은 정책상 admin 전용이면 아예 조회하지 않는다(응답에서 지우는 것보다 안전).
+  const exposeOpinion = isAdmin || OPINION_EXPOSE_POLICY === 'A';
+  const listColumns = [
+    'id', 'legacy_id', 'slug', 'name', 'delivery', 'layer', 'synergy', 'category',
+    'jtbd', 'value_chain', 'status', 'version', 'updated_at', 'simulator_mappings', 'industries',
+    ...(exposeOpinion ? ['opinion'] : [])
+  ];
+  let queryStr = `SELECT ${listColumns.join(', ')} FROM solutions`;
   let conditions = ['is_archived = false'];
   let params = [];
 
   let paramIdx = 1;
 
-  if (req.user.role === 'viewer') {
+  if (!isAdmin) {
     conditions.push(`status = $${paramIdx++}`);
     params.push('published');
   }
@@ -508,10 +609,6 @@ app.get('/api/solutions', authenticateToken, async (req, res) => {
       
       copy.simulator_mappings = typeof copy.simulator_mappings === 'string' ? JSON.parse(copy.simulator_mappings) : (copy.simulator_mappings || []);
       copy.industries = typeof copy.industries === 'string' ? JSON.parse(copy.industries) : (copy.industries || []);
-
-      if (OPINION_EXPOSE_POLICY === 'B' && req.user.role === 'viewer') {
-        delete copy.opinion;
-      }
       return copy;
     });
 
@@ -536,7 +633,12 @@ app.get('/api/solutions/:slug', authenticateToken, async (req, res) => {
   const slug = req.params.slug;
 
   try {
-    const result = await pool.query('SELECT * FROM solutions WHERE slug = $1 AND is_archived = false', [slug]);
+    const isAdmin = req.user.role === 'admin';
+    const columns = await solutionColumnsFor(req.user.role);
+    const result = await pool.query(
+      `SELECT ${columns.join(', ')} FROM solutions WHERE slug = $1 AND is_archived = false`,
+      [slug]
+    );
     const row = result.rows[0];
 
 
@@ -544,7 +646,7 @@ app.get('/api/solutions/:slug', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: '솔루션을 찾을 수 없습니다.' });
     }
 
-    if (req.user.role === 'viewer' && row.status !== 'published') {
+    if (!isAdmin && row.status !== 'published') {
       return res.status(403).json({ error: '해당 솔루션 가이드는 작성 중(Draft) 상태이므로 조회할 수 없습니다.' });
     }
 
@@ -554,8 +656,17 @@ app.get('/api/solutions/:slug', authenticateToken, async (req, res) => {
     row.simulator_mappings = typeof row.simulator_mappings === 'string' ? JSON.parse(row.simulator_mappings) : (row.simulator_mappings || []);
     row.industries = typeof row.industries === 'string' ? JSON.parse(row.industries) : (row.industries || []);
 
-    if (OPINION_EXPOSE_POLICY === 'B' && req.user.role === 'viewer') {
-      delete row.opinion;
+    if (isAdmin) {
+      row.sections_internal = parseJsonColumn(row.sections_internal, {}) || {};
+    } else {
+      // 009 적용 전이면 내부 문단이 아직 sections 안에 남아 있다. 분리 규칙을 런타임에도
+      // 한 번 더 태워서 마이그레이션 시점과 무관하게 non-admin 노출을 막는다(적용 후엔 no-op).
+      row.sections = stripInternalSections(row.sections);
+    }
+
+    if (OPINION_EXPOSE_POLICY === 'A' && !isAdmin) {
+      const opinionRow = await pool.query('SELECT opinion FROM solutions WHERE slug = $1', [slug]);
+      row.opinion = opinionRow.rows[0]?.opinion ?? null;
     }
 
     res.json(row);
@@ -616,6 +727,8 @@ app.post('/api/admin/solutions', authenticateToken, adminOnly, async (req, res) 
     ]);
     
     const solId = result.rows[0].id;
+    await persistSectionsInternal(pool, solId, req.body.sections_internal);
+    await persistPriceFlag(pool, solId, req.body.price_is_placeholder);
     auditLog(req.user.id, 'edit', slug, 'Created Draft');
 
     res.json({ message: '솔루션 초안(Draft)이 성공적으로 생성되었습니다.', id: solId, slug });
@@ -689,6 +802,9 @@ app.put('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, re
       status_op || current.status_op || 'active', note || null, priceType, unitPrice,
       currencyVal, priceTiersJson, solId
     ]);
+
+    await persistSectionsInternal(pool, solId, req.body.sections_internal);
+    await persistPriceFlag(pool, solId, req.body.price_is_placeholder);
 
     auditLog(req.user.id, 'edit', slug, 'Updated solution details');
     res.json({ message: '솔루션 정보가 저장되었습니다.', slug });
@@ -782,6 +898,11 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
       solId
     ]);
     const updatedSol = updatedRes.rows[0];
+    await persistSectionsInternal(client, solId, payload.sections_internal);
+    await persistPriceFlag(client, solId, payload.price_is_placeholder);
+    const sectionsInternal = payload.sections_internal !== undefined
+      ? (parseJsonColumn(payload.sections_internal, {}) || {})
+      : (parseJsonColumn(updatedSol.sections_internal, {}) || {});
 
     const snapshot = JSON.stringify({
       slug: updatedSol.slug,
@@ -793,6 +914,7 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
       jtbd: updatedSol.jtbd,
       value_chain: updatedSol.value_chain,
       sections: parseJsonColumn(updatedSol.sections, {}),
+      sections_internal: sectionsInternal,
       opinion: updatedSol.opinion,
       status: updatedSol.status,
       version: updatedSol.version,
@@ -919,6 +1041,14 @@ app.patch('/api/admin/packages/:id', authenticateToken, adminOnly, async (req, r
         sortOrder, baseMd, unitPrice, id
       ]
     );
+    // 실단가 확정 여부. 넘어오지 않으면 현재 값을 유지한다.
+    if (req.body?.price_is_placeholder !== undefined && await hasColumn('packages', 'price_is_placeholder')) {
+      const confirmed = req.body.price_is_placeholder === false || req.body.price_is_placeholder === 'false';
+      await pool.query('UPDATE packages SET price_is_placeholder = $1 WHERE id = $2', [!confirmed, id]);
+      updated.rows[0].price_is_placeholder = !confirmed;
+      auditLog(req.user.id, 'edit', `package:${id}`, `price_is_placeholder=${!confirmed}`);
+    }
+
     auditLog(req.user.id, 'edit', `package:${id}`, 'Updated package pricing');
     res.json(updated.rows[0]);
   } catch (err) {
@@ -1105,6 +1235,9 @@ app.post('/api/admin/solutions/:id/rollback', authenticateToken, adminOnly, asyn
       solId
     ]);
 
+    // 스냅샷에 내부 본문이 없으면(009 이전에 찍힌 버전) 현재 값을 건드리지 않는다.
+    await persistSectionsInternal(client, solId, snapshot.sections_internal);
+
     const newSnapshot = JSON.stringify({
       slug: snapshot.slug,
       name: snapshot.name,
@@ -1115,6 +1248,7 @@ app.post('/api/admin/solutions/:id/rollback', authenticateToken, adminOnly, asyn
       jtbd: snapshot.jtbd,
       value_chain: snapshot.value_chain,
       sections: snapshot.sections,
+      sections_internal: snapshot.sections_internal ?? {},
       opinion: snapshot.opinion,
       status: 'published',
       version: nextVersion,
@@ -1264,17 +1398,17 @@ app.post('/api/admin/suggest-edit', authenticateToken, adminOnly, async (req, re
       const checkItems = prompt.replace(/(7번|체크리스트|에|을|를|추가|제안|수정|항목)/g, '').trim();
       const newItemText = checkItems ? `- [ ] ${checkItems}` : '- [ ] MZC 보안 프록시를 결합하여 Zscaler 테넌트 제한 규칙이 완벽히 준수되는가?';
       newContent = oldContent + `\n${newItemText}`;
-      suggestionMessage = `[Mock AI] ${sol.name}의 7번 체크리스트에 새로운 항목을 추가할 것을 제안합니다.`;
+      suggestionMessage = `[규칙 기반 자동 삽입 · AI 아님] ${sol.name}의 7번 체크리스트에 새로운 항목을 추가할 것을 제안합니다.`;
     } else if (targetSection === '1') {
       const cleanPrompt = prompt.replace(/(1번|개요|에|을|를|추가|제안|수정)/g, '').trim();
       const addText = cleanPrompt ? `\n- **추가 정보**: ${cleanPrompt}` : '\n- **추가 비즈니스 가치**: 2026년 하반기 업그레이드 지원 포함';
       newContent = oldContent + addText;
-      suggestionMessage = `[Mock AI] ${sol.name}의 1번 개요 및 차별점에 새로운 비즈니스 가치를 추가할 것을 제안합니다.`;
+      suggestionMessage = `[규칙 기반 자동 삽입 · AI 아님] ${sol.name}의 1번 개요 및 차별점에 새로운 비즈니스 가치를 추가할 것을 제안합니다.`;
     } else {
       const cleanPrompt = prompt.replace(new RegExp(`(${targetSection}번|에|을|를|추가|제안|수정)`, 'g'), '').trim();
       const appendText = cleanPrompt ? `\n\n* ${cleanPrompt} (AI 추가 제안)*` : '\n\n* (신규 비즈니스 정합성 피치 추가)*';
       newContent = oldContent + appendText;
-      suggestionMessage = `[Mock AI] ${sol.name}의 ${targetSection}번 섹션에 내용을 덧붙일 것을 제안합니다.`;
+      suggestionMessage = `[규칙 기반 자동 삽입 · AI 아님] ${sol.name}의 ${targetSection}번 섹션에 내용을 덧붙일 것을 제안합니다.`;
     }
 
     let explanation = `사용자 지시 "${prompt}"에 따라 분석하여, ${sol.name}의 ${targetSection}번 섹션 본문을 수정 제안합니다. (SSOT 규율에 따라 즉시 저장되지 않고, 'Approve & Commit' 승인이 있어야 반영됩니다)`;
@@ -1291,7 +1425,7 @@ app.post('/api/admin/suggest-edit', authenticateToken, adminOnly, async (req, re
       });
       if (added.length > 0) {
         explanation = `사용자 지시 "${prompt}"에 따라 분석하여, ${sol.name}의 적합 업종에 [${added.join(', ')}]을(를) 추가할 것을 제안합니다.`;
-        suggestionMessage = `[Mock AI] ${sol.name}의 적합 업종 도메인을 갱신할 것을 제안합니다.`;
+        suggestionMessage = `[규칙 기반 자동 삽입 · AI 아님] ${sol.name}의 적합 업종 도메인을 갱신할 것을 제안합니다.`;
       }
     }
 
@@ -1354,7 +1488,8 @@ const hubRouter = createHubRouter({
   pool,
   authenticateToken,
   adminOnly,
-  auditLog
+  auditLog,
+  hasColumn
 });
 app.use('/api/hub', hubRouter);
 
@@ -1363,17 +1498,32 @@ const sendFrontendFile = (filename, cacheControl = 'no-store') => (_req, res) =>
   res.sendFile(path.join(__dirname, filename), { dotfiles: 'deny' });
 };
 
-const frontendAssets = Object.freeze({
+// 대외 공개 자산. 로그인 페이지와 offering 랜딩이 쓰는 것만 둔다.
+const publicFrontendAssets = Object.freeze({
   '/style.css': 'style.css',
-  '/app.js': 'app.js',
-  '/hub.css': 'hub.css',
-  '/hub.js': 'hub.js',
   '/offering.css': 'offering.css',
   '/offering.js': 'offering.js'
 });
 
-for (const [route, filename] of Object.entries(frontendAssets)) {
+// 사내 자산. app.js/hub.js 에는 내부 영업 로직(딜사이즈 계산, 벤더 추천 매핑,
+// "더미 단가" 배너 문구, 전체 API 맵)이 들어 있어 비로그인에 내보내지 않는다.
+// 각각 index.html(/radar) · hub.html(/hub) 에서만 로드되므로 같은 게이트를 건다.
+const authedFrontendAssets = Object.freeze({
+  '/app.js': { file: 'app.js', canonicalPath: '/radar' },
+  '/hub.css': { file: 'hub.css', canonicalPath: '/hub' },
+  '/hub.js': { file: 'hub.js', canonicalPath: '/hub' }
+});
+
+for (const [route, filename] of Object.entries(publicFrontendAssets)) {
   app.get(route, sendFrontendFile(filename, 'public, max-age=300'));
+}
+
+for (const [route, asset] of Object.entries(authedFrontendAssets)) {
+  app.get(
+    route,
+    requireAssetAuth(asset.canonicalPath),
+    sendFrontendFile(asset.file, 'private, max-age=300')
+  );
 }
 
 app.get('/', requireSurfaceRootAuth, (_req, res) => {
@@ -1395,6 +1545,47 @@ app.get(['/admin/usage', '/admin-usage.html'], requirePageAuth('/admin/usage', '
 app.get(['/hub', '/hub.html'], requirePageAuth('/hub'), sendFrontendFile('hub.html'));
 app.get(['/offering', '/offering.html'], sendFrontendFile('offering.html'));
 app.get(['/about', '/about.html'], requirePageAuth('/about'), sendFrontendFile('about.html'));
+
+// 크롤러 정책. 사내 경로는 로그인 게이트 뒤에 있지만 URL 자체가 색인되는 것도 막는다.
+// offering 서페이스가 아니면(=사내 전용 배포) 전면 차단한다.
+const PUBLIC_SURFACES = ['all', 'offering'];
+app.get('/robots.txt', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600').type('text/plain');
+  if (!PUBLIC_SURFACES.includes(APP_SURFACE)) {
+    return res.send('User-agent: *\nDisallow: /\n');
+  }
+  res.send([
+    'User-agent: *',
+    'Allow: /$',
+    'Allow: /offering',
+    'Disallow: /hub',
+    'Disallow: /radar',
+    'Disallow: /admin',
+    'Disallow: /about',
+    'Disallow: /docs/',
+    'Disallow: /api/',
+    'Disallow: /login',
+    '',
+    `Sitemap: ${PUBLIC_BASE_URL}/sitemap.xml`,
+    ''
+  ].join('\n'));
+});
+
+app.get('/sitemap.xml', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600').type('application/xml');
+  if (!PUBLIC_SURFACES.includes(APP_SURFACE)) {
+    return res.status(404).send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>');
+  }
+  // 대외 공개 페이지는 랜딩뿐이다. 사내 경로는 절대 넣지 않는다.
+  const urls = ['/', '/offering'];
+  res.send([
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...urls.map((url) => `  <url><loc>${PUBLIC_BASE_URL}${url}</loc><changefreq>weekly</changefreq></url>`),
+    '</urlset>',
+    ''
+  ].join('\n'));
+});
 
 const downloadableDocs = new Set([
   'MZC_AI_솔루션_가이드.docx',

@@ -10,6 +10,17 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
+// 이 스크립트는 isv_data.js 를 solutions 로 UPSERT(ON CONFLICT DO UPDATE)한다.
+// 고라이브 이후 실행하면 admin 이 /admin 에서 편집한 본문·가격·grade 가 전부
+// 파일 내용으로 덮이고 version 히스토리도 어긋난다. isv_data.js 는 admin 편집을
+// 반영하지 않으므로 이미 stale 이다 — 프로덕션에서는 기본적으로 막는다.
+if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PROD_SEED !== 'I_UNDERSTAND') {
+  console.error('프로덕션에서는 seed 를 실행하지 않습니다.');
+  console.error('isv_data.js 의 내용이 admin 편집본을 덮어씁니다.');
+  console.error('정말 필요하면 ALLOW_PROD_SEED=I_UNDERSTAND 를 붙이고, 먼저 solutions 를 백업하세요.');
+  process.exit(1);
+}
+
 const poolConfig = {
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -94,6 +105,22 @@ const aliasMap = {
 async function seed() {
   const client = await pool.connect();
   try {
+    // NODE_ENV 가 안 잡힌 채 프로덕션 DATABASE_URL 로 실행되는 경우까지 막는다.
+    // 발행 이력(version>1)이나 편집자 기록이 있으면 운영 중인 DB 로 본다.
+    if (process.env.ALLOW_PROD_SEED !== 'I_UNDERSTAND') {
+      const live = await client.query(
+        `select count(*)::int as edited from solutions
+         where coalesce(version, 0) > 1 or updated_by is not null`
+      ).catch(() => ({ rows: [{ edited: 0 }] }));
+      if (live.rows[0].edited > 0) {
+        console.error(`이 DB 에는 편집·발행된 솔루션이 ${live.rows[0].edited}건 있습니다.`);
+        console.error('seed 를 실행하면 admin 편집본이 isv_data.js 내용으로 덮어써집니다. 중단합니다.');
+        console.error('의도한 것이라면 solutions 백업 후 ALLOW_PROD_SEED=I_UNDERSTAND 를 붙이세요.');
+        process.exitCode = 1;
+        return;
+      }
+    }
+
     console.log('Loading isv_data.js...');
     const isvDataPath = path.join(__dirname, 'isv_data.js');
     if (!fs.existsSync(isvDataPath)) {

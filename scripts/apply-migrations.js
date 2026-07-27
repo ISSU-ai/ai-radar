@@ -25,7 +25,8 @@ const MIGRATIONS = [
   '002_release_hardening.sql',
   '003_package_pricing.sql',
   '005_solution_pricing.sql',
-  '008_tiered_pricing.sql'
+  '008_tiered_pricing.sql',
+  '009_internal_sections_and_price_flags.sql'
 ];
 
 async function main() {
