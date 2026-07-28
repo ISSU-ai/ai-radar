@@ -356,3 +356,44 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 .quote-table tr.unpriced td { color: var(--faint); }
 .quote-muted { color: var(--faint); }
 .deal-sim-seathint { margin: 0; padding: 0 16px 12px; font-size: 11px; line-height: 1.6; color: var(--faint); }
+
+/* ── STEP 03 추천 패널 ─────────────────────────────────────────── */
+/* 그룹을 시각적으로 나눈다. "지금 되는 것"과 "선행이 필요한 것"은 영업이
+   고객에게 다르게 말해야 하는 내용이라 한 덩어리로 보이면 안 된다. */
+.reco-panel { margin-bottom: 20px; }
+.reco-panel:empty { display: none; }
+.reco-head-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.reco-head-bar strong { font-size: .95rem; }
+.reco-label { margin-left: 8px; font-size: .74rem; padding: 2px 8px; border-radius: 999px;
+  background: rgba(74, 222, 128, .12); color: #4ade80; }
+.reco-label.tentative { background: rgba(255, 193, 7, .12); color: #ffc107; }
+.reco-gaps { font-size: .78rem; color: var(--text-secondary); margin-bottom: 12px; }
+.reco-group { margin-bottom: 16px; }
+.reco-group h4 { font-size: .82rem; margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
+.reco-group h4 span { font-size: .72rem; color: var(--text-secondary); font-weight: 400; }
+.reco-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.reco-card { border: 1px solid rgba(255,255,255,.08); border-left-width: 3px; border-radius: 6px;
+  padding: 10px 12px; background: rgba(255,255,255,.02); }
+.reco-ok { border-left-color: #4ade80; }
+.reco-bundle { border-left-color: #60a5fa; }
+.reco-warn { border-left-color: #ffc107; }
+.reco-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.reco-name { font-weight: 600; font-size: .88rem; }
+.reco-name em { font-style: normal; font-size: .74rem; color: #60a5fa; }
+.reco-score { font-size: .78rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.reco-meta { font-size: .72rem; color: var(--text-secondary); margin: 2px 0 6px; }
+.reco-reasons { margin: 0; padding-left: 16px; font-size: .75rem; line-height: 1.5; color: var(--text-secondary); }
+.reco-sub { margin-top: 6px; font-size: .72rem; color: #ffc107; }
+.reco-sub ul { margin: 2px 0 0; padding-left: 16px; }
+.reco-flags { color: #f87171; }
+.reco-add { margin-top: 8px; width: 100%; padding: 5px; font-size: .76rem; cursor: pointer;
+  border: 1px solid rgba(255,255,255,.14); border-radius: 4px; background: transparent; color: inherit; }
+.reco-add.picked { background: rgba(74,222,128,.12); border-color: rgba(74,222,128,.4); color: #4ade80; }
+.reco-add:disabled { opacity: .45; cursor: not-allowed; }
+.reco-empty { font-size: .8rem; color: var(--text-secondary); padding: 12px;
+  border: 1px dashed rgba(255,255,255,.1); border-radius: 6px; }
+.reco-details { margin-top: 10px; font-size: .76rem; color: var(--text-secondary); }
+.reco-details summary { cursor: pointer; }
+.reco-details ul { margin: 6px 0 0; padding-left: 18px; }
+.reco-details p { margin: 6px 0 0; }
+.reco-nodata summary { color: #ffc107; }

@@ -17,6 +17,8 @@ const PRIVACY_NOTICE = Object.freeze({
   retention: '상담 요청일로부터 1년'
 });
 
+const { recommend } = require('../lib/recommendation-engine');
+
 function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColumn }) {
   // 009 는 수동 적용이라 컬럼이 아직 없을 수 있다. 없으면 "미확정(true)"으로 본다 —
   // 모를 때 금액을 감추는 쪽이 견적서에 데모 단가가 인용되는 것보다 안전하다.
@@ -356,6 +358,109 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       res.json(result.rows[0]);
     } catch (error) {
       console.error(error);
+      sendError(res, error, 500);
+    }
+  });
+
+
+  /**
+   * STEP 03 추천. deals/:id 와 같은 owner 게이트를 건다 — 딜 데이터(FQA·업종·예산)를
+   * 입력으로 쓰므로 상세와 같은 수준의 보호가 필요하다.
+   *
+   * 판정 데이터가 없는 후보는 조용히 빠지지 않고 "판정 데이터 미입력" 사유로 제외
+   * 목록에 남는다. 영업에게는 "안 맞아서 제외"와 구분돼야 하고, ISSU 에게는 어떤
+   * 솔루션을 먼저 채워야 하는지 신호가 된다.
+   */
+  router.get('/deals/:id/recommendations', async (req, res) => {
+    try {
+      const dealResult = await pool.query(
+        `select d.* from deals d
+          where d.id = $1 and ($2 = 'admin' or d.owner_id is null or d.owner_id = $3)`,
+        [req.params.id, req.user.role, req.user.id]
+      );
+      const deal = dealResult.rows[0];
+      if (!deal) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
+
+      const hasSlot = hasColumn ? await hasColumn('solutions', 'slot') : false;
+      if (!hasSlot) {
+        return res.status(503).json({
+          error: '추천 엔진 스키마가 아직 적용되지 않았습니다. 010~011 마이그레이션을 확인하세요.'
+        });
+      }
+
+      const [solutions, packages, slotRows, fqaItems, config] = await Promise.all([
+        pool.query(
+          `select s.id, s.slug, s.name, s.slot, s.layer, s.synergy, s.grade, s.scale,
+                  s.status, s.status_op, s.industries,
+                  s.fqa_coverage, s.prerequisites, s.red_flags, s.bundle_potential
+             from solutions s
+            where s.is_archived = false and s.status = 'published'`
+        ).then((r) => r.rows),
+        pool.query(
+          `select p.id, p.id as slug, p.name, p.scale, p.period, p.target,
+                  p.fqa_coverage, p.prerequisites
+             from packages p where p.status = 'active'`
+        ).then((r) => r.rows),
+        pool.query('select id, name, layer, is_competitive from solution_slots').then((r) => r.rows),
+        loadFqaItems(),
+        pool.query('select key, kind, weight, enabled from recommendation_config')
+          .then((r) => r.rows).catch(() => [])
+      ]);
+
+      const itemCountByCategory = fqaItems.reduce((acc, item) => {
+        acc[item.category] = (acc[item.category] || 0) + 1;
+        return acc;
+      }, {});
+      // 문항 단위 전제(예: A[보안 게이트웨이 준비도] ≥ 3)를 카테고리 평균 대신
+      // 실제 문항 점수로 판정할 수 있게 이름→점수 맵을 만든다.
+      const rawScores = deal.fqa_scores && typeof deal.fqa_scores === 'object' ? deal.fqa_scores : {};
+      const itemScores = {};
+      for (const item of fqaItems) {
+        const score = Number(rawScores[item.no] ?? rawScores[String(item.no)]);
+        if (Number.isFinite(score)) itemScores[item.name] = score;
+      }
+
+      const weights = {};
+      const filters = {};
+      for (const row of config) {
+        if (row.kind === 'rank') weights[row.key] = Number(row.weight);
+        if (row.kind === 'filter') filters[row.key] = row.enabled;
+      }
+
+      const result = recommend({
+        deal,
+        solutions,
+        packages,
+        slots: new Map(slotRows.map((row) => [row.id, row])),
+        itemCountByCategory,
+        itemScores,
+        config: { weights, filters }
+      });
+
+      auditLog(req.user.id, 'view', `deal:${req.params.id}`, 'recommendations');
+      res.json(result);
+    } catch (error) {
+      console.error('Recommendation failed:', error.message);
+      sendError(res, error, 500);
+    }
+  });
+
+  /** 추천 결과를 딜에 기록한다. 나중에 실제 채택(isv_combo)과 대조해 기준을 튜닝한다. */
+  router.post('/deals/:id/recommendations/snapshot', async (req, res) => {
+    try {
+      if (!(hasColumn && await hasColumn('deals', 'recommendation_snapshot'))) {
+        return res.status(503).json({ error: '스냅샷 컬럼이 없습니다. 010 마이그레이션을 확인하세요.' });
+      }
+      const result = await pool.query(
+        `update deals set recommendation_snapshot = $1
+          where id = $2 and ($3 = 'admin' or owner_id = $4)
+          returning id`,
+        [JSON.stringify(req.body || {}), req.params.id, req.user.role, req.user.id]
+      );
+      if (!result.rows[0]) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
+      res.status(204).end();
+    } catch (error) {
+      console.error('Snapshot save failed:', error.message);
       sendError(res, error, 500);
     }
   });

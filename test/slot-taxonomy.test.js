@@ -139,12 +139,11 @@ test('통합 적용 스크립트가 원본 마이그레이션과 동기화돼 �
   // _combined_apply.sql 은 생성물이다. 원본을 고치고 재생성을 잊으면 SQL Editor 에
   // 낡은 스크립트를 붙여넣게 된다.
   const combined = fs.readFileSync(path.join(root, 'db', 'migrations', '_combined_apply.sql'), 'utf8');
-  for (const file of [
-    '010_recommendation_engine.sql',
-    '011_slot_taxonomy_and_layer_fixes.sql',
-    '012_seed_recommendation_rules.sql',
-    '013_curator_role.sql'
-  ]) {
+  // 어떤 마이그레이션을 담았는지는 생성 시점마다 다르다(build-pending-sql.js 인자).
+  // 고정 목록 대신 파일이 스스로 밝힌 목록과 대조한다.
+  const included = [...combined.matchAll(/^-- ▼ (\S+\.sql)$/gm)].map((m) => m[1]);
+  assert.ok(included.length > 0, '통합 스크립트에 포함 파일 표시가 없다');
+  for (const file of included) {
     const source = fs.readFileSync(path.join(root, 'db', 'migrations', file), 'utf8').trimEnd();
     assert.ok(combined.includes(source),
       `${file} 이 _combined_apply.sql 과 다르다 — node scripts/build-pending-sql.js 재실행 필요`);

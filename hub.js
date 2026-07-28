@@ -9,6 +9,7 @@ const state = {
   deals: [],
   refs: { stages: [], tracks: [], fqaItems: [], packages: [], solutions: [] },
   deal: null,
+  reco: null,
   activeStage: 0,
   dealFilter: 'all',
   mode: 'deals',
@@ -254,6 +255,7 @@ async function openDeal(id, { historyMode = 'replace' } = {}) {
     const deal = await api(`/api/hub/deals/${id}`);
     if (requestId !== state.openSequence) return;
     state.deal = deal;
+    state.reco = null;
     state.activeStage = state.deal.stage;
     state.mode = 'deals';
     $('#empty-workspace').classList.add('hidden');
@@ -555,6 +557,10 @@ function renderStage() {
     content.innerHTML = renderer ? renderer() : '';
     bindStageEvents();
     window.lucide?.createIcons();
+    // STEP 03 에 들어오면 추천을 한 번 계산한다. 렌더 안에서 부르면 재귀가 되므로
+    // 렌더가 끝난 뒤에, 아직 결과가 없을 때만 시작한다.
+    if (stage === 2 && !state.reco) loadRecommendations();
+    else if (stage === 2) renderRecommendationPanel();
   } catch (error) {
     console.error(`[hub] renderStage(${stage}) failed:`, error);
     content.innerHTML = `<div class="empty-state">이 단계를 표시하는 중 문제가 발생했습니다. 새로고침 후 다시 시도해주세요.<br><small>${escapeHtml(error && error.message || '')}</small></div>`;
@@ -612,6 +618,112 @@ function renderFqa() {
     <div class="fqa-groups">${groups}</div>`;
 }
 
+
+// ── STEP 03 추천 ──────────────────────────────────────────────────
+// 추천은 제안이지 강제가 아니다. 수동 선택은 그대로 두고 위에 얹는다.
+// 그룹을 나누는 이유: 영업이 고객 앞에서 "지금 되는 것"과 "선행이 필요한 것"을
+// 다르게 말해야 한다. 한 줄로 세우면 번들이 항상 위로 가 정렬이 아니라 왜곡이 된다.
+const RECO_GROUPS = [
+  { key: 'eligible', title: '바로 도입 가능', tone: 'ok' },
+  { key: 'bundles', title: '선행 조건이 필요', tone: 'bundle' },
+  { key: 'needsConfirmation', title: '확인 필요', tone: 'warn' }
+];
+
+async function loadRecommendations() {
+  if (!state.deal?.id) return;
+  state.reco = { loading: true };
+  renderRecommendationPanel();
+  try {
+    state.reco = await api(`/api/hub/deals/${state.deal.id}/recommendations`);
+  } catch (error) {
+    state.reco = { error: error.message };
+  }
+  renderRecommendationPanel();
+}
+
+function recoCardMarkup(item, tone) {
+  const selected = new Set(asArray(state.deal?.isv_combo));
+  const isSolution = item.kind === 'solution';
+  const picked = isSolution && selected.has(item.id);
+  const reasons = (item.reasons || []).slice(0, 3)
+    .map((r) => `<li>${escapeHtml(r)}</li>`).join('');
+  const flags = (item.redFlags || []).slice(0, 2).map((f) =>
+    `<li>${escapeHtml(f.signal)} → ${escapeHtml((f.alternatives || []).map((a) => a.label).join(', '))}</li>`).join('');
+  const pending = (item.prerequisites?.pendingManual || []).map((p) =>
+    `<li>${escapeHtml(p.label)}</li>`).join('');
+
+  return `<div class="reco-card reco-${tone}">
+    <div class="reco-head">
+      <span class="reco-name">${escapeHtml(item.name)}${item.enabler ? ` <em>← ${escapeHtml(item.enabler.name)} 선행</em>` : ''}</span>
+      <span class="reco-score" title="적합 점수">${(item.score * 100).toFixed(0)}</span>
+    </div>
+    <div class="reco-meta">${escapeHtml(item.slotName || (item.kind === 'package' ? '서비스 패키지' : '슬롯 미지정'))}${item.layer ? ` · ${escapeHtml(item.layer)}` : ''}</div>
+    ${reasons ? `<ul class="reco-reasons">${reasons}</ul>` : ''}
+    ${pending ? `<div class="reco-sub">확인 필요<ul>${pending}</ul></div>` : ''}
+    ${flags ? `<div class="reco-sub reco-flags">부적합 신호<ul>${flags}</ul></div>` : ''}
+    ${isSolution ? `<button type="button" class="reco-add ${picked ? 'picked' : ''}" data-reco-add="${item.id}" ${isOwner() ? '' : 'disabled'}>${picked ? '조합에 포함됨' : '조합에 추가'}</button>` : ''}
+  </div>`;
+}
+
+function renderRecommendationPanel() {
+  const host = document.getElementById('reco-panel');
+  if (!host) return;
+  const reco = state.reco;
+
+  if (!reco) { host.innerHTML = ''; return; }
+  if (reco.loading) { host.innerHTML = '<div class="reco-empty">추천을 계산하는 중...</div>'; return; }
+  if (reco.error) {
+    host.innerHTML = `<div class="reco-empty">추천을 불러오지 못했습니다. <small>${escapeHtml(reco.error)}</small></div>`;
+    return;
+  }
+
+  if (!reco.failingCategories?.length) {
+    host.innerHTML = `<div class="reco-empty">STEP 02 진단에서 미달 영역이 없어 추천할 보강 항목이 없습니다.
+      진단을 아직 입력하지 않았다면 STEP 02 를 먼저 채워주세요.</div>`;
+    return;
+  }
+
+  // 데이터가 없어서 빠진 것과 안 맞아서 빠진 것은 다르게 읽어야 한다.
+  const excluded = reco.excluded || [];
+  const noData = excluded.filter((x) => x.excludedBy?.some((r) => /판정 데이터/.test(r)));
+  const notFit = excluded.filter((x) => !noData.includes(x));
+
+  const groups = RECO_GROUPS.map(({ key, title, tone }) => {
+    const items = reco[key] || [];
+    if (!items.length) return '';
+    return `<div class="reco-group">
+      <h4>${title} <span>${items.length}</span></h4>
+      <div class="reco-grid">${items.map((item) => recoCardMarkup(item, tone)).join('')}</div>
+    </div>`;
+  }).join('');
+
+  host.innerHTML = `
+    <div class="reco-head-bar">
+      <div>
+        <strong>추천 조합</strong>
+        <span class="reco-label ${reco.reviewed ? '' : 'tentative'}">${escapeHtml(reco.label)}</span>
+      </div>
+      <button type="button" id="reco-refresh" class="secondary-button">다시 계산</button>
+    </div>
+    <div class="reco-gaps">미달 영역 · ${escapeHtml(reco.failingCategories.join(' · '))}</div>
+    ${groups || '<div class="reco-empty">조건에 맞는 후보가 없습니다.</div>'}
+    ${notFit.length ? `<details class="reco-details"><summary>이 고객에게 맞지 않아 제외 ${notFit.length}건</summary>
+      <ul>${notFit.map((x) => `<li>${escapeHtml(x.name)} — ${escapeHtml(x.excludedBy[0])}</li>`).join('')}</ul></details>` : ''}
+    ${noData.length ? `<details class="reco-details reco-nodata"><summary>판정 데이터가 없어 후보에서 빠짐 ${noData.length}건</summary>
+      <p>카탈로그에 추천 판정 데이터가 아직 입력되지 않은 솔루션입니다. ISSU 에 보강을 요청하세요.</p>
+      <ul>${noData.map((x) => `<li>${escapeHtml(x.name)}</li>`).join('')}</ul></details>` : ''}`;
+
+  document.getElementById('reco-refresh')?.addEventListener('click', loadRecommendations);
+  $$('[data-reco-add]').forEach((button) => button.addEventListener('click', () => {
+    const selected = new Set(asArray(state.deal.isv_combo));
+    const id = button.dataset.recoAdd;
+    selected.has(id) ? selected.delete(id) : selected.add(id);
+    state.deal.isv_combo = [...selected];
+    scheduleSave({ isv_combo: state.deal.isv_combo }, true);
+    renderStage();
+  }));
+}
+
 function renderSolutions() {
   const selected = new Set(asArray(state.deal.isv_combo));
   const query = state.catalogQuery.toLowerCase();
@@ -623,6 +735,7 @@ function renderSolutions() {
     ${solution.tech_note ? `<div class="tech-note">기술 확인 · ${escapeHtml(solution.tech_note)}</div>` : ''}
   </label>`).join('');
   return `${stageHeader('03', 'ISV 조합 확정', 'AI Radar의 내부 카탈로그를 딜과 연결합니다. 급·포컬·기술 제약은 내부에서만 보입니다.')}
+    <div id="reco-panel" class="reco-panel"></div>
     <div class="catalog-toolbar"><div class="search-wrap"><i data-lucide="search"></i><input id="catalog-search" type="search" value="${escapeHtml(state.catalogQuery)}" placeholder="솔루션·카테고리 검색"></div><a class="secondary-button" href="/radar" target="_blank" rel="noopener" title="AI Radar를 새 창으로 열기"><i data-lucide="external-link"></i> AI Radar</a></div>
     <div class="selection-grid">${cards || '<div class="empty-state">검색 결과가 없습니다.</div>'}</div>`;
 }
