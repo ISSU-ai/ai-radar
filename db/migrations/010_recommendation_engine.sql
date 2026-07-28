@@ -50,8 +50,18 @@ alter table packages  add column if not exists fqa_coverage  jsonb not null defa
 alter table packages  add column if not exists prerequisites jsonb not null default '[]'::jsonb;
 
 comment on column solutions.fqa_coverage  is '메우는 갭 [{category,items[],strength 1-3}]';
-comment on column solutions.prerequisites is '요구 조건 [{kind:fqa|manual, category,item,min, enabled_by[], label, blocking}]';
-comment on column solutions.red_flags     is '부적합 신호 [{signal, alternative[] (slug)}]';
+-- prerequisites 는 3종이다. 실제 §7.1 을 뽑아보니 정량 임계값이 박혀 있었다
+--   (OpenAI "최소 150명", Articul8 "연 1억 미만 부적합", Dataiku "5천만 이하 부적합").
+--   kind=fqa     : FQA 항목 점수로 자동 판정. 실패 시 enabled_by 로 번들 생성
+--   kind=numeric : seats / annual_budget_krw 등 수치 비교로 자동 판정
+--   kind=manual  : 법무 검토·계약 의사 등 자동 판정 불가 → 영업이 STEP03 에서 확인
+comment on column solutions.prerequisites is
+  '요구 조건 [{kind:fqa|numeric|manual, category,item,min, field,min,max, label, enabled_by[], blocking}]';
+-- 대안이 늘 카탈로그 안을 가리키지는 않는다. §7.3 실제 값에 "Azure OpenAI 국내 리전",
+-- "ChatGPT Team", "Gemini API", "도입 보류", "OCR 구축 선행" 같은 카탈로그 밖 대안이 많다.
+-- slug 는 있으면 링크, 없으면 label 만 표시한다.
+comment on column solutions.red_flags     is
+  '부적합 신호 [{signal, alternatives:[{slug?, label}]}]';
 comment on column solutions.bundle_potential is '번들 확장성 1-3. 정렬 가중치. 실적 데이터가 쌓이면 multiplier 로 대체 예정';
 
 -- ── 딜 쪽 ────────────────────────────────────────────────────────
