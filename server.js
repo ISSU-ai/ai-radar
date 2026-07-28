@@ -1262,6 +1262,104 @@ app.patch('/api/admin/profiles/:id', authenticateToken, adminOnly, async (req, r
 });
 
 
+
+/**
+ * 추천 vs 실제 채택 리포트. 기준 튜닝의 근거이자 콘텐츠 보강 우선순위다.
+ *
+ * 세 신호를 뽑는다.
+ *   miss   추천했는데 안 고름        → 판정 데이터가 현실과 어긋남
+ *   manual 추천에 없었는데 고름       → 엔진이 놓친 것. 가장 값지다
+ *   nodata 판정 데이터가 없어 빠짐    → 보강 우선순위 (딜에서 걸린 횟수 순)
+ */
+app.get('/api/admin/recommendation-report', authenticateToken, catalogEditorOnly, async (_req, res) => {
+  try {
+    if (!(await hasColumn('deals', 'recommendation_snapshot'))) {
+      return res.status(503).json({ error: '스냅샷 컬럼이 없습니다. 010 마이그레이션을 확인하세요.' });
+    }
+    const { rows } = await pool.query(
+      `select id, customer, recommendation_snapshot as snap, updated_at
+         from deals
+        where recommendation_snapshot is not null
+          and recommendation_snapshot <> '{}'::jsonb
+        order by updated_at desc
+        limit 500`
+    );
+
+    const tally = new Map(); // slug → {name, recommended, adopted, manual}
+    const bump = (slug, name, field) => {
+      if (!slug) return;
+      if (!tally.has(slug)) tally.set(slug, { slug, name: name || slug, recommended: 0, adopted: 0, manual: 0 });
+      tally.get(slug)[field] += 1;
+    };
+    const nodata = new Map();
+
+    let withRecommendation = 0;
+    let withAdoption = 0;
+    const bundleStats = { offered: 0, adopted: 0 };
+
+    for (const row of rows) {
+      const snap = row.snap || {};
+      const rec = snap.recommended || {};
+      const adopted = snap.adopted || null;
+      if (rec.eligible || rec.bundles) withRecommendation += 1;
+
+      const offered = new Map();
+      for (const group of ['eligible', 'bundles', 'needsConfirmation']) {
+        for (const item of rec[group] || []) {
+          if (item.kind !== 'solution') continue;
+          offered.set(item.slug, item);
+          bump(item.slug, item.name, 'recommended');
+          if (group === 'bundles') bundleStats.offered += 1;
+        }
+      }
+      for (const entry of rec.excludedNoData || []) {
+        const key = entry.slug || entry;
+        if (!nodata.has(key)) nodata.set(key, { slug: key, name: entry.name || key, count: 0 });
+        nodata.get(key).count += 1;
+      }
+
+      if (!adopted) continue;
+      withAdoption += 1;
+      const picked = new Set((adopted.picked || []).map((p) => p.slug).filter(Boolean));
+      for (const slug of picked) {
+        if (offered.has(slug)) {
+          bump(slug, offered.get(slug).name, 'adopted');
+          if ((rec.bundles || []).some((b) => b.slug === slug)) bundleStats.adopted += 1;
+        } else {
+          const meta = (adopted.picked || []).find((p) => p.slug === slug);
+          bump(slug, meta?.name, 'manual');
+        }
+      }
+    }
+
+    const solutions = [...tally.values()].map((item) => ({
+      ...item,
+      adoptionRate: item.recommended ? Number((item.adopted / item.recommended).toFixed(2)) : null
+    }));
+
+    res.json({
+      deals: rows.length,
+      withRecommendation,
+      withAdoption,
+      bundle: {
+        ...bundleStats,
+        rate: bundleStats.offered ? Number((bundleStats.adopted / bundleStats.offered).toFixed(2)) : null
+      },
+      // 추천했는데 채택률이 낮은 것 — 판정 데이터가 현실과 어긋난다는 신호
+      misses: solutions.filter((s) => s.recommended >= 2 && (s.adoptionRate ?? 1) < 0.3)
+        .sort((a, b) => b.recommended - a.recommended),
+      // 추천에 없었는데 영업이 고른 것 — 엔진이 놓친 것
+      manualPicks: solutions.filter((s) => s.manual > 0).sort((a, b) => b.manual - a.manual),
+      // 판정 데이터가 없어 후보에서 빠진 횟수 — 보강 우선순위
+      needsData: [...nodata.values()].sort((a, b) => b.count - a.count),
+      solutions: solutions.sort((a, b) => b.recommended - a.recommended)
+    });
+  } catch (err) {
+    console.error('Recommendation report failed:', err.message);
+    res.status(500).json({ error: '추천 리포트를 만들지 못했습니다.' });
+  }
+});
+
 // 슬롯 분류표. 편집기의 드롭다운과 커버리지 표시에 쓴다.
 app.get('/api/admin/slots', authenticateToken, catalogEditorOnly, async (_req, res) => {
   try {

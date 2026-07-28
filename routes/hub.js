@@ -448,17 +448,31 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     }
   });
 
-  /** 추천 결과를 딜에 기록한다. 나중에 실제 채택(isv_combo)과 대조해 기준을 튜닝한다. */
+  /**
+   * 추천·채택 기록. 나중에 실제 채택과 대조해 기준을 튜닝하는 근거가 된다.
+   *
+   * 병합으로 저장한다. 추천 기록(recommended)과 채택 기록(adopted)이 다른 시점에
+   * 들어오는데 덮어쓰면 한쪽이 사라진다.
+   *
+   * 가장 값진 신호는 manual — 영업이 자기 판단으로 골랐는데 추천 목록에 없던 것이다.
+   * 엔진이 놓친 것이고, 그대로 판정 데이터 보강 목록이 된다.
+   *
+   * 읽기(추천 조회)와 달리 쓰기는 담당자·admin 으로 제한한다. 미배정 딜을 훑어보는
+   * 것까지 기록하면 "딜 쓰기는 담당자만" 원칙이 흐려진다. claim 후 STEP 03 에 다시
+   * 들어오면 그때 기록되므로 실질적인 데이터 손실은 없다.
+   */
   router.post('/deals/:id/recommendations/snapshot', async (req, res) => {
     try {
       if (!(hasColumn && await hasColumn('deals', 'recommendation_snapshot'))) {
         return res.status(503).json({ error: '스냅샷 컬럼이 없습니다. 010 마이그레이션을 확인하세요.' });
       }
+      const patch = req.body && typeof req.body === 'object' ? req.body : {};
       const result = await pool.query(
-        `update deals set recommendation_snapshot = $1
+        `update deals
+            set recommendation_snapshot = coalesce(recommendation_snapshot, '{}'::jsonb) || $1::jsonb
           where id = $2 and ($3 = 'admin' or owner_id = $4)
           returning id`,
-        [JSON.stringify(req.body || {}), req.params.id, req.user.role, req.user.id]
+        [JSON.stringify(patch), req.params.id, req.user.role, req.user.id]
       );
       if (!result.rows[0]) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
       res.status(204).end();

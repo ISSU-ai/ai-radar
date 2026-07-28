@@ -635,10 +635,57 @@ async function loadRecommendations() {
   renderRecommendationPanel();
   try {
     state.reco = await api(`/api/hub/deals/${state.deal.id}/recommendations`);
+    saveRecommendationSnapshot();
   } catch (error) {
     state.reco = { error: error.message };
   }
   renderRecommendationPanel();
+}
+
+/** 무엇을 추천했는지 남긴다. 나중에 실제 채택과 대조할 기준선이다. */
+function saveRecommendationSnapshot() {
+  const reco = state.reco;
+  if (!reco || reco.error) return;
+  const slim = (items) => (items || []).map((item) => ({
+    slug: item.slug, name: item.name, kind: item.kind,
+    slot: item.slot, domain: item.domain, score: item.score,
+    enabler: item.enabler?.slug || null
+  }));
+  postSnapshot({
+    recommended: {
+      at: new Date().toISOString(),
+      label: reco.label,
+      reviewed: reco.reviewed,
+      failingCategories: reco.failingCategories || [],
+      eligible: slim(reco.eligible),
+      bundles: slim(reco.bundles),
+      needsConfirmation: slim(reco.needsConfirmation),
+      excludedNoData: (reco.excluded || [])
+        .filter((x) => x.excludedBy?.some((r) => /판정 데이터/.test(r)))
+        .map((x) => ({ slug: x.slug, name: x.name }))
+    }
+  });
+}
+
+/**
+ * 영업이 실제로 무엇을 골랐는지 남긴다.
+ * 추천 목록에 없던 선택이 가장 값진 신호다 — 엔진이 놓친 것이고 그대로
+ * 판정 데이터 보강 목록이 된다.
+ */
+function saveAdoptionSnapshot() {
+  if (!state.deal?.id || !state.reco || state.reco.error) return;
+  const picked = asArray(state.deal.isv_combo).map((id) => {
+    const solution = (state.refs.solutions || []).find((item) => item.id === id);
+    return { id, slug: solution?.slug || null, name: solution?.name || null };
+  });
+  postSnapshot({ adopted: { at: new Date().toISOString(), picked } });
+}
+
+/** 기록 실패가 영업 작업을 막으면 안 된다. 조용히 삼킨다. */
+function postSnapshot(patch) {
+  api(`/api/hub/deals/${state.deal.id}/recommendations/snapshot`, {
+    method: 'POST', body: JSON.stringify(patch)
+  }).catch(() => {});
 }
 
 function recoCardMarkup(item, tone) {
@@ -728,6 +775,7 @@ function renderRecommendationPanel() {
     selected.has(id) ? selected.delete(id) : selected.add(id);
     state.deal.isv_combo = [...selected];
     scheduleSave({ isv_combo: state.deal.isv_combo }, true);
+    saveAdoptionSnapshot();
     renderStage();
   }));
 }
@@ -1030,6 +1078,7 @@ function bindStageEvents() {
     input.checked ? selected.add(input.dataset.solutionId) : selected.delete(input.dataset.solutionId);
     state.deal.isv_combo = [...selected];
     scheduleSave({ isv_combo: state.deal.isv_combo }, true);
+    saveAdoptionSnapshot();
     renderStage();
   }));
   $$('[data-package-id]').forEach((input) => input.addEventListener('change', () => {
