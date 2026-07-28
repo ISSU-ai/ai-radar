@@ -20,6 +20,12 @@ const LOGIN_ATTEMPT_LIMIT = 10;
 const HEALTH_QUERY_TIMEOUT_MS = 3000;
 // robots.txt / sitemap.xml 의 절대 URL 용. 대외 도메인이 정해지면 env 로 덮어쓴다.
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || 'https://ai-radar-7pg2.onrender.com').replace(/\/+$/, '');
+// 배포 확인용. 바뀐 파일이 전부 인증 뒤에 있으면 밖에서 배포 여부를 판별할 수 없어
+// 매번 추측하게 된다. Render 가 RENDER_GIT_COMMIT 을 넣어준다.
+// 짧은 해시만 노출한다 — 저장소가 비공개라 해시 자체로는 아무것도 알 수 없고,
+// 브랜치·빌드 상세는 넣지 않는다.
+const BUILD_VERSION = String(process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || 'dev';
+const STARTED_AT = new Date().toISOString();
 let isShuttingDown = false;
 
 function parseJsonColumn(value, fallback) {
@@ -343,14 +349,15 @@ app.use((req, res, next) => {
 
 app.get('/healthz', async (_req, res) => {
   if (isShuttingDown) {
-    return res.status(503).json({ status: 'shutting_down' });
+    return res.status(503).json({ status: 'shutting_down', version: BUILD_VERSION });
   }
   try {
     await pool.query({ text: 'select 1', query_timeout: HEALTH_QUERY_TIMEOUT_MS });
-    return res.status(200).json({ status: 'ok' });
+    // version 이 바뀌었으면 새 코드가, startedAt 이 최근이면 방금 재시작된 것이다.
+    return res.status(200).json({ status: 'ok', version: BUILD_VERSION, startedAt: STARTED_AT });
   } catch (error) {
     console.error('Readiness check failed:', error.message);
-    return res.status(503).json({ status: 'database_unavailable' });
+    return res.status(503).json({ status: 'database_unavailable', version: BUILD_VERSION, startedAt: STARTED_AT });
   }
 });
 
@@ -1915,6 +1922,7 @@ const server = app.listen(PORT, () => {
   console.log(` ISSU AI Radar Server running on http://localhost:${PORT}`);
   console.log(` APP_SURFACE: ${APP_SURFACE}`);
   console.log(` OPINION_EXPOSE_POLICY: ${OPINION_EXPOSE_POLICY}`);
+  console.log(` BUILD: ${BUILD_VERSION}  (started ${STARTED_AT})`);
   console.log(`====================================================`);
 });
 

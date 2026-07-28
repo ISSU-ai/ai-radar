@@ -130,3 +130,11 @@ test('server handles idle pool failures and drains resources on termination', ()
   assert.match(source, /process\.on\('SIGTERM'/);
   assert.match(source, /process\.on\('SIGINT'/);
 });
+
+test('healthz 가 배포 확인용 버전을 알린다', () => {
+  // 인증 뒤 파일만 바뀐 배포는 밖에서 판별할 수 없어 매번 추측하게 된다.
+  assert.match(source, /const BUILD_VERSION = String\(process\.env\.RENDER_GIT_COMMIT \|\| ''\)\.slice\(0, 7\) \|\| 'dev'/);
+  assert.match(source, /status: 'ok', version: BUILD_VERSION, startedAt: STARTED_AT/);
+  // 짧은 해시만 노출한다. 브랜치·빌드 상세는 넣지 않는다.
+  assert.doesNotMatch(source, /RENDER_GIT_BRANCH/);
+});

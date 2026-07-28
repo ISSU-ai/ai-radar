@@ -111,6 +111,21 @@ node scripts/build-pending-sql.js          # db/migrations/_combined_apply.sql �
 
 > `alter type app_role add value` 는 트랜잭션 밖에 있어야 합니다. 생성 스크립트가 그 순서를 보존하고, 테스트가 이를 검증합니다. 이후 재적용은 `scripts/apply-migrations.js`(010·011·013만, 012 제외)를 씁니다.
 
+### 2-1. 배포 확인
+
+`/healthz` 가 실행 중인 커밋을 알려줍니다. 인증 뒤 파일만 바뀐 배포는 밖에서 판별할 수 없어, 이 값이 없으면 매번 추측하게 됩니다.
+
+```bash
+curl -s https://<host>/healthz
+# {"status":"ok","version":"f0fc05a","startedAt":"2026-07-28T13:58:40.717Z"}
+```
+
+- `version` — `RENDER_GIT_COMMIT` 앞 7자리. 푸시한 커밋과 같으면 배포 완료입니다.
+- `startedAt` — 인스턴스 기동 시각. 최근이면 방금 재배포된 것입니다.
+- DB 장애로 `503` 일 때도 두 값은 나옵니다. 장애 중에도 어느 코드가 떠 있는지 확인할 수 있습니다.
+
+저장소가 비공개라 짧은 해시만 노출합니다. 브랜치·빌드 상세는 넣지 않습니다.
+
 ### 3. Render Blueprint 연결
 
 1. Render Dashboard에서 **New > Blueprint**를 선택합니다.
