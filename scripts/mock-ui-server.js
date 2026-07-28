@@ -79,31 +79,100 @@ app.get('/api/hub/events', (_req, res) => {
 // 판정 데이터 폼(2-2b)과 완성도 패널(2-2c)을 DB 없이 눈으로 확인하기 위한 최소 구현.
 const { evaluateCompleteness } = require('../lib/solution-completeness');
 
-const mockSlots = [
-  { id: 'llm-platform', name: '범용 LLM 플랫폼', layer: 'L1', is_competitive: true, candidates: 3 },
-  { id: 'security-gateway', name: '네트워크 보안·SWG', layer: 'L4', is_competitive: true, candidates: 2 },
-  { id: 'ai-usage-governance', name: 'AI 사용 가시성·거버넌스', layer: 'L4', is_competitive: false, candidates: 1 },
-  { id: 'data-platform', name: '통합 데이터·레이크하우스', layer: 'L0', is_competitive: true, candidates: 0 }
-];
+// 슬롯 분류표는 011 에서 그대로 읽는다. 목업이 실제와 어긋나면 검사 결과가 거짓말을 한다.
+const mockSlots = (() => {
+  const sql = require('fs').readFileSync(
+    path.join(__dirname, '..', 'db', 'migrations', '011_slot_taxonomy_and_layer_fixes.sql'), 'utf8');
+  const block = sql.slice(sql.indexOf('insert into solution_slots'), sql.indexOf('on conflict (id) do update'));
+  const assigned = {};
+  const assignBlock = sql.slice(sql.indexOf('update solutions set slot = v.slot'), sql.indexOf('as v(slug, slot)'));
+  for (const m of assignBlock.matchAll(/\('([a-z0-9-]+)',\s*'([a-z0-9-]+)'\)/g)) {
+    assigned[m[2]] = (assigned[m[2]] || 0) + 1;
+  }
+  const rows = [];
+  for (const m of block.matchAll(/\('([a-z0-9-]+)',\s*'([^']+)',\s*'(L[0-4])',\s*(true|false)/g)) {
+    rows.push({ id: m[1], name: m[2], layer: m[3], is_competitive: m[4] === 'true', candidates: assigned[m[1]] || 0 });
+  }
+  return rows;
+})();
 
+// 실제 DB 상태를 그대로 반영한다. 012 가 판정 데이터를 넣은 것은 상세 작성 9종이고
+// (openai-enterprise · articul8 · anthropic-claude · twelve-labs · eleven-labs ·
+//  replit · dataiku · litellm · anaconda), Trust Layer 4종과 껍데기 9종은 비어 있다.
+// Portal26 초안은 아직 DB 에 넣지 않았으므로 여기서도 비어 있어야 한다.
 const mockSolutions = [
   {
-    id: 'sol-1', slug: 'portal26', name: 'Portal26', layer: 'L4', slot: 'ai-usage-governance',
-    delivery: 'SaaS', synergy: '높음', category: 'AI 거버넌스·가시성',
-    jtbd: '누가 어떤 AI를 얼마나 쓰는지 가시화', value_chain: 'AI Infra',
-    status: 'draft', version: 1, grade: 2, scale: 'M', bundle_potential: 3,
-    sections: { 1: 'Portal26은 생성형 AI 사용 가시성과 AI TRiSM에 특화된 SaaS 플랫폼입니다.', 3: '- ○ 매우 적합: 금융/보험', 7: '### 7.1 필수 요건' },
+    id: 'sol-1', slug: 'openai-enterprise', name: 'OpenAI Enterprise', layer: 'L1', slot: 'llm-platform',
+    delivery: 'SaaS/API', synergy: '매우 높음', category: 'GenAI / 범용 LLM',
+    jtbd: '생태계 1위 및 친숙한 UI', value_chain: 'AI Platform',
+    status: 'published', version: 3, grade: 3, scale: 'L', bundle_potential: 3,
+    sections: {
+      1: 'OpenAI Enterprise는 Fortune 500 기업의 92% 이상이 선택한 시장 표준 Generative AI 플랫폼입니다. 임직원의 친숙도가 가장 높고, API 생태계와 노코드 확장 플랫폼을 기반으로 사내 지식 베이스 구축부터 고난도 비전/음성 비즈니스 영역까지 대응이 가능합니다.\n- **제품 라인업**: ChatGPT Enterprise, ChatGPT Team, ChatGPT Edu, API Platform\n- **차별적 비즈니스 가치**: 최강의 범용 추론 성능, 높은 임직원 친숙도, 커스텀 GPTs 노코드 제작, 검증된 데이터 프라이버시, 강력한 관리자 통제를 모두 갖춘 구성입니다. SOC 2 Type II 인증과 DPA 명문화로 기업 원시 데이터를 격리합니다.',
+      3: '### 3.1 산업 적합도\n- **○ 매우 적합**: 전 산업 사무직 중심 대기업\n### 3.2 핵심 의사결정 페르소나\n- **CIO / CDO (의사결정자)**: 그림자 IT 방지 및 공식 보안 거버넌스 수립이 주요 관심사',
+      7: '### 7.1 필수 요건 (5가지)\n- [ ] 최소 도입 인원이 150명 이상인가?\n- [ ] 사내 로그인 연동을 위한 SSO 인프라가 갖춰져 있는가?\n- [ ] 사내 데이터 전송에 법무/보안 규정상 문제가 없는가?\n- [ ] AI 도입 총괄 챔피언이 지정되어 있는가?\n- [ ] 글로벌 DPA 표준안을 수용할 수 있는가?'
+    },
     sections_internal: {}, industries: [], simulator_mappings: [],
-    fqa_coverage: [{ category: 'A', items: ['접근권한과 계정 체계'], strength: 3 }],
-    prerequisites: [{ kind: 'fqa', category: 'A', item: '보안 게이트웨이 준비도', min: 3, blocking: true, label: 'SWG 보유', enabled_by: ['zscaler'] }],
-    red_flags: [{ signal: 'SWG 미보유', alternatives: [{ slug: 'zscaler', label: 'Zscaler' }] }],
+    fqa_coverage: [
+      { category: 'D', items: ['명확한 업무 문제'], strength: 2 },
+      { category: 'B', items: ['지식 소스 품질'], strength: 2 }
+    ],
+    prerequisites: [
+      { kind: 'numeric', field: 'seats', min: 150, blocking: true, label: '최소 도입 인원 150명 (ChatGPT Enterprise 기준)' },
+      { kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3, blocking: true, label: 'SSO(Okta/Azure AD) 인프라' },
+      { kind: 'manual', label: '사내 데이터의 OpenAI 클라우드 전송에 법무·보안 승인', blocking: true }
+    ],
+    red_flags: [
+      { signal: '외부 인터넷 100% 차단 에어갭 환경', alternatives: [{ slug: 'articul8', label: 'Articul8' }] },
+      { signal: '50명 이하 소규모인데 Enterprise 등급 요구', alternatives: [{ label: 'ChatGPT Team' }] }
+    ],
     price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
   },
   {
-    id: 'sol-2', slug: 'ibm', name: 'IBM', layer: 'L1', slot: null,
-    delivery: 'SW', synergy: '중', category: '종합 AI/ML(watsonx)', jtbd: '엔터프라이즈 거버넌스 AI',
-    value_chain: 'AI Platform', status: 'draft', version: 1, bundle_potential: null,
-    sections: { 1: '짧은 본문', 3: '- **CIO / CDO (의사결정자)**: 데이터 자산화 및 통합 AI 거버넌스 수립이 주요 관심사 ➔ **{name}의 엔터프라이즈 제어 기능 강조**' },
+    id: 'sol-2', slug: 'articul8', name: 'Articul8', layer: 'L2', slot: 'private-domain-platform',
+    delivery: 'SW (On-prem/Airgap)', synergy: '매우 높음', category: '도메인특화 모델·오케스트레이션',
+    jtbd: '에어갭/온프레미스 고보안 제조업 최적화', value_chain: 'AI Platform',
+    status: 'published', version: 2, grade: 3, scale: 'L', bundle_potential: 3,
+    sections: {
+      1: 'Articul8은 인텔에서 스핀오프된 엔터프라이즈 특화 AI 플랫폼입니다. 데이터 외부 반출이 완전히 차단된 폐쇄망(에어갭) 및 온프레미스 하이브리드 환경 배포를 완벽히 지원하며, 산업별 도메인 특화 모델(DSM)과 독자적인 다중 모델 오케스트레이션(ModelMesh)을 핵심 강점으로 내세웁니다. 배포 유연성이 최대 강점으로, 플랫폼이 고객 보안경계 내에 100% 셀프컨테인드로 배포되어 외부 SaaS 로 데이터가 나가는 구조를 요구하지 않습니다.',
+      3: '### 3.1 산업 적합도\n- **○ 매우 적합**: 반도체/디스플레이 제조, 방위산업/국방, 중공업, 공공 기밀 기관',
+      7: '### 7.1 필수 요건 (5가지)\n- [ ] GPU 서버 인프라 예산이 확보되어 있는가?\n- [ ] Kubernetes 를 관리할 인프라 엔지니어가 있는가?\n- [ ] 도메인 학습용 사내 기밀 텍스트 데이터셋이 충분한가?'
+    },
+    sections_internal: { 1: '- **AI Tech 의견 (PreSales)**: 마진율이 가장 높은 고수익성 카드입니다.' },
+    industries: [], simulator_mappings: [],
+    fqa_coverage: [
+      { category: 'A', items: ['데이터 분류와 민감도 기준', '보안 게이트웨이 준비도'], strength: 3 },
+      { category: 'B', items: ['지식 소스 품질'], strength: 2 }
+    ],
+    prerequisites: [
+      { kind: 'numeric', field: 'annual_budget_krw', min: 100000000, blocking: true, label: '연간 예산 1억원 이상 (GPU 서버 구축비 포함)' },
+      { kind: 'fqa', category: 'C', item: '운영 책임자 지정', min: 3, blocking: true, label: 'Kubernetes 관리 인프라 엔지니어' }
+    ],
+    red_flags: [
+      { signal: '연간 예산 1억원 미만 · GPU 서버 구축비 지출 불가', alternatives: [{ label: '퍼블릭 Cloud RAG' }] },
+      { signal: '10명 이하 부서에서 경량 문서 작성·검색만 요구', alternatives: [{ slug: 'openai-enterprise', label: '퍼블릭 ChatGPT' }] }
+    ],
+    price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
+  },
+  {
+    // Trust Layer 4종은 007 이 slug/name/layer/category/jtbd 만 넣은 껍데기다.
+    // 초안은 있으나 DB 에 반영하지 않았으므로 판정 데이터가 비어 있다.
+    id: 'sol-3', slug: 'portal26', name: 'Portal26', layer: 'L4', slot: 'ai-usage-governance',
+    delivery: null, synergy: null, category: 'AI 거버넌스·가시성',
+    jtbd: '누가 어떤 AI를 얼마나 쓰는지 가시화하고 프롬프트 위험·토큰 비용을 통제',
+    value_chain: null, status: 'published', version: 1, bundle_potential: null,
+    sections: {}, sections_internal: {}, industries: [], simulator_mappings: [],
+    fqa_coverage: [], prerequisites: [], red_flags: [],
+    price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
+  },
+  {
+    // 껍데기 9종. {name} 플레이스홀더가 그대로 남아 있고 페르소나 문장이 서로 같다.
+    id: 'sol-4', slug: 'ibm', name: 'IBM', layer: 'L1', slot: 'llm-platform',
+    delivery: 'SW/Cloud', synergy: '중', category: '종합 AI/ML(watsonx)', jtbd: '엔터프라이즈 거버넌스 AI',
+    value_chain: 'AI Platform', status: 'published', version: 1, bundle_potential: null,
+    sections: {
+      1: 'IBM watsonx 는 엔터프라이즈 거버넌스 AI 플랫폼입니다.',
+      3: '- **CIO / CDO (의사결정자)**: 데이터 자산화 및 통합 AI 거버넌스 수립이 주요 관심사 ➔ **{name}의 엔터프라이즈 제어 기능 강조**\n- **플랫폼 엔지니어 / IT 운영 리더**: 인프라 복잡성 완화 및 운영비용(FinOps) 최적화가 관심사 ➔ **MZC MSP 관리 서비스 연계**'
+    },
     sections_internal: {}, industries: [], simulator_mappings: [],
     fqa_coverage: [], prerequisites: [], red_flags: [],
     price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
