@@ -656,6 +656,61 @@
             </div>
           </div>
 
+          <!-- ── 추천 판정 데이터 (2차 추천 엔진이 소비) ── -->
+          <div class="sections-accordion" style="display:flex; flex-direction:column; gap:10px; margin-top:18px;">
+            <h4 style="font-size:.9rem; font-weight:700; color:var(--accent-blue); border-bottom:1px dashed rgba(255,255,255,.08); padding-bottom:6px; margin-bottom:4px;">
+              추천 판정 데이터 <span style="font-weight:400; color:var(--text-secondary);">— STEP 03 추천이 이 값으로 후보를 고릅니다</span>
+            </h4>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="control-label" for="sol-slot">역할 슬롯 <span style="color:#f87171;">*</span></label>
+                <select id="sol-slot" class="form-control" style="padding-left:12px; cursor:pointer;"><option value="">— 선택 —</option></select>
+                <small style="color:var(--text-secondary); font-size:.75rem;">같은 슬롯끼리만 순위를 비교합니다. 미지정이면 추천 후보가 되지 않습니다.</small>
+              </div>
+              <div class="form-group">
+                <label class="control-label" for="sol-bundle-potential">번들 확장성</label>
+                <select id="sol-bundle-potential" class="form-control" style="padding-left:12px; cursor:pointer;">
+                  <option value="">— 미지정 —</option>
+                  <option value="1">1 · 단품 위주</option>
+                  <option value="2">2 · 일부 결합 가능</option>
+                  <option value="3">3 · SI·MSP 결합 여지 큼</option>
+                </select>
+                <small style="color:var(--text-secondary); font-size:.75rem;">적합 후보들 사이의 정렬에 쓰입니다.</small>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="control-label">메우는 준비도 갭 (FQA Coverage) <span style="color:#f87171;">*</span></label>
+              <div id="fqa-coverage-editor" style="display:flex; flex-direction:column; gap:8px;"></div>
+              <small style="color:var(--text-secondary); font-size:.75rem;">이 솔루션이 <b>해결해 주는</b> 영역입니다. 강도 0은 해당 없음입니다.</small>
+            </div>
+
+            <div class="form-group">
+              <label class="control-label" for="sol-prerequisites">전제 조건 (Prerequisites) · JSON</label>
+              <textarea id="sol-prerequisites" class="textarea-control" style="height:130px; font-family:monospace; font-size:12px;"
+                placeholder='[{"kind":"fqa","category":"A","item":"보안 게이트웨이 준비도","min":3,"blocking":true,"label":"SWG 보유","enabled_by":["zscaler"]},
+ {"kind":"numeric","field":"seats","min":150,"blocking":true,"label":"최소 150명"},
+ {"kind":"manual","label":"법무 검토 완료","blocking":true}]'></textarea>
+              <small style="color:var(--text-secondary); font-size:.75rem;">이 솔루션이 <b>요구하는</b> 조건입니다. <code>fqa</code>·<code>numeric</code>은 자동 판정, <code>manual</code>은 영업이 확인합니다. <code>enabled_by</code>가 있으면 그 솔루션과 <b>번들로 제안</b>됩니다.</small>
+            </div>
+
+            <div class="form-group">
+              <label class="control-label" for="sol-red-flags">부적합 신호 (Red Flags) · JSON</label>
+              <textarea id="sol-red-flags" class="textarea-control" style="height:110px; font-family:monospace; font-size:12px;"
+                placeholder='[{"signal":"SWG 미보유·도입계획 없음","alternatives":[{"slug":"zscaler","label":"Zscaler"},{"label":"도입 보류"}]}]'></textarea>
+              <small style="color:var(--text-secondary); font-size:.75rem;">제외 사유와 <b>대안</b>입니다. 대안이 카탈로그 밖이면 <code>slug</code> 없이 <code>label</code>만 씁니다.</small>
+            </div>
+
+            <div id="completeness-panel" style="border:1px solid rgba(255,255,255,.08); border-radius:6px; padding:12px; background:rgba(255,255,255,.02);">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <strong style="font-size:.85rem;">발행 가능 여부</strong>
+                <button type="button" id="check-completeness-button" class="btn-save" style="padding:6px 12px; font-size:.78rem;">지금 검사</button>
+              </div>
+              <div id="completeness-result" style="margin-top:10px; font-size:.8rem; color:var(--text-secondary);">저장 후 검사하면 발행을 막는 항목이 표시됩니다.</div>
+            </div>
+          </div>
+
           <div class="actions-bar">
             <button type="button" data-admin-action="archive" class="btn-archive">솔루션 아카이브 (Archive)</button>
             <button type="button" data-admin-action="save-draft" class="btn-save">임시 저장 (Save Draft)</button>
@@ -974,6 +1029,129 @@
         if (rollback) rollback.textContent = rollback.textContent.replace(' / 롤백', '');
       }
 
+
+      // ── 추천 판정 데이터 편집기 ────────────────────────────────
+      // FQA 21문항은 공개 API 를 그대로 쓴다(별도 엔드포인트 불필요).
+      let fqaItemsByCategory = {};
+      let availableSlots = [];
+
+      const FQA_CATEGORY_LABEL = { A: 'A · 보안·거버넌스', B: 'B · 기술·연동', C: 'C · 운영', D: 'D · 비즈니스' };
+
+      async function loadRecommendationRefs() {
+        try {
+          const items = await (await fetch('/api/hub/public/fqa-items')).json();
+          fqaItemsByCategory = items.reduce((acc, item) => {
+            (acc[item.category] = acc[item.category] || []).push(item.name);
+            return acc;
+          }, {});
+        } catch (e) { console.error('FQA 문항 로드 실패', e); }
+
+        try {
+          const res = await fetch('/api/admin/slots');
+          availableSlots = res.ok ? await res.json() : [];
+        } catch (e) { availableSlots = []; }
+
+        const select = document.getElementById('sol-slot');
+        const current = select.value;
+        select.innerHTML = '<option value="">— 선택 —</option>' + availableSlots.map((slot) =>
+          `<option value="${slot.id}">[${slot.layer}] ${slot.name} (후보 ${slot.candidates}종${slot.is_competitive ? ' · 경쟁' : ''})</option>`
+        ).join('');
+        select.value = current;
+
+        renderFqaCoverageEditor();
+      }
+
+      /** 카테고리별로 강도 + 문항 체크박스를 그린다. 강도 0 = 해당 없음. */
+      function renderFqaCoverageEditor(coverage = []) {
+        const host = document.getElementById('fqa-coverage-editor');
+        if (!host) return;
+        const byCategory = {};
+        (Array.isArray(coverage) ? coverage : []).forEach((entry) => {
+          if (entry && entry.category) byCategory[entry.category] = entry;
+        });
+
+        host.innerHTML = ['A', 'B', 'C', 'D'].map((category) => {
+          const entry = byCategory[category] || {};
+          const strength = Number(entry.strength) || 0;
+          const chosen = new Set(Array.isArray(entry.items) ? entry.items : []);
+          const items = fqaItemsByCategory[category] || [];
+          return `
+            <div class="fqa-cov-row" data-category="${category}" style="border:1px solid rgba(255,255,255,.06); border-radius:5px; padding:8px 10px;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="min-width:132px; font-size:.8rem; font-weight:600;">${FQA_CATEGORY_LABEL[category]}</span>
+                <select data-cov-strength="${category}" class="form-control" style="width:150px; padding-left:10px; cursor:pointer;">
+                  ${[0, 1, 2, 3].map((n) => `<option value="${n}" ${strength === n ? 'selected' : ''}>${n === 0 ? '해당 없음' : `강도 ${n}`}</option>`).join('')}
+                </select>
+                <button type="button" class="btn-save" data-cov-toggle="${category}" style="padding:4px 10px; font-size:.72rem;">문항 지정 (${chosen.size})</button>
+              </div>
+              <div data-cov-items="${category}" class="hidden" style="display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:8px; padding-left:6px;">
+                ${items.map((name) => `
+                  <label style="font-size:.75rem; display:flex; align-items:center; gap:5px; cursor:pointer;">
+                    <input type="checkbox" data-cov-item="${category}" value="${name}" ${chosen.has(name) ? 'checked' : ''} style="accent-color:var(--accent-blue);">${name}
+                  </label>`).join('')}
+              </div>
+            </div>`;
+        }).join('');
+      }
+
+      function collectFqaCoverage() {
+        return ['A', 'B', 'C', 'D'].map((category) => {
+          const strength = Number(document.querySelector(`[data-cov-strength="${category}"]`)?.value || 0);
+          if (!strength) return null;
+          const items = Array.from(
+            document.querySelectorAll(`[data-cov-item="${category}"]:checked`), (cb) => cb.value
+          );
+          return { category, items, strength };
+        }).filter(Boolean);
+      }
+
+      /** JSON 텍스트에어리어 파싱. 깨지면 저장을 막고 그 자리에서 알린다. */
+      function parseJsonField(id, label) {
+        const el = document.getElementById(id);
+        const raw = (el?.value || '').trim();
+        if (!raw) return [];
+        try {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) throw new Error('배열이어야 합니다');
+          el.style.borderColor = '';
+          return parsed;
+        } catch (error) {
+          el.style.borderColor = '#ef4444';
+          throw new Error(`${label} JSON 오류: ${error.message}`);
+        }
+      }
+
+      async function runCompletenessCheck() {
+        const host = document.getElementById('completeness-result');
+        if (!loadedSolutionId) {
+          host.innerHTML = '<span style="color:#ffc107;">먼저 솔루션을 선택하고 저장하세요.</span>';
+          return;
+        }
+        host.textContent = '검사 중...';
+        try {
+          const res = await fetch(`/api/admin/solutions/${loadedSolutionId}/completeness`);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || '검사 실패');
+          const line = (item, color) =>
+            `<li style="margin:3px 0; color:${color};">${escapeHtmlAdmin(item.message)}${item.detail ? `<br><code style="opacity:.75; font-size:.72rem;">${escapeHtmlAdmin(item.detail)}</code>` : ''}</li>`;
+          host.innerHTML = [
+            data.ok
+              ? '<div style="color:#4ade80; font-weight:600;">✅ 발행 가능합니다.</div>'
+              : `<div style="color:#f87171; font-weight:600;">❌ 발행 차단 ${data.blocking.length}건</div><ul style="margin:6px 0 0 16px; padding:0;">${data.blocking.map((b) => line(b, '#f87171')).join('')}</ul>`,
+            data.warnings.length
+              ? `<div style="color:#ffc107; font-weight:600; margin-top:8px;">⚠ 경고 ${data.warnings.length}건</div><ul style="margin:6px 0 0 16px; padding:0;">${data.warnings.map((w) => line(w, '#ffc107')).join('')}</ul>`
+              : ''
+          ].join('');
+        } catch (error) {
+          host.innerHTML = `<span style="color:#f87171;">${escapeHtmlAdmin(error.message)}</span>`;
+        }
+      }
+
+      function escapeHtmlAdmin(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) =>
+          ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      }
+
       // Auth verification
       try {
         const meRes = await fetch('/api/auth/me');
@@ -999,8 +1177,23 @@
       }
 
       applyRoleRestrictions();
+      await loadRecommendationRefs();
       renderSimulatorCheckboxes();
       lucide.createIcons();
+      document.getElementById('check-completeness-button').addEventListener('click', runCompletenessCheck);
+      document.getElementById('fqa-coverage-editor').addEventListener('click', (event) => {
+        const toggle = event.target.closest('[data-cov-toggle]');
+        if (!toggle) return;
+        document.querySelector(`[data-cov-items="${toggle.dataset.covToggle}"]`)?.classList.toggle('hidden');
+      });
+      document.getElementById('fqa-coverage-editor').addEventListener('change', (event) => {
+        const box = event.target.closest('[data-cov-item]');
+        if (!box) return;
+        const category = box.dataset.covItem;
+        const count = document.querySelectorAll(`[data-cov-item="${category}"]:checked`).length;
+        const label = document.querySelector(`[data-cov-toggle="${category}"]`);
+        if (label) label.textContent = `문항 지정 (${count})`;
+      });
       document.getElementById('add-focal-button').addEventListener('click', addFocalContact);
       document.getElementById('reload-profiles-button').addEventListener('click', loadProfiles);
       await loadFocalContacts();
@@ -1356,6 +1549,16 @@
           document.getElementById(`sec-${i}`).value = secs[i] || '';
         }
 
+        // 추천 판정 데이터
+        document.getElementById('sol-slot').value = sol.slot || '';
+        document.getElementById('sol-bundle-potential').value = sol.bundle_potential ?? '';
+        document.getElementById('sol-prerequisites').value =
+          Array.isArray(sol.prerequisites) && sol.prerequisites.length ? JSON.stringify(sol.prerequisites, null, 2) : '';
+        document.getElementById('sol-red-flags').value =
+          Array.isArray(sol.red_flags) && sol.red_flags.length ? JSON.stringify(sol.red_flags, null, 2) : '';
+        renderFqaCoverageEditor(sol.fqa_coverage || []);
+        document.getElementById('completeness-result').textContent = '저장 후 [지금 검사]를 누르세요.';
+
         // 내부 전용 문단. 서버가 admin 응답에만 실어준다(009 적용 전이면 비어 있다).
         const internalSecs = sol.sections_internal || {};
         document.querySelectorAll('[data-section-internal]').forEach((field) => {
@@ -1447,7 +1650,12 @@
         sections: secs,
         sections_internal,
         industries,
-        simulator_mappings
+        simulator_mappings,
+        slot: document.getElementById('sol-slot').value || null,
+        bundle_potential: document.getElementById('sol-bundle-potential').value || null,
+        fqa_coverage: collectFqaCoverage(),
+        prerequisites: parseJsonField('sol-prerequisites', '전제 조건'),
+        red_flags: parseJsonField('sol-red-flags', '부적합 신호')
       };
     }
 

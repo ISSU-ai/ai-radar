@@ -211,6 +211,38 @@ async function persistSectionsInternal(executor, solutionId, value) {
   ]);
 }
 
+/**
+ * 추천 판정 필드(slot·fqa_coverage·prerequisites·red_flags·bundle_potential)를 반영한다.
+ * 010 적용 전이면 해당 컬럼만 조용히 건너뛴다. 값이 undefined 면 손대지 않아,
+ * 이 필드를 모르는 클라이언트가 저장해도 기존 판정 데이터가 날아가지 않는다.
+ */
+const RECOMMENDATION_FIELDS = Object.freeze([
+  { column: 'slot', json: false },
+  { column: 'fqa_coverage', json: true },
+  { column: 'prerequisites', json: true },
+  { column: 'red_flags', json: true },
+  { column: 'bundle_potential', json: false }
+]);
+
+async function persistRecommendationFields(executor, solutionId, payload = {}) {
+  for (const { column, json } of RECOMMENDATION_FIELDS) {
+    const value = payload[column];
+    if (value === undefined) continue;
+    if (!(await hasColumn('solutions', column))) continue;
+
+    let stored;
+    if (json) {
+      stored = JSON.stringify(Array.isArray(value) ? value : (parseJsonColumn(value, []) || []));
+    } else if (column === 'bundle_potential') {
+      const n = Number(value);
+      stored = Number.isFinite(n) && n >= 1 && n <= 3 ? Math.round(n) : null;
+    } else {
+      stored = value === '' ? null : value;
+    }
+    await executor.query(`UPDATE solutions SET ${column} = $1 WHERE id = $2`, [stored, solutionId]);
+  }
+}
+
 /** solutions.price_is_placeholder 를 반영한다. 009 적용 전이면 조용히 건너뛴다. */
 async function persistPriceFlag(executor, solutionId, value, actor) {
   if (value === undefined) return;
@@ -788,6 +820,7 @@ app.post('/api/admin/solutions', authenticateToken, catalogEditorOnly, async (re
     
     const solId = result.rows[0].id;
     await persistSectionsInternal(pool, solId, req.body.sections_internal);
+    await persistRecommendationFields(pool, solId, req.body);
     await persistPriceFlag(pool, solId, req.body.price_is_placeholder, req.user);
     auditLog(req.user.id, 'edit', slug, 'Created Draft');
 
@@ -866,6 +899,7 @@ app.put('/api/admin/solutions/:id', authenticateToken, catalogEditorOnly, async 
     ]);
 
     await persistSectionsInternal(pool, solId, req.body.sections_internal);
+    await persistRecommendationFields(pool, solId, req.body);
     await persistPriceFlag(pool, solId, req.body.price_is_placeholder, req.user);
 
     auditLog(req.user.id, 'edit', slug, 'Updated solution details');
@@ -999,6 +1033,7 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, catalogEditorOnl
     ]);
     const updatedSol = updatedRes.rows[0];
     await persistSectionsInternal(client, solId, payload.sections_internal);
+    await persistRecommendationFields(client, solId, payload);
     await persistPriceFlag(client, solId, payload.price_is_placeholder, req.user);
     const sectionsInternal = payload.sections_internal !== undefined
       ? (parseJsonColumn(payload.sections_internal, {}) || {})
@@ -1226,6 +1261,24 @@ app.patch('/api/admin/profiles/:id', authenticateToken, adminOnly, async (req, r
   }
 });
 
+
+// 슬롯 분류표. 편집기의 드롭다운과 커버리지 표시에 쓴다.
+app.get('/api/admin/slots', authenticateToken, catalogEditorOnly, async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `select s.id, s.name, s.layer, s.is_competitive, s.note,
+              count(sol.id) filter (where sol.is_archived = false) as candidates
+         from solution_slots s
+         left join solutions sol on sol.slot = s.id
+        group by s.id, s.name, s.layer, s.is_competitive, s.note, s.sort_order
+        order by s.sort_order`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Slot list failed:', err.message);
+    res.status(500).json({ error: '슬롯 목록을 불러오지 못했습니다. 010 마이그레이션을 적용했는지 확인하세요.' });
+  }
+});
 
 // 발행 전에 무엇이 막히는지 미리 본다. 저장할 때마다 폼에서 호출한다.
 app.get('/api/admin/solutions/:id/completeness', authenticateToken, catalogEditorOnly, async (req, res) => {

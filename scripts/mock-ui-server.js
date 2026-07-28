@@ -74,6 +74,73 @@ app.get('/api/hub/events', (_req, res) => {
   res.write(`event: ready\ndata: ${JSON.stringify({ user: user.id })}\n\n`);
 });
 
+
+// ── /admin 편집기 목업 ────────────────────────────────────────────
+// 판정 데이터 폼(2-2b)과 완성도 패널(2-2c)을 DB 없이 눈으로 확인하기 위한 최소 구현.
+const { evaluateCompleteness } = require('../lib/solution-completeness');
+
+const mockSlots = [
+  { id: 'llm-platform', name: '범용 LLM 플랫폼', layer: 'L1', is_competitive: true, candidates: 3 },
+  { id: 'security-gateway', name: '네트워크 보안·SWG', layer: 'L4', is_competitive: true, candidates: 2 },
+  { id: 'ai-usage-governance', name: 'AI 사용 가시성·거버넌스', layer: 'L4', is_competitive: false, candidates: 1 },
+  { id: 'data-platform', name: '통합 데이터·레이크하우스', layer: 'L0', is_competitive: true, candidates: 0 }
+];
+
+const mockSolutions = [
+  {
+    id: 'sol-1', slug: 'portal26', name: 'Portal26', layer: 'L4', slot: 'ai-usage-governance',
+    delivery: 'SaaS', synergy: '높음', category: 'AI 거버넌스·가시성',
+    jtbd: '누가 어떤 AI를 얼마나 쓰는지 가시화', value_chain: 'AI Infra',
+    status: 'draft', version: 1, grade: 2, scale: 'M', bundle_potential: 3,
+    sections: { 1: 'Portal26은 생성형 AI 사용 가시성과 AI TRiSM에 특화된 SaaS 플랫폼입니다.', 3: '- ○ 매우 적합: 금융/보험', 7: '### 7.1 필수 요건' },
+    sections_internal: {}, industries: [], simulator_mappings: [],
+    fqa_coverage: [{ category: 'A', items: ['접근권한과 계정 체계'], strength: 3 }],
+    prerequisites: [{ kind: 'fqa', category: 'A', item: '보안 게이트웨이 준비도', min: 3, blocking: true, label: 'SWG 보유', enabled_by: ['zscaler'] }],
+    red_flags: [{ signal: 'SWG 미보유', alternatives: [{ slug: 'zscaler', label: 'Zscaler' }] }],
+    price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
+  },
+  {
+    id: 'sol-2', slug: 'ibm', name: 'IBM', layer: 'L1', slot: null,
+    delivery: 'SW', synergy: '중', category: '종합 AI/ML(watsonx)', jtbd: '엔터프라이즈 거버넌스 AI',
+    value_chain: 'AI Platform', status: 'draft', version: 1, bundle_potential: null,
+    sections: { 1: '짧은 본문', 3: '- **CIO / CDO (의사결정자)**: 데이터 자산화 및 통합 AI 거버넌스 수립이 주요 관심사 ➔ **{name}의 엔터프라이즈 제어 기능 강조**' },
+    sections_internal: {}, industries: [], simulator_mappings: [],
+    fqa_coverage: [], prerequisites: [], red_flags: [],
+    price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
+  }
+];
+
+app.get('/api/auth/me', (_req, res) => res.json({ user }));
+app.post('/api/auth/logout', (_req, res) => res.json({ message: 'ok' }));
+app.get('/api/admin/slots', (_req, res) => res.json(mockSlots));
+app.get('/api/admin/focal-contacts', (_req, res) => res.json([{ id: 'f1', name: '박포컬', org: 'ISSU' }]));
+app.get('/api/admin/profiles', (_req, res) => res.json([{ id: user.id, email: user.email, full_name: user.name, team: 'ISSU', role: 'admin', approved: true }]));
+app.get('/api/admin/packages', (_req, res) => res.json(refs.packages.map((p) => ({ ...p, base_md: 20, unit_price: 0, price_is_placeholder: true }))));
+app.get('/api/admin/settings', (_req, res) => res.json({ usd_krw: 1400 }));
+app.get('/api/solutions', (_req, res) => res.json(mockSolutions.map(({ sections, ...rest }) => rest)));
+app.get('/api/solutions/:slug', (req, res) => {
+  const found = mockSolutions.find((s) => s.slug === req.params.slug);
+  return found ? res.json(found) : res.status(404).json({ error: 'not found' });
+});
+app.get('/api/admin/solutions/:id/versions', (_req, res) => res.json([]));
+app.get('/api/admin/solutions/:id/completeness', (req, res) => {
+  const target = mockSolutions.find((s) => s.id === req.params.id);
+  if (!target) return res.status(404).json({ error: 'not found' });
+  res.json(evaluateCompleteness(target, {
+    slots: new Map(mockSlots.map((s) => [s.id, { layer: s.layer }])),
+    knownSlugs: new Set([...mockSolutions.map((s) => s.slug), 'zscaler']),
+    otherSolutions: mockSolutions.filter((s) => s.id !== target.id)
+  }));
+});
+app.put('/api/admin/solutions/:id', (req, res) => {
+  const index = mockSolutions.findIndex((s) => s.id === req.params.id);
+  if (index < 0) return res.status(404).json({ error: 'not found' });
+  mockSolutions[index] = { ...mockSolutions[index], ...req.body };
+  res.json({ message: '저장되었습니다(목업).', slug: mockSolutions[index].slug });
+});
+
+app.get('/admin', (_req, res) => res.sendFile(path.join(__dirname, '..', 'admin.html')));
+
 app.use(express.static(path.join(__dirname, '..')));
 app.get('/hub', (_req, res) => res.sendFile(path.join(__dirname, '..', 'hub.html')));
 app.get('/offering', (_req, res) => res.sendFile(path.join(__dirname, '..', 'offering.html')));
