@@ -77,7 +77,9 @@ test('"판정 데이터 없음"과 "안 맞아서 제외"를 나눈다', () => {
   assert.match(hubClient, /const noData = excluded\.filter\(\(x\) => x\.excludedBy\?\.some\(\(r\) => \/판정 데이터\/\.test\(r\)\)\)/);
   assert.match(hubClient, /이 고객에게 맞지 않아 제외/);
   assert.match(hubClient, /판정 데이터가 없어 후보에서 빠짐/);
-  assert.match(hubClient, /ISSU 에 보강을 요청하세요/);
+  assert.match(hubClient, /보강 우선순위로 삼으세요/);
+  // 이 목록은 ISSU·관리자 전용이다. 영업에게는 미완성 솔루션을 보여주지 않는다.
+  assert.match(hubClient, /noData\.length && isCatalogEditor\(\)/);
 });
 
 test('추천 카드의 사용자 데이터는 이스케이프한다', () => {
@@ -103,4 +105,20 @@ test('추천 패널 스타일이 그룹별로 구분된다', () => {
     assert.ok(hubStyles.includes(cls), `${cls} 스타일이 없다`);
   }
   assert.match(hubStyles, /\.reco-panel:empty \{ display: none/);
+});
+
+test('판정 데이터가 없는 솔루션은 영업에게 감춘다', () => {
+  // 콘텐츠가 껍데기라 골라도 근거를 댈 수 없고, 추천에도 안 잡혀 혼란만 준다.
+  assert.match(hubClient, /function hasJudgementData/);
+  assert.match(hubClient, /isCatalogEditor\(\) \|\| selected\.has\(solution\.id\) \|\| hasJudgementData\(solution\)/);
+  // 이미 고른 것은 남긴다 — 눈앞에서 사라지면 그게 더 혼란스럽다.
+  assert.match(hubClient, /selected\.has\(solution\.id\)/);
+  // 몇 건이 감춰졌는지는 알린다.
+  assert.match(hubClient, /준비 중인 솔루션 \$\{hiddenCount\}건은 표시하지 않았습니다/);
+});
+
+test('reference-data 가 판정 데이터 보유 여부를 함께 준다', () => {
+  assert.match(hubRoutes, /\$\{coverageColumn\} as fqa_coverage/);
+  // 010 미적용 환경에서 카탈로그가 통째로 사라지면 안 된다.
+  assert.match(hubRoutes, /hasCoverage \? 's\.fqa_coverage' : `'\[\{"legacy":true\}\]'::jsonb`/);
 });

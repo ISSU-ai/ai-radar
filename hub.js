@@ -569,6 +569,14 @@ function renderStage() {
 
 function disabledAttr() { return isOwner() ? '' : 'disabled'; }
 
+/** 카탈로그를 손보는 사람(ISSU·관리자). 보강 신호는 이 사람들만 본다. */
+function isCatalogEditor() { return ['admin', 'curator'].includes(state.user?.role); }
+
+/** 추천 후보가 될 최소 조건. 이게 없으면 근거를 댈 수 없다. */
+function hasJudgementData(solution) {
+  return asArray(solution?.fqa_coverage).length > 0;
+}
+
 function renderIntake() {
   const meta = state.deal.customer_meta || {};
   return `${stageHeader('01', '들어온 데이터', '포탈·미팅·시트에서 들어온 고객 맥락을 한곳에 정리합니다. 이 정보는 이후 모든 단계에 그대로 이어집니다.')}
@@ -770,8 +778,8 @@ function renderRecommendationPanel() {
     ${groups || '<div class="reco-empty">조건에 맞는 후보가 없습니다.</div>'}
     ${notFit.length ? `<details class="reco-details"><summary>이 고객에게 맞지 않아 제외 ${notFit.length}건</summary>
       <ul>${notFit.map((x) => `<li>${escapeHtml(x.name)} — ${escapeHtml(x.excludedBy[0])}</li>`).join('')}</ul></details>` : ''}
-    ${noData.length ? `<details class="reco-details reco-nodata"><summary>판정 데이터가 없어 후보에서 빠짐 ${noData.length}건</summary>
-      <p>카탈로그에 추천 판정 데이터가 아직 입력되지 않은 솔루션입니다. ISSU 에 보강을 요청하세요.</p>
+    ${noData.length && isCatalogEditor() ? `<details class="reco-details reco-nodata"><summary>판정 데이터가 없어 후보에서 빠짐 ${noData.length}건</summary>
+      <p>추천 판정 데이터가 아직 입력되지 않은 솔루션입니다. 보강 우선순위로 삼으세요.</p>
       <ul>${noData.map((x) => `<li>${escapeHtml(x.name)}</li>`).join('')}</ul></details>` : ''}`;
 
   document.getElementById('reco-refresh')?.addEventListener('click', loadRecommendations);
@@ -789,7 +797,14 @@ function renderRecommendationPanel() {
 function renderSolutions() {
   const selected = new Set(asArray(state.deal.isv_combo));
   const query = state.catalogQuery.toLowerCase();
-  const filtered = state.refs.solutions.filter((solution) => `${solution.name} ${solution.category} ${solution.jtbd}`.toLowerCase().includes(query));
+  // 판정 데이터가 없는 솔루션은 영업에게 감춘다. 콘텐츠가 껍데기라 골라도 근거를
+  // 댈 수 없고, 추천에도 안 잡혀 "왜 여기 있나" 혼란만 준다.
+  // 이미 조합에 들어간 것은 남긴다 — 눈앞에서 사라지면 그게 더 혼란스럽다.
+  // ISSU·관리자에게는 전부 보인다(보강 대상을 봐야 하므로).
+  const visible = state.refs.solutions.filter((solution) =>
+    isCatalogEditor() || selected.has(solution.id) || hasJudgementData(solution));
+  const filtered = visible.filter((solution) => `${solution.name} ${solution.category} ${solution.jtbd}`.toLowerCase().includes(query));
+  const hiddenCount = state.refs.solutions.length - visible.length;
   const cards = filtered.map((solution) => `<label class="select-card ${selected.has(solution.id) ? 'selected' : ''}">
     <input type="checkbox" data-solution-id="${solution.id}" ${selected.has(solution.id) ? 'checked' : ''} ${disabledAttr()}>
     <h3>${escapeHtml(solution.name)}</h3><p>${escapeHtml(solution.jtbd || '카탈로그 설명 준비 중')}</p>
@@ -799,7 +814,8 @@ function renderSolutions() {
   return `${stageHeader('03', 'ISV 조합 확정', 'AI Radar의 내부 카탈로그를 딜과 연결합니다. 급·포컬·기술 제약은 내부에서만 보입니다.')}
     <div id="reco-panel" class="reco-panel"></div>
     <div class="catalog-toolbar"><div class="search-wrap"><i data-lucide="search"></i><input id="catalog-search" type="search" value="${escapeHtml(state.catalogQuery)}" placeholder="솔루션·카테고리 검색"></div><a class="secondary-button" href="/radar" target="_blank" rel="noopener" title="AI Radar를 새 창으로 열기"><i data-lucide="external-link"></i> AI Radar</a></div>
-    <div class="selection-grid">${cards || '<div class="empty-state">검색 결과가 없습니다.</div>'}</div>`;
+    <div class="selection-grid">${cards || '<div class="empty-state">검색 결과가 없습니다.</div>'}</div>
+    ${hiddenCount > 0 ? `<p class="catalog-hidden-note">준비 중인 솔루션 ${hiddenCount}건은 표시하지 않았습니다.</p>` : ''}`;
 }
 
 function updateFqaProgress(category, scores) {

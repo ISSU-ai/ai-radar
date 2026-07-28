@@ -574,6 +574,10 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       ]);
       const packagePlaceholder = packageFlag ? 'p.price_is_placeholder' : 'true';
       const solutionPlaceholder = solutionFlag ? 's.price_is_placeholder' : 'true';
+      // 판정 데이터 보유 여부로 카탈로그 노출을 가른다. 010 미적용 환경에서는
+      // 전부 보이게 둔다(빈 배열이면 감춰져 카탈로그가 통째로 사라진다).
+      const hasCoverage = hasColumn ? await hasColumn('solutions', 'fqa_coverage') : false;
+      const coverageColumn = hasCoverage ? 's.fqa_coverage' : `'[{"legacy":true}]'::jsonb`;
 
       const [fqaItems, tracks, packages, solutions, settings] = await Promise.all([
         loadFqaItems(),
@@ -590,6 +594,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
           `select s.id, s.slug, s.name, s.category, s.jtbd, s.grade, s.scale,
                   s.tech_note, s.status_op, s.price_type, s.unit_price, s.currency, s.price_tiers,
                   ${solutionPlaceholder} as price_is_placeholder,
+                  ${coverageColumn} as fqa_coverage,
                   f.name as focal_name, f.org as focal_org
            from solutions s left join focal_contacts f on f.id = s.focal_id
            where s.is_archived = false and s.status = 'published'
