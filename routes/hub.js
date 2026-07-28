@@ -401,7 +401,10 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
                   p.fqa_coverage, p.prerequisites
              from packages p where p.status = 'active'`
         ).then((r) => r.rows),
-        pool.query('select id, name, layer, is_competitive from solution_slots').then((r) => r.rows),
+        pool.query(
+          `select s.id, s.name, s.layer, s.is_competitive, s.domain, d.name as domain_name
+             from solution_slots s left join solution_domains d on d.id = s.domain`
+        ).then((r) => r.rows).catch(() => []),
         loadFqaItems(),
         pool.query('select key, kind, weight, enabled from recommendation_config')
           .then((r) => r.rows).catch(() => [])

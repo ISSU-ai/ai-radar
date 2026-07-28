@@ -1267,11 +1267,14 @@ app.get('/api/admin/slots', authenticateToken, catalogEditorOnly, async (_req, r
   try {
     const result = await pool.query(
       `select s.id, s.name, s.layer, s.is_competitive, s.note,
+              s.domain, d.name as domain_name, d.sort_order as domain_order,
               count(sol.id) filter (where sol.is_archived = false) as candidates
          from solution_slots s
+         left join solution_domains d on d.id = s.domain
          left join solutions sol on sol.slot = s.id
-        group by s.id, s.name, s.layer, s.is_competitive, s.note, s.sort_order
-        order by s.sort_order`
+        group by s.id, s.name, s.layer, s.is_competitive, s.note, s.sort_order,
+                 s.domain, d.name, d.sort_order
+        order by d.sort_order nulls last, s.sort_order`
     );
     res.json(result.rows);
   } catch (err) {

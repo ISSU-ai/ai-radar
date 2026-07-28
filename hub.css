@@ -397,3 +397,4 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 .reco-details ul { margin: 6px 0 0; padding-left: 18px; }
 .reco-details p { margin: 6px 0 0; }
 .reco-nodata summary { color: #ffc107; }
+.reco-group h4 small { margin-left: auto; font-size: .7rem; color: var(--text-secondary); font-weight: 400; }

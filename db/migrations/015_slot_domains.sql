@@ -1,21 +1,3 @@
--- ===================================================================
--- 통합 적용 스크립트 (자동 생성 — scripts/build-pending-sql.js)
---
--- Supabase SQL Editor 에 전체를 붙여넣고 한 번에 실행합니다.
--- 파일을 직접 수정하지 마세요. 원본은 db/migrations/ 의 개별 파일입니다.
---
--- 포함: 015_slot_domains.sql
---
--- 실행 후 각 파일 끝의 검증 쿼리 결과를 눈으로 확인하세요.
---   011: 슬롯 미배정 0건 / 슬롯별 후보 수 / 레이어 정정 4건
---   012: 판정 데이터 9건 · 미보강 13건 · 깨진 slug 0건
---   013: enum 에 curator 포함 · 역할별 인원
--- ===================================================================
-
--- ═══════════════════════════════════════════════════════════════
--- ▼ 015_slot_domains.sql
--- ═══════════════════════════════════════════════════════════════
-
 -- 슬롯 대분류(domain). 3단 계층의 맨 위 한 단.
 -- Run after 014. Apply in the Supabase SQL Editor (dfbx).
 --
@@ -126,4 +108,3 @@ select sol.name as "솔루션", d.name as "대분류", s.name as "중분류(슬�
  where sol.slug in ('openai-enterprise','articul8','portal26','check-point',
                     'zscaler','new-relic','anthropic-claude','litellm')
  order by d.sort_order, sol.name;
-

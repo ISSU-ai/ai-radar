@@ -657,7 +657,7 @@ function recoCardMarkup(item, tone) {
       <span class="reco-name">${escapeHtml(item.name)}${item.enabler ? ` <em>← ${escapeHtml(item.enabler.name)} 선행</em>` : ''}</span>
       <span class="reco-score" title="적합 점수">${(item.score * 100).toFixed(0)}</span>
     </div>
-    <div class="reco-meta">${escapeHtml(item.slotName || (item.kind === 'package' ? '서비스 패키지' : '슬롯 미지정'))}${item.layer ? ` · ${escapeHtml(item.layer)}` : ''}</div>
+    <div class="reco-meta">${item.domainName ? `<b>${escapeHtml(item.domainName)}</b> · ` : ''}${escapeHtml(item.slotName || (item.kind === 'package' ? '서비스 패키지' : '슬롯 미지정'))}${item.layer ? ` · ${escapeHtml(item.layer)}` : ''}</div>
     ${reasons ? `<ul class="reco-reasons">${reasons}</ul>` : ''}
     ${pending ? `<div class="reco-sub">확인 필요<ul>${pending}</ul></div>` : ''}
     ${flags ? `<div class="reco-sub reco-flags">부적합 신호<ul>${flags}</ul></div>` : ''}
@@ -691,8 +691,16 @@ function renderRecommendationPanel() {
   const groups = RECO_GROUPS.map(({ key, title, tone }) => {
     const items = reco[key] || [];
     if (!items.length) return '';
+    // 대분류 분포를 헤더에 요약한다. "보안 3건 · 운영 2건" 이 한눈에 보여야
+    // 영업이 어느 영역을 제안하는지 바로 안다.
+    const byDomain = items.reduce((acc, item) => {
+      const key = item.domainName || (item.kind === 'package' ? '서비스 패키지' : '미분류');
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    const summary = Object.entries(byDomain).map(([name, n]) => `${name} ${n}`).join(' · ');
     return `<div class="reco-group">
-      <h4>${title} <span>${items.length}</span></h4>
+      <h4>${title} <span>${items.length}</span><small>${escapeHtml(summary)}</small></h4>
       <div class="reco-grid">${items.map((item) => recoCardMarkup(item, tone)).join('')}</div>
     </div>`;
   }).join('');

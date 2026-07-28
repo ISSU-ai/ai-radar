@@ -1051,10 +1051,18 @@
           availableSlots = res.ok ? await res.json() : [];
         } catch (e) { availableSlots = []; }
 
+        // 23개를 평면 목록으로 두면 고르기 어렵다. 대분류로 묶는다.
         const select = document.getElementById('sol-slot');
         const current = select.value;
-        select.innerHTML = '<option value="">— 선택 —</option>' + availableSlots.map((slot) =>
-          `<option value="${slot.id}">[${slot.layer}] ${slot.name} (후보 ${slot.candidates}종${slot.is_competitive ? ' · 경쟁' : ''})</option>`
+        const grouped = availableSlots.reduce((acc, slot) => {
+          const key = slot.domain_name || '미분류';
+          (acc[key] = acc[key] || []).push(slot);
+          return acc;
+        }, {});
+        select.innerHTML = '<option value="">— 선택 —</option>' + Object.entries(grouped).map(([domain, list]) =>
+          `<optgroup label="${domain}">` + list.map((slot) =>
+            `<option value="${slot.id}">${slot.name} · ${slot.layer} (후보 ${slot.candidates}종${slot.is_competitive ? ' · 경쟁' : ''})</option>`
+          ).join('') + '</optgroup>'
         ).join('');
         select.value = current;
 
