@@ -28,7 +28,9 @@ const MIGRATIONS = [
   '008_tiered_pricing.sql',
   '009_internal_sections_and_price_flags.sql',
   '010_recommendation_engine.sql',
-  '011_slot_taxonomy_and_layer_fixes.sql'
+  '011_slot_taxonomy_and_layer_fixes.sql',
+  // 012 는 의도적으로 제외 — ISSU 가 /admin 에서 수정한 판정 데이터를 덮어쓰는 1회성 시드다.
+  '013_curator_role.sql'
 ];
 
 async function main() {

@@ -430,10 +430,10 @@
     <main class="editor-section">
       <div class="admin-tabs">
         <button type="button" class="admin-tab-btn active" data-admin-action="switch-tab" data-tab="form">폼 편집기 (Form Editor)</button>
-        <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="members">회원 승인</button>
+        <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="members" data-role-admin>회원 승인</button>
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="ai">자연어 편집 (AI Propose)</button>
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="history" id="history-tab-btn">버전 이력 / 롤백 (v1)</button>
-        <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="packages">패키지 단가</button>
+        <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="packages" data-role-admin>패키지 단가</button>
       </div>
 
       <!-- Tab 1: Form Editor -->
@@ -524,7 +524,7 @@
 
           <div class="form-grid">
             <div class="form-group">
-              <label class="control-label" for="sol-price-type">가격 종류 (딜 시뮬레이터)</label>
+              <label class="control-label" for="sol-price-type" data-role-admin>가격 종류 (딜 시뮬레이터)</label>
               <select id="sol-price-type" class="form-control" style="padding-left:12px; cursor:pointer;">
                 <option value="">미설정 (시뮬레이터 제외)</option>
                 <option value="seat">좌석 라이선스 (1좌석·월)</option>
@@ -958,7 +958,22 @@
     // Document Ready
     window.addEventListener('DOMContentLoaded', async () => {
       document.body.classList.toggle('hub-embed', isHubEmbed);
+      window.currentUserRole = null;
       document.addEventListener('click', handleAdminAction);
+      // 가격·회원·롤백은 admin 전용이다. curator 에게는 화면에서 감추고, 서버에서도 막는다
+      // (프론트 숨김만으로는 통제가 되지 않으므로 server.js 의 adminOnly 가 실제 경계다).
+      function applyRoleRestrictions() {
+        if (window.currentUserRole === 'admin') return;
+        document.querySelectorAll('[data-role-admin]').forEach((node) => {
+          const group = node.closest('.form-group') || node;
+          group.classList.add('hidden');
+        });
+        document.querySelectorAll('#sol-price-type, #sol-unit-price, #sol-currency, #sol-price-tiers, #sol-price-confirmed')
+          .forEach((input) => { input.disabled = true; });
+        const rollback = document.getElementById('history-tab-btn');
+        if (rollback) rollback.textContent = rollback.textContent.replace(' / 롤백', '');
+      }
+
       // Auth verification
       try {
         const meRes = await fetch('/api/auth/me');
@@ -967,8 +982,9 @@
           return;
         }
         const meData = await meRes.json();
-        if (meData.user.role !== 'admin') {
-          alert('관리자 권한이 없습니다.');
+        window.currentUserRole = meData.user.role;
+        if (!['admin', 'curator'].includes(window.currentUserRole)) {
+          alert('카탈로그 편집 권한이 없습니다.');
           if (isHubEmbed) {
             navigateAdmin('/hub');
           } else {
@@ -982,6 +998,7 @@
         return;
       }
 
+      applyRoleRestrictions();
       renderSimulatorCheckboxes();
       lucide.createIcons();
       document.getElementById('add-focal-button').addEventListener('click', addFocalContact);
@@ -1040,7 +1057,7 @@
           <div class="profile-admin-row" data-profile-id="${escapeAdminHtml(profile.id)}" style="display:grid; grid-template-columns:minmax(180px,1.4fr) 1fr 130px 90px 80px; gap:10px; align-items:center; padding:12px; border:1px solid var(--card-border); border-radius:9px; background:var(--surface-muted);">
             <div><strong style="display:block;color:var(--text-primary);font-size:.84rem;">${escapeAdminHtml(profile.full_name || '이름 미입력')}</strong><small style="color:var(--text-secondary);">${escapeAdminHtml(profile.email || '')}</small></div>
             <input class="form-control profile-team" value="${escapeAdminHtml(profile.team || '')}" placeholder="팀" style="padding-left:10px;">
-            <select class="form-control profile-role" style="padding-left:10px;"><option value="viewer" ${profile.role === 'viewer' ? 'selected' : ''}>일반 사용자</option><option value="admin" ${profile.role === 'admin' ? 'selected' : ''}>관리자</option></select>
+            <select class="form-control profile-role" style="padding-left:10px;"><option value="viewer" ${profile.role === 'viewer' ? 'selected' : ''}>일반 사용자</option><option value="curator" ${profile.role === 'curator' ? 'selected' : ''}>ISV 담당(curator)</option><option value="admin" ${profile.role === 'admin' ? 'selected' : ''}>관리자</option></select>
             <label style="display:flex;align-items:center;gap:7px;color:var(--text-secondary);font-size:.8rem;"><input class="profile-approved" type="checkbox" ${profile.approved ? 'checked' : ''}> 승인</label>
             <button type="button" class="btn-save profile-save">저장</button>
           </div>`).join('') || '<p style="color:var(--text-secondary);">회원이 없습니다.</p>';

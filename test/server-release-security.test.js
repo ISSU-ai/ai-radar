@@ -101,10 +101,12 @@ test('public offering and internal sales surfaces have distinct entrypoints', ()
   assert.match(source, /hub: 'hub\.html'/);
   assert.match(source, /app\.get\('\/', requireSurfaceRootAuth/);
   assert.match(source, /APP_SURFACE === 'hub'[\s\S]*?requirePageAuth\('\/hub'\)/);
-  assert.match(source, /APP_SURFACE === 'admin'[\s\S]*?requirePageAuth\('\/admin', 'admin'\)/);
+  assert.match(source, /APP_SURFACE === 'admin'[\s\S]*?requirePageAuth\('\/admin', CATALOG_EDITOR_ROLES\)/);
   assert.match(source, /app\.get\(\['\/hub', '\/hub\.html'\], requirePageAuth\('\/hub'\)/);
   assert.match(source, /app\.get\(\['\/radar', '\/radar\/'\], requirePageAuth\('\/radar'\)/);
-  assert.match(source, /app\.get\(\['\/admin', '\/admin\.html'\], requirePageAuth\('\/admin', 'admin'\)/);
+  // /admin 페이지는 curator 도 연다(카탈로그 편집). 회원 승인·가격·롤백은 라우트에서 adminOnly 로 막힌다.
+  assert.match(source, /app\.get\(\['\/admin', '\/admin\.html'\], requirePageAuth\('\/admin', CATALOG_EDITOR_ROLES\)/);
+  assert.match(source, /app\.get\(\['\/admin\/usage', '\/admin-usage\.html'\], requirePageAuth\('\/admin\/usage', 'admin'\)/);
 });
 
 test('public offering failures do not expose database internals', () => {

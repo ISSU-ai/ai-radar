@@ -185,7 +185,8 @@ const SOLUTION_COLUMNS_ADMIN_ONLY = Object.freeze([
 ]);
 
 async function solutionColumnsFor(role) {
-  if (role !== 'admin') return [...SOLUTION_COLUMNS_COMMON];
+  // curator 도 내부 본문을 편집해야 하므로 admin 과 같은 컬럼을 받는다.
+  if (!isCatalogEditor({ role })) return [...SOLUTION_COLUMNS_COMMON];
   const optional = ['sections_internal', 'price_is_placeholder'];
   const available = [];
   for (const column of SOLUTION_COLUMNS_ADMIN_ONLY) {
@@ -210,8 +211,9 @@ async function persistSectionsInternal(executor, solutionId, value) {
 }
 
 /** solutions.price_is_placeholder 를 반영한다. 009 적용 전이면 조용히 건너뛴다. */
-async function persistPriceFlag(executor, solutionId, value) {
+async function persistPriceFlag(executor, solutionId, value, actor) {
   if (value === undefined) return;
+  if (actor && !isAdminUser(actor)) return; // 실단가 확정은 admin 만
   if (!(await hasColumn('solutions', 'price_is_placeholder'))) return;
   const isPlaceholder = !(value === false || value === 'false');
   await executor.query('UPDATE solutions SET price_is_placeholder = $1 WHERE id = $2', [isPlaceholder, solutionId]);
@@ -345,6 +347,19 @@ const authenticateToken = async (req, res, next) => {
   return next();
 };
 
+// 역할 정의.
+//   viewer  영업(hub 사용자) — 딜 작업 + 추천 소비 + 카탈로그 읽기
+//   curator ISSU — 솔루션 등록·수정·발행, 내부 본문(opinion/sections_internal) 편집
+//   admin   시스템 관리 — 위 전부 + 회원 승인 + 실단가 확정 + 롤백
+// 가격·회원·롤백을 curator 에서 뺀 이유: ISV 담당자에게 계정 승인 권한까지 주는 것은 과하다.
+const CATALOG_EDITOR_ROLES = Object.freeze(['admin', 'curator']);
+const isAdminUser = (user) => user?.role === 'admin';
+const isCatalogEditor = (user) => CATALOG_EDITOR_ROLES.includes(user?.role);
+const roleAllowed = (user, required) => {
+  if (!required) return true;
+  return Array.isArray(required) ? required.includes(user?.role) : user?.role === required;
+};
+
 const requirePageAuth = (canonicalPath, requiredRole = null) => async (req, res, next) => {
   const session = await readSessionUser(req);
   if (!session.user) {
@@ -354,8 +369,8 @@ const requirePageAuth = (canonicalPath, requiredRole = null) => async (req, res,
     const query = queryIndex >= 0 ? req.originalUrl.slice(queryIndex) : '';
     return res.redirect(302, `/login.html?next=${encodeURIComponent(`${canonicalPath}${query}`)}`);
   }
-  if (requiredRole && session.user.role !== requiredRole) {
-    return res.status(403).send('접근 권한이 없습니다. 관리자 전용 기능입니다.');
+  if (!roleAllowed(session.user, requiredRole)) {
+    return res.status(403).send('접근 권한이 없습니다.');
   }
   req.user = session.user;
   return next();
@@ -371,7 +386,7 @@ const requireAssetAuth = (canonicalPath, requiredRole = null) => async (req, res
     res.set('X-Login-Path', `/login.html?next=${encodeURIComponent(canonicalPath)}`);
     return res.status(401).type('text/plain').send('로그인이 필요합니다.');
   }
-  if (requiredRole && session.user.role !== requiredRole) {
+  if (!roleAllowed(session.user, requiredRole)) {
     return res.status(403).type('text/plain').send('접근 권한이 없습니다.');
   }
   req.user = session.user;
@@ -380,16 +395,25 @@ const requireAssetAuth = (canonicalPath, requiredRole = null) => async (req, res
 
 const requireSurfaceRootAuth = (req, res, next) => {
   if (APP_SURFACE === 'hub') return requirePageAuth('/hub')(req, res, next);
-  if (APP_SURFACE === 'admin') return requirePageAuth('/admin', 'admin')(req, res, next);
+  if (APP_SURFACE === 'admin') return requirePageAuth('/admin', CATALOG_EDITOR_ROLES)(req, res, next);
   return next();
 };
 
 // Admin Only Authorization Middleware
 const adminOnly = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
+  if (isAdminUser(req.user)) {
     next();
   } else {
     res.status(403).json({ error: '접근 권한이 없습니다. 관리자 전용 기능입니다.' });
+  }
+};
+
+// 카탈로그 편집(admin + curator). 솔루션 CRUD·발행·판정 데이터가 여기 걸린다.
+const catalogEditorOnly = (req, res, next) => {
+  if (isCatalogEditor(req.user)) {
+    next();
+  } else {
+    res.status(403).json({ error: '접근 권한이 없습니다. 카탈로그 편집 권한이 필요합니다.' });
   }
 };
 
@@ -534,9 +558,9 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 app.get('/api/solutions', authenticateToken, async (req, res) => {
   const { layer, synergy, delivery, category, q, industry, simulator_mapping } = req.query;
   
-  const isAdmin = req.user.role === 'admin';
-  // opinion 은 정책상 admin 전용이면 아예 조회하지 않는다(응답에서 지우는 것보다 안전).
-  const exposeOpinion = isAdmin || OPINION_EXPOSE_POLICY === 'A';
+  const canSeeInternal = isCatalogEditor(req.user);
+  // opinion 은 정책상 카탈로그 편집자 전용이면 아예 조회하지 않는다(응답에서 지우는 것보다 안전).
+  const exposeOpinion = canSeeInternal || OPINION_EXPOSE_POLICY === 'A';
   const listColumns = [
     'id', 'legacy_id', 'slug', 'name', 'delivery', 'layer', 'synergy', 'category',
     'jtbd', 'value_chain', 'status', 'version', 'updated_at', 'simulator_mappings', 'industries',
@@ -548,7 +572,7 @@ app.get('/api/solutions', authenticateToken, async (req, res) => {
 
   let paramIdx = 1;
 
-  if (!isAdmin) {
+  if (!canSeeInternal) {
     conditions.push(`status = $${paramIdx++}`);
     params.push('published');
   }
@@ -633,7 +657,7 @@ app.get('/api/solutions/:slug', authenticateToken, async (req, res) => {
   const slug = req.params.slug;
 
   try {
-    const isAdmin = req.user.role === 'admin';
+    const canSeeInternal = isCatalogEditor(req.user);
     const columns = await solutionColumnsFor(req.user.role);
     const result = await pool.query(
       `SELECT ${columns.join(', ')} FROM solutions WHERE slug = $1 AND is_archived = false`,
@@ -646,7 +670,7 @@ app.get('/api/solutions/:slug', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: '솔루션을 찾을 수 없습니다.' });
     }
 
-    if (!isAdmin && row.status !== 'published') {
+    if (!canSeeInternal && row.status !== 'published') {
       return res.status(403).json({ error: '해당 솔루션 가이드는 작성 중(Draft) 상태이므로 조회할 수 없습니다.' });
     }
 
@@ -656,7 +680,7 @@ app.get('/api/solutions/:slug', authenticateToken, async (req, res) => {
     row.simulator_mappings = typeof row.simulator_mappings === 'string' ? JSON.parse(row.simulator_mappings) : (row.simulator_mappings || []);
     row.industries = typeof row.industries === 'string' ? JSON.parse(row.industries) : (row.industries || []);
 
-    if (isAdmin) {
+    if (canSeeInternal) {
       row.sections_internal = parseJsonColumn(row.sections_internal, {}) || {};
     } else {
       // 009 적용 전이면 내부 문단이 아직 sections 안에 남아 있다. 분리 규칙을 런타임에도
@@ -664,7 +688,7 @@ app.get('/api/solutions/:slug', authenticateToken, async (req, res) => {
       row.sections = stripInternalSections(row.sections);
     }
 
-    if (OPINION_EXPOSE_POLICY === 'A' && !isAdmin) {
+    if (OPINION_EXPOSE_POLICY === 'A' && !canSeeInternal) {
       const opinionRow = await pool.query('SELECT opinion FROM solutions WHERE slug = $1', [slug]);
       row.opinion = opinionRow.rows[0]?.opinion ?? null;
     }
@@ -680,7 +704,7 @@ app.get('/api/solutions/:slug', authenticateToken, async (req, res) => {
 // Admin API Routes (Admin Only)
 // ----------------------------------------------------
 
-app.post('/api/admin/solutions', authenticateToken, adminOnly, async (req, res) => {
+app.post('/api/admin/solutions', authenticateToken, catalogEditorOnly, async (req, res) => {
   const {
     name, delivery, layer, synergy, category, jtbd, value_chain, sections, opinion,
     simulator_mappings, industries, grade, scale, focal_id, tech_note, status_op, note,
@@ -695,10 +719,12 @@ app.post('/api/admin/solutions', authenticateToken, adminOnly, async (req, res) 
   const now = new Date().toISOString();
   const sectionsJson = JSON.stringify(sections || {});
   const simMappingsJson = JSON.stringify(simulator_mappings || []);
-  const priceType = ['seat', 'once', 'mrr'].includes(price_type) ? price_type : null;
-  const unitPrice = Math.max(0, Math.round(Number(unit_price) || 0));
-  const currencyVal = ['KRW', 'USD'].includes(currency) ? currency : 'KRW';
-  const priceTiersJson = JSON.stringify(Array.isArray(price_tiers) ? price_tiers : []);
+  // 가격은 admin 만 정한다. curator 가 보낸 값은 무시하고 미설정으로 생성한다.
+  const canEditPrice = isAdminUser(req.user);
+  const priceType = canEditPrice && ['seat', 'once', 'mrr'].includes(price_type) ? price_type : null;
+  const unitPrice = canEditPrice ? Math.max(0, Math.round(Number(unit_price) || 0)) : 0;
+  const currencyVal = canEditPrice && ['KRW', 'USD'].includes(currency) ? currency : 'KRW';
+  const priceTiersJson = JSON.stringify(canEditPrice && Array.isArray(price_tiers) ? price_tiers : []);
 
   // industries 데이터를 [{ industry, fit: 'high' }] 구조로 하이브리드 포맷팅
   const formattedIndustries = (industries || []).map(ind => {
@@ -728,7 +754,7 @@ app.post('/api/admin/solutions', authenticateToken, adminOnly, async (req, res) 
     
     const solId = result.rows[0].id;
     await persistSectionsInternal(pool, solId, req.body.sections_internal);
-    await persistPriceFlag(pool, solId, req.body.price_is_placeholder);
+    await persistPriceFlag(pool, solId, req.body.price_is_placeholder, req.user);
     auditLog(req.user.id, 'edit', slug, 'Created Draft');
 
     res.json({ message: '솔루션 초안(Draft)이 성공적으로 생성되었습니다.', id: solId, slug });
@@ -741,7 +767,7 @@ app.post('/api/admin/solutions', authenticateToken, adminOnly, async (req, res) 
   }
 });
 
-app.put('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, res) => {
+app.put('/api/admin/solutions/:id', authenticateToken, catalogEditorOnly, async (req, res) => {
   const solId = req.params.id;
   const {
     name, delivery, layer, synergy, category, jtbd, value_chain, sections, opinion, status,
@@ -772,16 +798,18 @@ app.put('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, re
       return res.status(404).json({ error: '수정할 솔루션을 찾을 수 없습니다.' });
     }
 
-    const priceType = price_type === undefined
+    // 가격은 admin 만 바꾼다. curator 의 요청에서는 현재 값을 그대로 유지한다.
+    const canEditPrice = isAdminUser(req.user);
+    const priceType = (!canEditPrice || price_type === undefined)
       ? (current.price_type ?? null)
       : (['seat', 'once', 'mrr'].includes(price_type) ? price_type : null);
-    const unitPrice = unit_price === undefined
+    const unitPrice = (!canEditPrice || unit_price === undefined)
       ? (current.unit_price ?? 0)
       : Math.max(0, Math.round(Number(unit_price) || 0));
-    const currencyVal = currency === undefined
+    const currencyVal = (!canEditPrice || currency === undefined)
       ? (current.currency || 'KRW')
       : (['KRW', 'USD'].includes(currency) ? currency : 'KRW');
-    const priceTiersJson = price_tiers === undefined
+    const priceTiersJson = (!canEditPrice || price_tiers === undefined)
       ? JSON.stringify(current.price_tiers ?? [])
       : JSON.stringify(Array.isArray(price_tiers) ? price_tiers : []);
 
@@ -804,7 +832,7 @@ app.put('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, re
     ]);
 
     await persistSectionsInternal(pool, solId, req.body.sections_internal);
-    await persistPriceFlag(pool, solId, req.body.price_is_placeholder);
+    await persistPriceFlag(pool, solId, req.body.price_is_placeholder, req.user);
 
     auditLog(req.user.id, 'edit', slug, 'Updated solution details');
     res.json({ message: '솔루션 정보가 저장되었습니다.', slug });
@@ -814,7 +842,7 @@ app.put('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, re
   }
 });
 
-app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async (req, res) => {
+app.post('/api/admin/solutions/:id/publish', authenticateToken, catalogEditorOnly, async (req, res) => {
   const solId = req.params.id;
   const now = new Date().toISOString();
   const payload = req.body || {};
@@ -846,16 +874,18 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
       return { industry, fit: 'high' };
     });
 
-    const priceType = payload.price_type === undefined
+    // 가격은 admin 만 바꾼다(발행 경로로 우회되지 않도록 여기서도 막는다).
+    const canEditPrice = isAdminUser(req.user);
+    const priceType = (!canEditPrice || payload.price_type === undefined)
       ? (sol.price_type ?? null)
       : (['seat', 'once', 'mrr'].includes(payload.price_type) ? payload.price_type : null);
-    const unitPrice = payload.unit_price === undefined
+    const unitPrice = (!canEditPrice || payload.unit_price === undefined)
       ? (sol.unit_price ?? 0)
       : Math.max(0, Math.round(Number(payload.unit_price) || 0));
-    const currencyVal = payload.currency === undefined
+    const currencyVal = (!canEditPrice || payload.currency === undefined)
       ? (sol.currency || 'KRW')
       : (['KRW', 'USD'].includes(payload.currency) ? payload.currency : 'KRW');
-    const priceTiersJson = payload.price_tiers === undefined
+    const priceTiersJson = (!canEditPrice || payload.price_tiers === undefined)
       ? JSON.stringify(parseJsonColumn(sol.price_tiers, []))
       : JSON.stringify(Array.isArray(payload.price_tiers) ? payload.price_tiers : []);
 
@@ -899,7 +929,7 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
     ]);
     const updatedSol = updatedRes.rows[0];
     await persistSectionsInternal(client, solId, payload.sections_internal);
-    await persistPriceFlag(client, solId, payload.price_is_placeholder);
+    await persistPriceFlag(client, solId, payload.price_is_placeholder, req.user);
     const sectionsInternal = payload.sections_internal !== undefined
       ? (parseJsonColumn(payload.sections_internal, {}) || {})
       : (parseJsonColumn(updatedSol.sections_internal, {}) || {});
@@ -951,7 +981,7 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, adminOnly, async
 });
 
 // DELETE /api/admin/solutions/:id (Archive solution)
-app.delete('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req, res) => {
+app.delete('/api/admin/solutions/:id', authenticateToken, catalogEditorOnly, async (req, res) => {
   const solId = req.params.id;
   const now = new Date().toISOString();
   try {
@@ -970,7 +1000,7 @@ app.delete('/api/admin/solutions/:id', authenticateToken, adminOnly, async (req,
   }
 });
 
-app.get('/api/admin/focal-contacts', authenticateToken, adminOnly, async (_req, res) => {
+app.get('/api/admin/focal-contacts', authenticateToken, catalogEditorOnly, async (_req, res) => {
   try {
     const result = await pool.query(
       'SELECT id, name, org, vendor_scope, assigned_at FROM focal_contacts ORDER BY name'
@@ -982,7 +1012,7 @@ app.get('/api/admin/focal-contacts', authenticateToken, adminOnly, async (_req, 
   }
 });
 
-app.post('/api/admin/focal-contacts', authenticateToken, adminOnly, async (req, res) => {
+app.post('/api/admin/focal-contacts', authenticateToken, catalogEditorOnly, async (req, res) => {
   const name = String(req.body?.name || '').trim();
   const org = String(req.body?.org || '').trim();
   const vendorScope = String(req.body?.vendor_scope || '').trim();
@@ -1001,7 +1031,7 @@ app.post('/api/admin/focal-contacts', authenticateToken, adminOnly, async (req, 
   }
 });
 
-app.get('/api/admin/packages', authenticateToken, adminOnly, async (_req, res) => {
+app.get('/api/admin/packages', authenticateToken, catalogEditorOnly, async (_req, res) => {
   try {
     const result = await pool.query(
       `select p.id, p.name, p.scale, p.period, p.target, p.sort_order, p.status,
@@ -1099,7 +1129,7 @@ app.get('/api/admin/profiles', authenticateToken, adminOnly, async (_req, res) =
 
 app.patch('/api/admin/profiles/:id', authenticateToken, adminOnly, async (req, res) => {
   const approved = typeof req.body?.approved === 'boolean' ? req.body.approved : null;
-  const role = ['admin', 'viewer'].includes(req.body?.role) ? req.body.role : null;
+  const role = ['admin', 'curator', 'viewer'].includes(req.body?.role) ? req.body.role : null;
   const team = typeof req.body?.team === 'string' ? req.body.team.trim().slice(0, 120) : null;
   if (approved === null && role === null && team === null) {
     return res.status(400).json({ error: '변경할 회원 정보가 없습니다.' });
@@ -1127,7 +1157,7 @@ app.patch('/api/admin/profiles/:id', authenticateToken, adminOnly, async (req, r
 });
 
 
-app.get('/api/admin/solutions/:id/versions', authenticateToken, adminOnly, async (req, res) => {
+app.get('/api/admin/solutions/:id/versions', authenticateToken, catalogEditorOnly, async (req, res) => {
   const solId = req.params.id;
 
   try {
@@ -1348,7 +1378,7 @@ app.get('/api/admin/usage', authenticateToken, adminOnly, async (req, res) => {
   }
 });
 
-app.post('/api/admin/suggest-edit', authenticateToken, adminOnly, async (req, res) => {
+app.post('/api/admin/suggest-edit', authenticateToken, catalogEditorOnly, async (req, res) => {
   const { solutionId, prompt } = req.body;
 
   if (!solutionId || !prompt) {
@@ -1540,7 +1570,7 @@ app.get('/', requireSurfaceRootAuth, (_req, res) => {
 app.get(['/radar', '/radar/'], requirePageAuth('/radar'), sendFrontendFile('index.html'));
 app.get('/index.html', requirePageAuth('/radar'), sendFrontendFile('index.html'));
 app.get(['/login', '/login.html'], sendFrontendFile('login.html'));
-app.get(['/admin', '/admin.html'], requirePageAuth('/admin', 'admin'), sendFrontendFile('admin.html'));
+app.get(['/admin', '/admin.html'], requirePageAuth('/admin', CATALOG_EDITOR_ROLES), sendFrontendFile('admin.html'));
 app.get(['/admin/usage', '/admin-usage.html'], requirePageAuth('/admin/usage', 'admin'), sendFrontendFile('admin-usage.html'));
 app.get(['/hub', '/hub.html'], requirePageAuth('/hub'), sendFrontendFile('hub.html'));
 app.get(['/offering', '/offering.html'], sendFrontendFile('offering.html'));
