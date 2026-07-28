@@ -6,6 +6,7 @@ const cookieParser = require('cookie-parser');
 const path = require('path');
 const { createHubRouter } = require('./routes/hub');
 const { stripInternalSections } = require('./lib/section-privacy');
+const { evaluateCompleteness } = require('./lib/solution-completeness');
 require('dotenv').config();
 
 const app = express();
@@ -217,6 +218,39 @@ async function persistPriceFlag(executor, solutionId, value, actor) {
   if (!(await hasColumn('solutions', 'price_is_placeholder'))) return;
   const isPlaceholder = !(value === false || value === 'false');
   await executor.query('UPDATE solutions SET price_is_placeholder = $1 WHERE id = $2', [isPlaceholder, solutionId]);
+}
+
+/**
+ * 완성도 검사에 필요한 주변 데이터를 모은다.
+ * 복붙 검출은 다른 솔루션 본문이 있어야 하고, 슬롯·레이어 대조는 분류표가 있어야 한다.
+ * 010 이 아직 적용되지 않은 환경에서는 있는 것만으로 검사한다(게이트가 배포를 막지 않도록).
+ */
+async function loadCompletenessContext(excludeId) {
+  const context = { slots: new Map(), knownSlugs: new Set(), otherSolutions: [] };
+
+  try {
+    const slotRows = await pool.query('select id, layer from solution_slots');
+    slotRows.rows.forEach((row) => context.slots.set(row.id, { layer: row.layer }));
+  } catch (error) {
+    console.error('Slot table unavailable for completeness check:', error.message);
+  }
+
+  try {
+    const hasSlot = await hasColumn('solutions', 'slot');
+    const rows = await pool.query(
+      `select id, slug, name, sections from solutions where is_archived = false${hasSlot ? '' : ''}`
+    );
+    rows.rows.forEach((row) => {
+      context.knownSlugs.add(row.slug);
+      if (row.id !== excludeId) {
+        context.otherSolutions.push({ slug: row.slug, name: row.name, sections: row.sections });
+      }
+    });
+  } catch (error) {
+    console.error('Catalog unavailable for completeness check:', error.message);
+  }
+
+  return context;
 }
 
 const supabase = createClient(
@@ -889,6 +923,42 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, catalogEditorOnl
       ? JSON.stringify(parseJsonColumn(sol.price_tiers, []))
       : JSON.stringify(Array.isArray(payload.price_tiers) ? payload.price_tiers : []);
 
+    // 완성도 게이트. 22종 중 7종이 {name} 플레이스홀더를 단 채로, 9종이 서로 같은
+    // 템플릿 문장을 그대로 둔 채로 발행돼 있었다. 등록 권한을 여는 이상 여기서 막는다.
+    // 우회는 admin 만 가능하다. curator 가 플래그 하나로 게이트를 넘을 수 있으면
+    // 게이트가 아니다. 우회 시 감사로그에 남긴다.
+    const bypassGate = payload.skip_completeness_check === true && isAdminUser(req.user);
+    if (payload.skip_completeness_check === true && !bypassGate) {
+      await client.query('rollback');
+      return res.status(403).json({ error: '완성도 검사 우회는 관리자만 가능합니다.' });
+    }
+    if (bypassGate) {
+      auditLog(req.user.id, 'publish', slug, 'completeness gate bypassed');
+    }
+    if (!bypassGate) {
+      const candidate = {
+        ...sol,
+        slug,
+        layer: payload.layer,
+        sections,
+        slot: payload.slot ?? sol.slot,
+        fqa_coverage: payload.fqa_coverage ?? sol.fqa_coverage,
+        prerequisites: payload.prerequisites ?? sol.prerequisites,
+        red_flags: payload.red_flags ?? sol.red_flags,
+        bundle_potential: payload.bundle_potential ?? sol.bundle_potential
+      };
+      const context = await loadCompletenessContext(solId);
+      const verdict = evaluateCompleteness(candidate, context);
+      if (!verdict.ok) {
+        await client.query('rollback');
+        return res.status(422).json({
+          error: '완성도 검사를 통과하지 못해 발행할 수 없습니다.',
+          blocking: verdict.blocking,
+          warnings: verdict.warnings
+        });
+      }
+    }
+
     const updatedRes = await client.query(`
       UPDATE solutions
       SET slug = $1, name = $2, delivery = $3, layer = $4, synergy = $5, category = $6,
@@ -1156,6 +1226,24 @@ app.patch('/api/admin/profiles/:id', authenticateToken, adminOnly, async (req, r
   }
 });
 
+
+// 발행 전에 무엇이 막히는지 미리 본다. 저장할 때마다 폼에서 호출한다.
+app.get('/api/admin/solutions/:id/completeness', authenticateToken, catalogEditorOnly, async (req, res) => {
+  try {
+    const columns = await solutionColumnsFor('admin');
+    const result = await pool.query(
+      `SELECT ${columns.join(', ')} FROM solutions WHERE id = $1`, [req.params.id]
+    );
+    const row = result.rows[0];
+    if (!row) return res.status(404).json({ error: '솔루션을 찾을 수 없습니다.' });
+
+    const context = await loadCompletenessContext(req.params.id);
+    res.json(evaluateCompleteness(row, context));
+  } catch (err) {
+    console.error('Completeness check failed:', err.message);
+    res.status(500).json({ error: '완성도 검사에 실패했습니다.' });
+  }
+});
 
 app.get('/api/admin/solutions/:id/versions', authenticateToken, catalogEditorOnly, async (req, res) => {
   const solId = req.params.id;
