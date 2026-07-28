@@ -398,3 +398,6 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 .reco-details p { margin: 6px 0 0; }
 .reco-nodata summary { color: #ffc107; }
 .reco-group h4 small { margin-left: auto; font-size: .7rem; color: var(--text-secondary); font-weight: 400; }
+.reco-role { font-size: .68rem; padding: 1px 6px; border-radius: 999px;
+  background: rgba(96,165,250,.14); color: #60a5fa; white-space: nowrap; }
+.reco-depends { color: var(--text-secondary); }

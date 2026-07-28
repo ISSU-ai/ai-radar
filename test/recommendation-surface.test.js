@@ -60,11 +60,15 @@ test('STEP 03 이 추천을 한 번만 계산하고 재렌더는 캐시를 쓴�
   assert.match(hubClient, /state\.deal = deal;\s*\n\s*state\.reco = null;/);
 });
 
-test('추천 그룹을 나눠 보여준다', () => {
+test('추천을 제안 3단 구조로 보여준다', () => {
+  // 패키지와 ISV 를 한 줄로 세우지 않는다. 둘은 다른 질문에 답하고, 패키지에는
+  // synergy·grade·bundle_potential 이 없어 점수 비교 자체가 성립하지 않는다.
   assert.match(hubClient, /const RECO_GROUPS = \[/);
-  for (const title of ['바로 도입 가능', '선행 조건이 필요', '확인 필요']) {
-    assert.match(hubClient, new RegExp(title));
+  for (const title of ['① 준비', '② 도입', '③ 정착·운영', '선행 조건이 필요', '확인 필요']) {
+    assert.match(hubClient, new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  // 절대 점수 배지는 없앤다 — "10" 이 무엇 중 10 인지 영업이 알 수 없다.
+  assert.doesNotMatch(hubClient, /class="reco-score"/);
   // 번들은 무엇을 선행해야 하는지 카드에 드러나야 한다.
   assert.match(hubClient, /item\.enabler \? ` <em>← \$\{escapeHtml\(item\.enabler\.name\)\} 선행/);
 });

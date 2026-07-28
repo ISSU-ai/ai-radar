@@ -623,9 +623,14 @@ function renderFqa() {
 // 추천은 제안이지 강제가 아니다. 수동 선택은 그대로 두고 위에 얹는다.
 // 그룹을 나누는 이유: 영업이 고객 앞에서 "지금 되는 것"과 "선행이 필요한 것"을
 // 다르게 말해야 한다. 한 줄로 세우면 번들이 항상 위로 가 정렬이 아니라 왜곡이 된다.
+// 제안은 3단 구조다. 패키지와 ISV 를 한 줄로 세우지 않는다 — 둘은 다른 질문에 답하고,
+// 패키지에는 synergy·grade·bundle_potential 이 없어 점수 비교 자체가 성립하지 않는다.
 const RECO_GROUPS = [
-  { key: 'eligible', title: '바로 도입 가능', tone: 'ok' },
+  { path: ['proposal', 'prepare'], title: '① 준비 — 지금 넣으려면', tone: 'ok' },
+  { path: ['proposal', 'adopt'], title: '② 도입 — ISV 조합', tone: 'ok' },
   { key: 'bundles', title: '선행 조건이 필요', tone: 'bundle' },
+  { path: ['proposal', 'operate'], title: '③ 정착·운영', tone: 'ok' },
+  { path: ['proposal', 'unclassified'], title: '역할 미지정 패키지', tone: 'warn' },
   { key: 'needsConfirmation', title: '확인 필요', tone: 'warn' }
 ];
 
@@ -702,10 +707,11 @@ function recoCardMarkup(item, tone) {
   return `<div class="reco-card reco-${tone}">
     <div class="reco-head">
       <span class="reco-name">${escapeHtml(item.name)}${item.enabler ? ` <em>← ${escapeHtml(item.enabler.name)} 선행</em>` : ''}</span>
-      <span class="reco-score" title="적합 점수">${(item.score * 100).toFixed(0)}</span>
+      ${item.roleLabel ? `<span class="reco-role">${escapeHtml(item.roleLabel)}</span>` : ''}
     </div>
     <div class="reco-meta">${item.domainName ? `<b>${escapeHtml(item.domainName)}</b> · ` : ''}${escapeHtml(item.slotName || (item.kind === 'package' ? '서비스 패키지' : '슬롯 미지정'))}${item.layer ? ` · ${escapeHtml(item.layer)}` : ''}</div>
     ${reasons ? `<ul class="reco-reasons">${reasons}</ul>` : ''}
+    ${(item.dependsOn || []).length ? `<div class="reco-sub reco-depends">${escapeHtml(item.dependsOn.join(', '))} 선행 권고</div>` : ''}
     ${pending ? `<div class="reco-sub">확인 필요<ul>${pending}</ul></div>` : ''}
     ${flags ? `<div class="reco-sub reco-flags">부적합 신호<ul>${flags}</ul></div>` : ''}
     ${isSolution ? `<button type="button" class="reco-add ${picked ? 'picked' : ''}" data-reco-add="${item.id}" ${isOwner() ? '' : 'disabled'}>${picked ? '조합에 포함됨' : '조합에 추가'}</button>` : ''}
@@ -735,8 +741,8 @@ function renderRecommendationPanel() {
   const noData = excluded.filter((x) => x.excludedBy?.some((r) => /판정 데이터/.test(r)));
   const notFit = excluded.filter((x) => !noData.includes(x));
 
-  const groups = RECO_GROUPS.map(({ key, title, tone }) => {
-    const items = reco[key] || [];
+  const groups = RECO_GROUPS.map(({ key, path, title, tone }) => {
+    const items = (path ? path.reduce((acc, step) => acc?.[step], reco) : reco[key]) || [];
     if (!items.length) return '';
     // 대분류 분포를 헤더에 요약한다. "보안 3건 · 운영 2건" 이 한눈에 보여야
     // 영업이 어느 영역을 제안하는지 바로 안다.

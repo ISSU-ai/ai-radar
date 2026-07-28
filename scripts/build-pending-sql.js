@@ -23,7 +23,7 @@ const OUTPUT = path.join(MIGRATIONS_DIR, '_combined_apply.sql');
 
 // 기본값 = 009 이후 아직 적용되지 않은 것들. 012 는 1회성 시드라 apply-migrations.js
 // 에는 없지만, 최초 적용에는 포함해야 판정 데이터가 들어간다.
-const DEFAULT_ORDER = ['010', '011', '012', '013'];
+const DEFAULT_ORDER = ['010', '011', '012', '013', '014', '015', '016'];
 
 function resolveFiles(prefixes) {
   const all = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql') && !f.startsWith('_'));

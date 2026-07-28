@@ -398,7 +398,8 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         ).then((r) => r.rows),
         pool.query(
           `select p.id, p.id as slug, p.name, p.scale, p.period, p.target,
-                  p.fqa_coverage, p.prerequisites
+                  p.fqa_coverage, p.prerequisites,
+                  p.role, p.depends_on, p.readiness_lift
              from packages p where p.status = 'active'`
         ).then((r) => r.rows),
         pool.query(
