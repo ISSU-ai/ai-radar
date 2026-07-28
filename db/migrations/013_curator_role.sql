@@ -23,10 +23,13 @@ comment on type app_role is 'viewer=영업(hub 사용자) / curator=ISSU 카탈�
 -- RLS 정책 중 role='admin' 을 직접 보는 것이 있으면 curator 도 통과시켜야 한다.
 -- 앱은 postgres 풀(owner)로 접근해 RLS 를 우회하므로 런타임 영향은 없지만,
 -- PostgREST 등으로 직접 붙는 경로가 생길 때를 대비해 정의를 맞춰둔다.
+-- role 을 text 로 캐스팅해 비교한다. enum 리터럴로 쓰면 함수 생성 시점에 'curator' 가
+-- 이미 커밋돼 있어야 해서, 이 파일을 다른 마이그레이션과 한 배치로 붙여 실행할 때
+-- "unsafe use of new value of enum type" 으로 실패할 수 있다.
 create or replace function is_catalog_editor() returns boolean as $$
   select exists (
     select 1 from public.profiles p
-     where p.id = auth.uid() and p.approved and p.role in ('admin', 'curator')
+     where p.id = auth.uid() and p.approved and p.role::text in ('admin', 'curator')
   );
 $$ language sql stable security definer;
 

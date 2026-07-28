@@ -134,3 +134,26 @@ test('is_competitive 는 실제 후보 수와 모순되지 않는다', () => {
     // 역방향은 검사하지 않는다: 미등록 22종(Databricks 등)을 기다리는 빈 경쟁 슬롯이 정상이다.
   }
 });
+
+test('통합 적용 스크립트가 원본 마이그레이션과 동기화돼 있다', () => {
+  // _combined_apply.sql 은 생성물이다. 원본을 고치고 재생성을 잊으면 SQL Editor 에
+  // 낡은 스크립트를 붙여넣게 된다.
+  const combined = fs.readFileSync(path.join(root, 'db', 'migrations', '_combined_apply.sql'), 'utf8');
+  for (const file of [
+    '010_recommendation_engine.sql',
+    '011_slot_taxonomy_and_layer_fixes.sql',
+    '012_seed_recommendation_rules.sql',
+    '013_curator_role.sql'
+  ]) {
+    const source = fs.readFileSync(path.join(root, 'db', 'migrations', file), 'utf8').trimEnd();
+    assert.ok(combined.includes(source),
+      `${file} 이 _combined_apply.sql 과 다르다 — node scripts/build-pending-sql.js 재실행 필요`);
+  }
+
+  // enum 추가는 어떤 트랜잭션에도 들어가면 안 된다.
+  const alterIndex = combined.indexOf('alter type app_role add value');
+  const before = combined.slice(0, alterIndex);
+  const opens = (before.match(/^begin;/gm) || []).length;
+  const closes = (before.match(/^commit;/gm) || []).length;
+  assert.equal(opens, closes, 'alter type 이 열린 트랜잭션 안에 있다');
+});

@@ -86,6 +86,31 @@ DATABASE_URL="..." node scripts/split-internal-sections.js --apply
 
 `seed.js`는 프로덕션에서 기본 차단됩니다(`NODE_ENV=production` 또는 편집·발행 이력이 있는 DB). `isv_data.js`가 admin 편집본을 덮어쓰기 때문이며, 강제 실행은 `ALLOW_PROD_SEED=I_UNDERSTAND`가 필요합니다.
 
+#### 010~013 적용 (추천 엔진 · 슬롯 · curator 역할)
+
+여러 파일을 순서대로 붙여넣는 대신, 통합 스크립트를 생성해 한 번에 실행합니다.
+
+```bash
+node scripts/build-pending-sql.js          # db/migrations/_combined_apply.sql 생성
+```
+
+생성된 `db/migrations/_combined_apply.sql` 전체를 Supabase SQL Editor에 붙여넣고 실행합니다. 포함 내용:
+
+| 파일 | 내용 |
+|---|---|
+| `010` | 추천 엔진 스키마 — `solution_slots`, `fqa_coverage`, `prerequisites`, `red_flags`, `recommendation_config` |
+| `011` | 슬롯 23개 시드 + 22종 배정 + **레이어 정정 4건**(Zscaler·Check Point L1→L4, FollowerRabbit L2→L4, Tigergraph L4→L0) |
+| `012` | 상세 작성 9종의 판정 데이터 (**1회성 시드** — 재실행하면 ISSU 수정본을 덮어씀) |
+| `013` | `curator` 역할 추가 |
+
+실행 후 각 구간 끝의 검증 쿼리 결과를 확인합니다.
+
+- `011` — 슬롯 미배정 **0건** / 슬롯별 후보 수 / 레이어 정정 4건 반영
+- `012` — 판정 데이터 **9건** · 미보강 **13건** · 깨진 slug **0건**
+- `013` — enum에 `curator` 포함 · 역할별 인원
+
+> `alter type app_role add value` 는 트랜잭션 밖에 있어야 합니다. 생성 스크립트가 그 순서를 보존하고, 테스트가 이를 검증합니다. 이후 재적용은 `scripts/apply-migrations.js`(010·011·013만, 012 제외)를 씁니다.
+
 ### 3. Render Blueprint 연결
 
 1. Render Dashboard에서 **New > Blueprint**를 선택합니다.
