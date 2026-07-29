@@ -394,13 +394,15 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
                   s.status, s.status_op, s.industries,
                   s.fqa_coverage, s.prerequisites, s.red_flags, s.bundle_potential
              from solutions s
-            where s.is_archived = false and s.status = 'published'`
+            where s.is_archived = false and s.status = 'published'
+            order by s.slug`
         ).then((r) => r.rows),
         pool.query(
           `select p.id, p.id as slug, p.name, p.scale, p.period, p.target,
                   p.fqa_coverage, p.prerequisites,
                   p.role, p.depends_on, p.readiness_lift
-             from packages p where p.status = 'active'`
+             from packages p where p.status = 'active'
+             order by p.sort_order, p.id`
         ).then((r) => r.rows),
         pool.query(
           `select s.id, s.name, s.layer, s.is_competitive, s.domain, d.name as domain_name

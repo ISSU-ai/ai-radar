@@ -187,6 +187,44 @@ test('enabled_by 가 없어도 갭을 메우는 패키지를 선행으로 잇는
 });
 
 /**
+ * 시드 SQL 을 그대로 읽어 후보를 만든다. 판정 데이터를 손대면 아래 검사들이 반응한다.
+ * 012(ISV 9종) + 019(ISV 8종 추가) + 017(패키지 6종, 014·016 대체).
+ */
+function loadSeeds() {
+  const read = (f) => fs.readFileSync(path.join(root, 'db', 'migrations', f), 'utf8');
+  const pick = (block, field) => {
+    const m = block.match(new RegExp(`${field} = '([\\s\\S]*?)'::jsonb`));
+    return m ? JSON.parse(m[1]) : [];
+  };
+  const solutionsIn = (sql) => [...sql.matchAll(
+    /update solutions set\s*\n([\s\S]*?)where slug (?:=|in) \(?((?:'[a-z0-9-]+'(?:,\s*)?)+)\)?;/g
+  )].flatMap((m) => [...m[2].matchAll(/'([a-z0-9-]+)'/g)].map((s) => ({
+    slug: s[1], name: s[1], slot: 'llm-platform', status: 'published',
+    fqa_coverage: pick(m[1], 'fqa_coverage'),
+    prerequisites: pick(m[1], 'prerequisites'),
+    red_flags: pick(m[1], 'red_flags')
+  }))).filter((s) => s.fqa_coverage.length);
+
+  const offering = read('017_offering_v01.sql');
+  const lifts = new Map([...offering.matchAll(
+    /readiness_lift = '(\{[\s\S]*?\})'::jsonb\s*\n\s*where id = '(\w+)'/g
+  )].map((m) => [m[2], JSON.parse(m[1])]));
+  const packages = [...offering.matchAll(
+    /update packages set\s*\n\s*fqa_coverage = '([\s\S]*?)'::jsonb,\s*\n\s*readiness_lift = '\{[\s\S]*?\}'::jsonb\s*\n\s*where id = '(\w+)'/g
+  )].map((m) => ({
+    id: m[2], slug: m[2], name: m[2],
+    fqa_coverage: JSON.parse(m[1]), readiness_lift: lifts.get(m[2]) || {}
+  }));
+
+  return {
+    solutions: [...solutionsIn(read('012_seed_recommendation_rules.sql')),
+      ...solutionsIn(read('019_isv_offering_alignment.sql'))],
+    packages,
+    lifts
+  };
+}
+
+/**
  * readiness_lift 는 카테고리 단위, 전제는 문항 단위다. 카테고리만 맞춰 보면 엉뚱한
  * 패키지가 "이걸 하면 전제가 풀린다"고 말한다 — 영업이 고객 앞에서 못 지킬 약속을
  * 하게 되므로, 아래 네 건은 그 경계를 지킨다.
@@ -289,6 +327,43 @@ test('번들 사유의 수치는 enabler 가 실제로 푸는 전제를 가리�
   assert.doesNotMatch(numeric, /전제 4 충족/, '넘지도 못하는 임계값을 충족이라 말하면 안 된다');
 });
 
+test('실데이터 — 017 의 lift 가 근거 없는 수치를 만들지 않는다', () => {
+  // 017 이 014·016 의 판정 데이터를 대체한다. 값을 고치면 여기서 드러난다.
+  const { solutions, packages, lifts } = loadSeeds();
+
+  assert.equal(lifts.size, 6, '017 은 패키지 6종에 lift 를 넣는다');
+  assert.deepEqual(lifts.get('SECURITY'), { A: 1.5 }, 'SECURITY A +1.5 — 가장 자주 쓰이는 값');
+
+  // 네 축이 모두 낮은 고객. 번들이 가장 많이 나오는 조건이라 위반도 여기서 드러난다.
+  const out = recommend({
+    deal: {
+      ...lowSecurityDeal,
+      fqa_totals: {
+        A: { score: 1.8, threshold: 3.5, answered: 6, ready: false },
+        B: { score: 2.2, threshold: 3.0, answered: 5, ready: false },
+        C: { score: 2.1, threshold: 3.0, answered: 5, ready: false },
+        D: { score: 2.0, threshold: 3.5, answered: 5, ready: false }
+      }
+    },
+    solutions, packages, slots, itemCountByCategory: ITEM_COUNTS
+  });
+
+  assert.ok(out.bundles.length > 0, '번들이 하나도 없으면 이 검사가 무의미하다');
+
+  const covers = (pkg, need) => (pkg.fqa_coverage || []).some((e) => e.category === need.category
+    && (Number(e.strength) || 0) >= 2
+    && (!need.item || !(e.items || []).length || (e.items || []).includes(need.item)));
+
+  for (const bundle of out.bundles) {
+    const numeric = bundle.reasons.find((r) => /→ .* 예상 \(전제 .* 충족\)/.test(r));
+    if (!numeric) continue;
+    const pkg = packages.find((p) => p.slug === bundle.enabler.slug);
+    if (!pkg) continue; // ISV 가 선행인 경우는 lift 를 쓰지 않는다
+    assert.ok(bundle.prerequisites.blockedBy.some((need) => covers(pkg, need)),
+      `${bundle.enabler.slug} 는 ${bundle.slug} 의 막힌 문항을 덮지 않는데 수치를 말한다: ${numeric}`);
+  }
+});
+
 test('검토 여부에 따라 라벨이 달라진다', () => {
   assert.equal(run({ solutions: [] }).label, '고객 자가응답 기준 잠정 추천');
   const reviewed = recommend({
@@ -312,26 +387,10 @@ test('보조 파서 — 좌석·예산·규모', () => {
 });
 
 test('실데이터 — 준비도 낮은 딜은 패키지가 먼저 나온다', () => {
-  // 012·014 를 그대로 읽어 회귀를 잡는다. 판정 데이터를 고치면 여기서 드러난다.
-  const seed = fs.readFileSync(path.join(root, 'db', 'migrations', '012_seed_recommendation_rules.sql'), 'utf8');
-  const pkgSeed = fs.readFileSync(path.join(root, 'db', 'migrations', '014_seed_package_coverage.sql'), 'utf8');
-  const pick = (block, field) => {
-    const m = block.match(new RegExp(`${field} = '([\\s\\S]*?)'::jsonb`));
-    return m ? JSON.parse(m[1]) : [];
-  };
+  const { solutions, packages } = loadSeeds();
 
-  const solutions = [...seed.matchAll(/update solutions set([\s\S]*?)where slug = '([a-z0-9-]+)';/g)]
-    .map((m) => ({
-      slug: m[2], name: m[2], slot: 'llm-platform', status: 'published',
-      fqa_coverage: pick(m[1], 'fqa_coverage'),
-      prerequisites: pick(m[1], 'prerequisites'),
-      red_flags: pick(m[1], 'red_flags')
-    }));
-  const packages = [...pkgSeed.matchAll(/update packages set fqa_coverage = '([\s\S]*?)'::jsonb where id = '(\w+)'/g)]
-    .map((m) => ({ id: m[2], slug: m[2], name: m[2], fqa_coverage: JSON.parse(m[1]) }));
-
-  assert.equal(solutions.length, 9, '012 는 9종을 심는다');
-  assert.equal(packages.length, 6, '014 는 패키지 6종을 심는다');
+  assert.equal(solutions.length, 17, '012 의 9종 + 019 의 8종');
+  assert.equal(packages.length, 6, '017 은 패키지 6종을 심는다');
 
   const out = recommend({
     deal: {
@@ -344,11 +403,97 @@ test('실데이터 — 준비도 낮은 딜은 패키지가 먼저 나온다', (
     solutions, packages, slots, itemCountByCategory: ITEM_COUNTS
   });
 
-  // A·C 가 미달인 고객에게는 그 두 축을 덮는 패키지가 먼저 와야 한다.
+  // A·C 가 미달인 고객에게는 그 두 축을 덮는 패키지가 나와야 한다.
+  const names = out.eligible.map((x) => x.name);
   assert.ok(out.eligible.length > 0, '적합 후보가 하나도 없으면 안 된다');
-  assert.ok(out.eligible.every((x) => x.kind === 'package'),
-    `준비도가 낮으면 ISV 는 전제에 걸린다: ${out.eligible.map((x) => x.name).join(', ')}`);
-  assert.deepEqual(out.eligible.map((x) => x.name).sort(), ['OPERATE', 'SECURITY']);
-  // 걸린 ISV 들은 버리지 않고 번들로 살아남아야 한다.
+  assert.ok(names.includes('SECURITY'), `A 미달인데 SECURITY 가 없다: ${names.join(', ')}`);
+  assert.ok(names.includes('OPERATE'), `C 미달인데 OPERATE 가 없다: ${names.join(', ')}`);
+
+  // 019 이후 New Relic 도 여기 들어온다. C(품질·장애·비용)를 덮고 그 전제(B 개발·테스트
+  // 환경 3, C 운영 책임자 2)를 이 딜이 충족하기 때문이다 — 판정 데이터를 채운 효과다.
+  assert.ok(names.includes('new-relic'),
+    `019 로 판정 데이터가 생긴 New Relic 이 C 갭 고객에게 안 나온다: ${names.join(', ')}`);
+
+  // 전제에 걸린 ISV 들은 버리지 않고 번들로 살아남아야 한다.
   assert.ok(out.bundles.length >= 3, `번들 후보가 너무 적다: ${out.bundles.length}`);
+});
+
+test('017 — 예산·구매 준비도를 덮는 패키지가 생겼다', () => {
+  // 016 까지는 6종 중 아무도 이 문항을 못 덮어, 여기 막힌 ISV 는 선행 후보를 찾지
+  // 못하고 전부 탈락했다. 기획안 01 의 "TCO 및 예산 시뮬레이션"이 그 구멍을 메운다.
+  const { packages } = loadSeeds();
+  const covers = (pkg, category, item) => (pkg.fqa_coverage || []).some((e) =>
+    e.category === category && (e.items || []).includes(item));
+
+  const budget = packages.filter((p) => covers(p, 'D', '예산·구매 준비도'));
+  assert.deepEqual(budget.map((p) => p.id), ['DISCOVERY'],
+    'TCO 를 산출물로 내는 DISCOVERY 만 이 문항을 덮어야 한다');
+
+  // OPERATE 는 도입 후 비용 관리라 일부러 뺐다. 넣으면 "운영 패키지를 먼저 하면
+  // 예산 준비가 된다"는 순서가 뒤집힌 제안이 나온다.
+  assert.ok(!covers(packages.find((p) => p.id === 'OPERATE'), 'D', '예산·구매 준비도'),
+    'OPERATE 는 도입 후 비용 관리다 — 도입 전 예산 확보와 섞으면 안 된다');
+
+  // 실제로 막힌 ISV 가 번들로 살아나는지 끝까지 확인한다.
+  const out = recommend({
+    deal: {
+      track: 'T-B',
+      customer_meta: { industry: '제조', targetUsers: '500명', investment: '2억' },
+      prereq_confirmations: {},
+      fqa_totals: {
+        A: { score: 3.6, threshold: 3.0, answered: 6, ready: true },
+        B: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
+        C: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
+        D: { score: 2.0, threshold: 3.0, answered: 5, ready: false }
+      }
+    },
+    slots, itemCountByCategory: ITEM_COUNTS, packages,
+    solutions: [{
+      slug: 'needs-budget', name: '예산전제ISV', slot: 'llm-platform', status: 'published',
+      fqa_coverage: [{ category: 'D', items: ['명확한 업무 문제'], strength: 2 }],
+      prerequisites: [{ kind: 'fqa', category: 'D', item: '예산·구매 준비도', min: 3,
+        blocking: true, label: '예산·구매 준비도 3 이상' }]
+    }]
+  });
+
+  assert.equal(out.bundles.length, 1, '선행 패키지를 찾아 번들로 살아나야 한다');
+  assert.equal(out.bundles[0].enabler.slug, 'DISCOVERY');
+  assert.ok(out.bundles[0].reasons.some((r) => /D 2 → 3\.2 예상 \(전제 3 충족\)/.test(r)),
+    out.bundles[0].reasons.join(' / '));
+});
+
+test('017 — 한 문항을 둘이 덮으면 더 깊게 다루는 쪽이 선행이 된다', () => {
+  // 017 이 03 AI-Ready Service 에 A(데이터 분류·접근권한, strength 2)를 더했다.
+  // 02 AI Trust 는 같은 문항을 strength 3 으로 다룬다. 목록 순서와 무관하게
+  // 02 가 이겨야 한다 — 아니면 3~4주 과업 자리에 6~10주 과업이 붙는다.
+  const { packages } = loadSeeds();
+  const byId = (id) => packages.find((p) => p.id === id);
+  const deal = {
+    track: 'T-B',
+    customer_meta: { industry: '금융/보험', targetUsers: '전사 2,000명', investment: '3억' },
+    prereq_confirmations: {},
+    fqa_totals: {
+      A: { score: 2.4, threshold: 3.0, answered: 6, ready: false },
+      B: { score: 2.4, threshold: 3.0, answered: 5, ready: false },
+      C: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
+      D: { score: 3.6, threshold: 3.0, answered: 5, ready: true }
+    }
+  };
+  const isv = {
+    slug: 'needs-iam', name: 'IAM전제ISV', slot: 'llm-platform', status: 'published',
+    fqa_coverage: [{ category: 'A', items: ['감사 로그와 추적성'], strength: 2 }],
+    prerequisites: [{ kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3,
+      blocking: true, label: 'IAM 3 이상' }]
+  };
+
+  // 두 패키지 모두 전제를 넘긴다(2.4+1.5=3.9 / 2.4+0.8=3.2). 순서만 뒤집어 넣는다.
+  for (const order of [['INTEGRATION', 'SECURITY'], ['SECURITY', 'INTEGRATION']]) {
+    const out = recommend({
+      deal, slots, itemCountByCategory: ITEM_COUNTS, solutions: [isv],
+      packages: order.map(byId)
+    });
+    assert.equal(out.bundles.length, 1, `순서 ${order.join('→')} 에서 번들이 없다`);
+    assert.equal(out.bundles[0].enabler.slug, 'SECURITY',
+      `순서 ${order.join('→')} 에서 얕게 다루는 쪽이 뽑혔다`);
+  }
 });
