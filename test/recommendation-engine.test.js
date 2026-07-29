@@ -186,6 +186,109 @@ test('enabled_by 가 없어도 갭을 메우는 패키지를 선행으로 잇는
   assert.ok(out.bundles[0].reasons.some((r) => /패키지로 준비도를 올린 뒤/.test(r)));
 });
 
+/**
+ * readiness_lift 는 카테고리 단위, 전제는 문항 단위다. 카테고리만 맞춰 보면 엉뚱한
+ * 패키지가 "이걸 하면 전제가 풀린다"고 말한다 — 영업이 고객 앞에서 못 지킬 약속을
+ * 하게 되므로, 아래 네 건은 그 경계를 지킨다.
+ */
+
+/** D 가 미달인 딜. 예산·구매 준비도 계열 전제를 시험하는 데 쓴다. */
+const lowBusinessDeal = {
+  track: 'T-B',
+  customer_meta: { industry: '제조', targetUsers: '500명', investment: '2억' },
+  fqa_totals: {
+    A: { score: 3.6, threshold: 3.0, answered: 6, ready: true },
+    B: { score: 2.4, threshold: 3.0, answered: 5, ready: false },
+    C: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
+    D: { score: 2.0, threshold: 3.0, answered: 5, ready: false }
+  },
+  prereq_confirmations: {}
+};
+
+test('문항을 안 덮는 패키지는 lift 가 있어도 선행으로 쓰지 않는다', () => {
+  // ADOPTION 은 D 를 1.2 올리지만 덮는 것은 현업 오너십·변화관리·교육이다.
+  // 예산·구매 준비도는 손도 대지 않으므로 "이걸 하면 예산 전제가 풀린다"고 말하면 안 된다.
+  const out = recommend({
+    deal: lowBusinessDeal, slots, itemCountByCategory: ITEM_COUNTS,
+    solutions: [{
+      slug: 'needs-budget', name: '예산전제ISV', slot: 'llm-platform', status: 'published',
+      fqa_coverage: [{ category: 'D', items: ['명확한 업무 문제'], strength: 2 }],
+      prerequisites: [{ kind: 'fqa', category: 'D', item: '예산·구매 준비도', min: 3,
+        blocking: true, label: '예산·구매 준비도 3 이상' }]
+    }],
+    packages: [{
+      id: 'ADOPTION', slug: 'ADOPTION', name: '도입 확산 키트',
+      fqa_coverage: [{ category: 'D', items: ['현업 오너십', '변화관리·교육'], strength: 3 }],
+      readiness_lift: { D: 1.2 }
+    }]
+  });
+
+  assert.equal(out.bundles.length, 0,
+    `근거 없는 번들: ${out.bundles.map((b) => b.reasons.at(-1)).join(' / ')}`);
+  assert.deepEqual(out.excluded.map((x) => x.slug), ['needs-budget']);
+  assert.ok(out.excluded[0].excludedBy.some((r) => /예산·구매 준비도/.test(r)));
+});
+
+test('같은 카테고리라도 문항을 덮는 패키지가 선행이 된다', () => {
+  // INTEGRATION 의 lift(B +1.5)가 POC(B +0.8)보다 크고 목록에도 먼저 오지만,
+  // "개발·테스트 환경"을 덮는 것은 POC 뿐이다. 큰 숫자가 아니라 맞는 문항이 이긴다.
+  const out = recommend({
+    deal: lowBusinessDeal, slots, itemCountByCategory: ITEM_COUNTS,
+    solutions: [{
+      slug: 'needs-devenv', name: '개발환경전제ISV', slot: 'llm-platform', status: 'published',
+      fqa_coverage: [{ category: 'B', items: ['모델·벤더 전환성'], strength: 2 }],
+      prerequisites: [{ kind: 'fqa', category: 'B', item: '개발·테스트 환경', min: 3,
+        blocking: true, label: '개발·테스트 환경 3 이상' }]
+    }],
+    packages: [
+      { id: 'INTEGRATION', slug: 'INTEGRATION', name: 'AI Integration',
+        fqa_coverage: [{ category: 'B', items: ['업무 시스템 연동성', '지식 소스 품질'], strength: 3 }],
+        readiness_lift: { B: 1.5 } },
+      { id: 'POC', slug: 'POC', name: 'AI PoC',
+        fqa_coverage: [{ category: 'B', items: ['개발·테스트 환경'], strength: 2 },
+          { category: 'D', items: ['명확한 업무 문제'], strength: 2 }],
+        readiness_lift: { B: 0.8, D: 0.8 } }
+    ]
+  });
+
+  assert.equal(out.bundles.length, 1);
+  assert.equal(out.bundles[0].enabler.slug, 'POC');
+  assert.ok(out.bundles[0].reasons.some((r) => /B 2\.4 → 3\.2 예상 \(전제 3 충족\)/.test(r)),
+    out.bundles[0].reasons.join(' / '));
+});
+
+test('번들 사유의 수치는 enabler 가 실제로 푸는 전제를 가리킨다', () => {
+  // 두 전제가 걸렸고 둘 다 A 다. SECURITY 는 접근권한만 덮으므로 수치는 그쪽(min 3)
+  // 이어야 한다. 먼저 걸린 보존정책(min 4)을 집으면 두 번 거짓말이 된다 — 덮지도 않고
+  // 1.8 + 1.5 = 3.3 이라 4 를 넘지도 못하는데 "전제 4 충족"이라 말하게 된다.
+  const out = run({
+    solutions: [{
+      slug: 'needs-two-a', name: 'A두전제ISV', slot: 'llm-platform', status: 'published',
+      fqa_coverage: [{ category: 'A', items: ['감사 로그와 추적성'], strength: 2 }],
+      prerequisites: [
+        { kind: 'fqa', category: 'A', item: '데이터 보존·삭제 정책', min: 4,
+          blocking: true, label: '보존정책 4 이상' },
+        { kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3,
+          blocking: true, label: 'IAM 3 이상' }
+      ]
+    }],
+    packages: [{
+      id: 'SECURITY', slug: 'SECURITY', name: 'AI Security Readiness',
+      fqa_coverage: [{ category: 'A', items: ['접근권한과 계정 체계'], strength: 3 }],
+      readiness_lift: { A: 1.5 }
+    }]
+  });
+
+  assert.equal(out.bundles.length, 1);
+  assert.equal(out.bundles[0].enabler.slug, 'SECURITY');
+  const numeric = out.bundles[0].reasons.find((r) => /예상/.test(r));
+  assert.ok(numeric, out.bundles[0].reasons.join(' / '));
+  // 막힌 전제 요약에는 둘 다 나온다 — 보존정책은 여전히 미해결이라 숨기면 안 된다.
+  assert.ok(out.bundles[0].reasons.some((r) => /보존정책 4 이상 \/ IAM 3 이상/.test(r)));
+  assert.match(numeric, /A 1\.8 → 3\.3 예상 \(전제 3 충족\)/);
+  assert.doesNotMatch(numeric, /전제 4 충족/, '넘지도 못하는 임계값을 충족이라 말하면 안 된다');
+});
+
 test('검토 여부에 따라 라벨이 달라진다', () => {
   assert.equal(run({ solutions: [] }).label, '고객 자가응답 기준 잠정 추천');
   const reviewed = recommend({
