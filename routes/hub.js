@@ -388,6 +388,11 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         });
       }
 
+      // 020 미적용 구간에도 코드가 먼저 배포될 수 있다. 컬럼이 없으면 조건을 빼서
+      // "숨김 없음"으로 동작한다 — 쿼리가 깨지는 것보다 낫다.
+      const hiddenFilter = (hasColumn && await hasColumn('solutions', 'is_hidden'))
+        ? 'and s.is_hidden = false' : '';
+
       const [solutions, packages, slotRows, fqaItems, config] = await Promise.all([
         pool.query(
           `select s.id, s.slug, s.name, s.slot, s.layer, s.synergy, s.grade, s.scale,
@@ -395,6 +400,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
                   s.fqa_coverage, s.prerequisites, s.red_flags, s.bundle_potential
              from solutions s
             where s.is_archived = false and s.status = 'published'
+              ${hiddenFilter}
             order by s.slug`
         ).then((r) => r.rows),
         pool.query(
@@ -580,6 +586,9 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       // 전부 보이게 둔다(빈 배열이면 감춰져 카탈로그가 통째로 사라진다).
       const hasCoverage = hasColumn ? await hasColumn('solutions', 'fqa_coverage') : false;
       const coverageColumn = hasCoverage ? 's.fqa_coverage' : `'[{"legacy":true}]'::jsonb`;
+      // 020 미적용이면 조건을 빼서 "숨김 없음"으로 동작한다.
+      const refHiddenFilter = (hasColumn && await hasColumn('solutions', 'is_hidden'))
+        ? 'and s.is_hidden = false' : '';
 
       const [fqaItems, tracks, packages, solutions, settings] = await Promise.all([
         loadFqaItems(),
@@ -600,6 +609,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
                   f.name as focal_name, f.org as focal_org
            from solutions s left join focal_contacts f on f.id = s.focal_id
            where s.is_archived = false and s.status = 'published'
+             ${refHiddenFilter}
              and coalesce(s.status_op, 'active') <> 'draft'
            order by coalesce(s.grade, 0) desc, s.name`
         ).then((r) => r.rows),

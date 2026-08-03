@@ -629,18 +629,25 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 
 // GET /api/solutions
 app.get('/api/solutions', authenticateToken, async (req, res) => {
-  const { layer, synergy, delivery, category, q, industry, simulator_mapping } = req.query;
-  
+  const { layer, synergy, delivery, category, q, industry, simulator_mapping, include_hidden } = req.query;
+
   const canSeeInternal = isCatalogEditor(req.user);
+  // 숨김 솔루션은 어드민 목록에서만 보인다. 안 그러면 되돌릴 화면이 없어
+  // is_archived 와 같은 편도 스위치가 되어버린다.
+  const showHidden = canSeeInternal && String(include_hidden) === '1';
+  // 020 미적용 구간에도 코드가 먼저 배포될 수 있다 (위 hasColumn 주석 참고).
+  const hasHidden = await hasColumn('solutions', 'is_hidden');
   // opinion 은 정책상 카탈로그 편집자 전용이면 아예 조회하지 않는다(응답에서 지우는 것보다 안전).
   const exposeOpinion = canSeeInternal || OPINION_EXPOSE_POLICY === 'A';
   const listColumns = [
     'id', 'legacy_id', 'slug', 'name', 'delivery', 'layer', 'synergy', 'category',
     'jtbd', 'value_chain', 'status', 'version', 'updated_at', 'simulator_mappings', 'industries',
+    ...(hasHidden ? ['is_hidden'] : []),
     ...(exposeOpinion ? ['opinion'] : [])
   ];
   let queryStr = `SELECT ${listColumns.join(', ')} FROM solutions`;
   let conditions = ['is_archived = false'];
+  if (hasHidden && !showHidden) conditions.push('is_hidden = false');
   let params = [];
 
   let paramIdx = 1;
@@ -733,7 +740,8 @@ app.get('/api/solutions/:slug', authenticateToken, async (req, res) => {
     const canSeeInternal = isCatalogEditor(req.user);
     const columns = await solutionColumnsFor(req.user.role);
     const result = await pool.query(
-      `SELECT ${columns.join(', ')} FROM solutions WHERE slug = $1 AND is_archived = false`,
+      `SELECT ${columns.join(', ')} FROM solutions WHERE slug = $1 AND is_archived = false`
+      + (!canSeeInternal && await hasColumn('solutions', 'is_hidden') ? ' AND is_hidden = false' : ''),
       [slug]
     );
     const row = result.rows[0];
@@ -1109,6 +1117,48 @@ app.delete('/api/admin/solutions/:id', authenticateToken, catalogEditorOnly, asy
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: '솔루션 아카이브 처리에 실패했습니다.' });
+  }
+});
+
+// PATCH /api/admin/solutions/:id/visibility — 영업 화면 노출 토글
+//
+// is_archived 와 달리 양방향이다. 어드민 목록은 include_hidden=1 로 숨긴 것까지
+// 조회하므로 켜고 끄기를 같은 화면에서 할 수 있다.
+app.patch('/api/admin/solutions/:id/visibility', authenticateToken, catalogEditorOnly, async (req, res) => {
+  const { hidden, archived } = req.body || {};
+  if (typeof hidden !== 'boolean' && typeof archived !== 'boolean') {
+    return res.status(400).json({ error: 'hidden 또는 archived 를 boolean 으로 보내주세요.' });
+  }
+  try {
+    if (typeof hidden === 'boolean' && !(await hasColumn('solutions', 'is_hidden'))) {
+      return res.status(503).json({
+        error: '노출 토글 스키마가 아직 적용되지 않았습니다. 020 마이그레이션을 확인하세요.'
+      });
+    }
+    const fields = [];
+    const values = [];
+    if (typeof hidden === 'boolean') { fields.push(`is_hidden = $${fields.length + 1}`); values.push(hidden); }
+    if (typeof archived === 'boolean') { fields.push(`is_archived = $${fields.length + 1}`); values.push(archived); }
+    values.push(req.user.id, new Date().toISOString(), req.params.id);
+    const result = await pool.query(
+      `UPDATE solutions SET ${fields.join(', ')},
+              updated_by = $${values.length - 2}, updated_at = $${values.length - 1}
+        WHERE id = $${values.length}
+    RETURNING slug, name, is_hidden, is_archived`,
+      values
+    );
+    const row = result.rows[0];
+    if (!row) return res.status(404).json({ error: '솔루션을 찾을 수 없습니다.' });
+
+    const changes = [
+      typeof hidden === 'boolean' ? (hidden ? '숨김' : '노출') : null,
+      typeof archived === 'boolean' ? (archived ? '아카이브' : '복구') : null
+    ].filter(Boolean).join('·');
+    auditLog(req.user.id, 'visibility', row.slug, changes);
+    res.json({ ...row, message: `${row.name} — ${changes} 처리했습니다.` });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: '노출 상태를 변경하지 못했습니다.' });
   }
 });
 

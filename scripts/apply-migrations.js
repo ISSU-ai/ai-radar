@@ -30,7 +30,9 @@ const MIGRATIONS = [
   '010_recommendation_engine.sql',
   '011_slot_taxonomy_and_layer_fixes.sql',
   // 012 는 의도적으로 제외 — ISSU 가 /admin 에서 수정한 판정 데이터를 덮어쓰는 1회성 시드다.
-  '013_curator_role.sql'
+  '013_curator_role.sql',
+  // 020 은 컬럼·인덱스만 만든다. 021(노출 목록 시드)은 어드민 토글 상태를 덮어쓰므로 제외.
+  '020_solution_visibility.sql'
 ];
 
 async function main() {
