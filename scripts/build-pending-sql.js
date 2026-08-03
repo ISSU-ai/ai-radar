@@ -21,9 +21,15 @@ const path = require('path');
 const MIGRATIONS_DIR = path.join(__dirname, '..', 'db', 'migrations');
 const OUTPUT = path.join(MIGRATIONS_DIR, '_combined_apply.sql');
 
-// 기본값 = 009 이후 아직 적용되지 않은 것들. 012 는 1회성 시드라 apply-migrations.js
-// 에는 없지만, 최초 적용에는 포함해야 판정 데이터가 들어간다.
-const DEFAULT_ORDER = ['010', '011', '012', '013', '014', '015', '016'];
+// 기본값 = 아직 적용되지 않은 것들. 1회성 시드(012·014·016~019·021~023)는
+// apply-migrations.js 에는 없지만 최초 적용에는 포함해야 데이터가 들어간다.
+//
+// ⚠ 순서가 중요한 두 곳
+//   020 → 021 : 021 이 is_hidden 을 쓰므로 컬럼이 먼저 있어야 한다.
+//   023 → 021 : 021 의 노출 목록에 cohere 가 있다. 023 이 먼저 만들어 두지 않으면
+//               그 행이 없어 노출이 8종이 아니라 7종이 된다.
+//   그래서 021 이 맨 뒤다.
+const DEFAULT_ORDER = ['017', '018', '019', '020', '022', '023', '021'];
 
 function resolveFiles(prefixes) {
   const all = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql') && !f.startsWith('_'));

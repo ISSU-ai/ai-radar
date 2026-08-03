@@ -47,10 +47,10 @@
 | **04** | **AI Adoption & Change Management** | PS | 사용자 정착과 조직 확산 | 교육, AI Champion, Change Plan, 성과측정 |
 | **05** | **Billing & Managed Service** | MS | 라이선스·사용량·비용·운영 관리 | 원화 Billing, Credit·Token, Monitoring, Support |
 
-> 🚨 **AI Radar DB(`017_offering_v01.sql`)와 어긋난다.**
-> 017 은 v0.1 기준이라 **02 가 `AI Trust & Guardrails`** 로 들어 있다. 제출본에서 그 자리는 `OpenAI Ready`(DS&PS)다.
-> `Trust & Guardrails` 는 오퍼링에서 빠지고 **Step 1 통제의 제공 내용**으로 흡수됐다. **PoC 도 01 → 03 으로 이동**했다.
-> 017 은 아직 DB 미적용이므로 **적용 전에 고쳐야 한다.**
+> ✅ **AI Radar DB 반영 완료 (2026-08-03).**
+> `017_offering_v01.sql` 을 제출본 기준으로 고쳤다 — 02 `AI Trust & Guardrails` → `OpenAI Ready`(DS&PS), PoC 01 → 03.
+> 패키지 이름은 001 시드 그대로 둔다. 03 에 POC·INTEGRATION 둘이 붙어서 오퍼링 이름으로 바꾸면 화면에 'AIR Service' 가 둘 나온다.
+> 오퍼링:패키지는 1:N 이다.
 
 ### 1-3. 선택형 ISV 확장 패키지 5종
 
@@ -65,7 +65,8 @@
 | **AI Security** | Trend Micro · Check Point | 민감정보 유출·Prompt Injection·Agent 위협 통제 | OpenAI Native 범위 초과 | 19번 |
 
 > ⚠️ **카탈로그 미등록 4종**: `Databricks` · `Trend Micro` · `Google Workspace` · `Salesforce`
-> 앞의 둘은 번들 필수 구성이라 **등록 여부 결정이 필요**하다. (`Cohere` 도 같은 상태)
+> 앞의 둘은 번들 필수 구성이라 **등록 여부 결정이 필요**하다.
+> (`Cohere` 는 **023 으로 등록 완료** — 노출 목록 8종이 모두 채워졌다.)
 
 ---
 
@@ -86,7 +87,7 @@ AI 를 처음 도입하는 기업이 **개발이나 복잡한 시스템 구축 �
 > 💡 **구조가 명확하다: 진단과 초기 구축은 무상, 운영은 유상.**
 > 라이선스로 진입해 **MS 로 반복 매출을 만들고, PS·ISV 로 확장**하는 형태다.
 
-> 📌 **AI Radar 미반영.** 패키지 6종(DISCOVERY~OPERATE) 어디에도 대응이 없다. **신규 등록 대상.**
+> 📌 **AI Radar 미반영.** 패키지 6종(DISCOVERY~OPERATE) 어디에도 대응이 없다. **신규 등록 대상 — 남은 작업 1순위.**
 
 ### 2-2. 컨설팅 (01 AI Consulting)
 
@@ -203,13 +204,15 @@ AI 를 처음 도입하는 기업이 **개발이나 복잡한 시스템 구축 �
 
 ### 4-2. 구조 변경이 필요한 것
 
-| # | 작업 | 이유 |
+| # | 작업 | 상태 |
 |:---:|---|---|
-| 1 | **017 의 오퍼링 정의 수정** | 02 `AI Trust & Guardrails` → `OpenAI Ready`(DS&PS) · 01 에서 PoC 제거 → 03 |
-| 2 | **`OpenAI Starter Package` 신규 등록** | 진입 상품인데 패키지 6종에 대응이 없다 |
-| 3 | **ISV 번들 5종에 「적용 기준」 추가** | 019 로 번들은 만들었으나 **언제 붙이는지 기준이 없다** |
-| 4 | **미등록 제품 4종 결정** | Databricks · Trend Micro · Google Workspace · Salesforce (+ Cohere) |
-| 5 | **무상/유상 구분 필드** | Consulting·OpenAI Ready 는 조건부 무상 — 견적에 0원으로 나와야 한다 |
+| 1 | 017 의 오퍼링 정의 수정 | ✅ **완료** — 제출본 기준으로 재작성 |
+| 2 | Cohere 등록 | ✅ **완료** — 023 |
+| 3 | Portal26 본문 채우기 | ✅ **완료** — 022 |
+| 4 | **`OpenAI Starter Package` 신규 등록** | ⬜ 진입 상품인데 패키지 6종에 대응이 없다 |
+| 5 | **ISV 번들 5종에 「적용 기준」 추가** | ⬜ 019 로 번들은 만들었으나 **언제 붙이는지 기준이 없다** |
+| 6 | **미등록 제품 3종 결정** | ⬜ Databricks · Trend Micro (번들 필수) / Google Workspace · Salesforce (선택) |
+| 7 | **무상/유상 구분 필드** | ⬜ Consulting·OpenAI Ready 는 조건부 무상 — 견적에 0원으로 나와야 한다 |
 
 ### 4-3. 딜사이징(STEP04) 설계 방향
 
@@ -231,12 +234,13 @@ MS          = 월정액 × 계약 개월                          (Light 3개월
 
 | # | 항목 | 담당 |
 |:---:|---|---|
-| 1 | 017 오퍼링 정의를 제출본에 맞춰 수정 후 DB 적용 | 개발 |
+| 1 | **017~023 DB 적용** — `db/migrations/_combined_apply.sql` 한 번에 실행 | 개발 |
 | 2 | AIR Unit M/D·M/M 단가, MS 월정액 | ISV BU |
-| 3 | Databricks·Trend Micro·Google Workspace·Salesforce·Cohere 등록 여부 | ISV BU |
+| 3 | Databricks·Trend Micro 등록 여부 (번들 필수 구성) | ISV BU |
 | 4 | Managed Service 세부 Scope (마진·원화 빌링·권한 위임) | ISV BU ← OpenAI 협의 |
 | 5 | Starter Package 의 MS Light 가격 | ISV BU |
 | 6 | 무상 "표준 범위" 의 경계 정의 | ISV BU |
+| 7 | Portal26·Cohere 의 **국내 리전 제공 여부** | ISV BU ← 벤더 확인 |
 
 ---
 
