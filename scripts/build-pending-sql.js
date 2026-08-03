@@ -29,7 +29,13 @@ const OUTPUT = path.join(MIGRATIONS_DIR, '_combined_apply.sql');
 //   023 → 021 : 021 의 노출 목록에 cohere 가 있다. 023 이 먼저 만들어 두지 않으면
 //               그 행이 없어 노출이 8종이 아니라 7종이 된다.
 //   그래서 021 이 맨 뒤다.
-const DEFAULT_ORDER = ['017', '018', '019', '020', '022', '023', '021'];
+// 017~023 은 적용 완료(2026-08-03). 기본값은 그 이후 것만 둔다.
+//   024 STARTER 패키지 · 025 번들 적용 기준 · 026 번들 구성 2종 + 리전 조사
+//
+// 021 은 넣지 않는다. 신규 2종은 026 이 직접 is_hidden = true 로 세운다.
+// 021 을 다시 돌리면 keep 목록 기준으로 전체를 덮어써서 어드민에서 손으로 켜 둔
+// 것까지 되돌아간다.
+const DEFAULT_ORDER = ['024', '025', '026'];
 
 function resolveFiles(prefixes) {
   const all = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql') && !f.startsWith('_'));
