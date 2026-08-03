@@ -81,20 +81,27 @@ alter table packages add column if not exists offering_id text references offeri
 comment on column packages.offering_id is '소속 오퍼링. 화면은 오퍼링 단위로 묶고 견적은 패키지 단위로 낸다';
 
 -- ── 패키지 6행: 소속 오퍼링 ─────────────────────────────────────
--- 이름은 001 시드 그대로 둔다. 오퍼링과 1:N 이라 이름을 겹치면 03 아래 두 패키지가
--- 구분되지 않는다. 바뀌는 것은 소속(offering_id)과 대상 문구(target)뿐이다.
-update packages set offering_id = '01',
+-- 이름은 001 시드 값으로 **명시해서 되돌린다.** 오퍼링과 1:N 이라 이름을 겹치면
+-- 03 아래 두 패키지가 구분되지 않는다.
+--
+-- ⚠ 왜 "빼기" 가 아니라 "덮어쓰기" 인가
+--   이 파일의 v0.1 판이 이미 적용된 DB 가 있다. 그 판은 패키지 이름을 오퍼링
+--   이름으로 바꿨다(SECURITY→'AI Trust & Guardrails', INTEGRATION→'AI-Ready
+--   Service'). 이 파일에서 rename 구문을 지우기만 하면 그 이름이 그대로 남는다 —
+--   더 나쁘게는, 이제 존재하지 않는 v0.1 오퍼링 이름이 패키지에 붙어 있게 된다.
+--   그래서 001 시드 값을 명시적으로 다시 쓴다. 몇 번을 돌려도 같은 상태가 된다.
+update packages set offering_id = '01', name = 'AI Opportunity Discovery',
   target = 'AI 준비도 진단·Gap 분석과 우선 과제 도출' where id = 'DISCOVERY';
-update packages set offering_id = '02',
+update packages set offering_id = '02', name = 'AI Security Readiness',
   target = 'OpenAI 관리·보안 설정과 기본 사용정책 수립' where id = 'SECURITY';
 -- PoC 는 제출본에서 03 AIR Service 소속이다 (v0.1 의 01 이 아니다).
-update packages set offering_id = '03',
+update packages set offering_id = '03', name = 'Enterprise AI PoC',
   target = '핵심 유즈케이스 기술·업무 검증' where id = 'POC';
-update packages set offering_id = '03',
+update packages set offering_id = '03', name = 'Knowledge & Workflow Integration',
   target = '데이터·업무시스템 연결과 거버넌스 기반 구축' where id = 'INTEGRATION';
-update packages set offering_id = '04',
+update packages set offering_id = '04', name = 'Adoption & Change Enablement',
   target = '사용자 정착·Champion 육성·전사 확산' where id = 'ADOPTION';
-update packages set offering_id = '05',
+update packages set offering_id = '05', name = 'Managed AI Operations',
   target = '비용·사용량·품질·장애의 지속 운영' where id = 'OPERATE';
 
 -- ── 산출물 (기획안 "핵심 산출물" 문구) ──────────────────────────

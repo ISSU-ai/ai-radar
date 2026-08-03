@@ -117,12 +117,30 @@ test('017 — 패키지 6종이 오퍼링에 배정된다 (PoC 는 03)', () => {
   assert.equal([...assigned.values()].filter((v) => v === '03').length, 2);
 });
 
-test('017 — 패키지 이름을 오퍼링 이름으로 덮어쓰지 않는다', () => {
+test('017 — 패키지 이름을 001 시드 값으로 되돌린다', () => {
   // 03 아래 POC·INTEGRATION 둘이 붙으므로 이름을 오퍼링 이름으로 바꾸면 화면에
-  // 'AIR Service' 가 둘 나와 구분이 사라진다.
-  const renames = [...offering.matchAll(/update packages set[\s\S]{0,200}?\bname\s*=/g)];
-  assert.equal(renames.length, 0,
-    '패키지 이름은 001 시드 그대로 둔다 — 오퍼링과 1:N 이라 겹치면 안 된다');
+  // 같은 이름이 둘 나와 구분이 사라진다.
+  //
+  // rename 구문을 "지우는" 것으로는 부족하다. 이 파일의 v0.1 판이 이미 적용된 DB 가
+  // 있고, 거기엔 오퍼링 이름으로 바뀐 패키지 이름이 남아 있다. 명시적으로 덮어써야
+  // 몇 번을 돌려도 같은 상태가 된다.
+  const seed = fs.readFileSync(path.join(root, 'db', 'migrations', '001_enablement_hub.sql'), 'utf8');
+  const seedNames = new Map(
+    [...seed.matchAll(/\('(DISCOVERY|POC|SECURITY|INTEGRATION|ADOPTION|OPERATE)', '([^']+)'/g)]
+      .map((m) => [m[1], m[2]])
+  );
+  assert.equal(seedNames.size, 6, '001 에서 패키지 6종 이름을 읽어야 한다');
+
+  for (const [id, name] of seedNames) {
+    const re = new RegExp(`update packages set offering_id = '\\d{2}', name = '${name.replace(/[&]/g, '&')}'[\\s\\S]{0,120}?where id = '${id}'`);
+    assert.match(offering, re, `${id} 이름이 001 값('${name}')으로 되돌아가야 한다`);
+  }
+
+  // v0.1 이 붙였던 오퍼링 이름이 패키지에 남으면 안 된다
+  for (const dead of ['AI Trust & Guardrails', 'AI-Ready Service']) {
+    assert.ok(!new RegExp(`update packages set[^;]*name = '${dead}'`).test(offering),
+      `패키지 이름에 v0.1 오퍼링 이름 '${dead}' 가 남아 있다`);
+  }
 });
 
 test('017 — 패키지 판정 데이터의 문항명이 001 시드와 일치한다', () => {
