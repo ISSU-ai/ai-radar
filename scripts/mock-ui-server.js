@@ -47,7 +47,15 @@ app.get('/api/hub/public/packages', (_req, res) => res.json(refs.packages.map(({
 app.post('/api/hub/public/diagnose', (req, res) => {
   const scores = Object.values(req.body.fqa_scores || {}).map(Number);
   const average = scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
-  res.json({ summary: average >= 4 ? '확장 준비 단계' : average >= 3 ? '검증 준비 단계' : '기반 정비 단계', categories: ['A','B','C','D'].map((category) => ({ category, score: average, status: average >= 3.5 ? 'ready' : 'strengthen' })) });
+  const answeredIn = (category) => refs.fqaItems
+    .filter((item) => item.category === category && (req.body.fqa_scores || {})[item.no]).length;
+  res.json({
+    summary: average >= 4 ? '확장 준비 단계' : average >= 3 ? '검증 준비 단계' : '기반 정비 단계',
+    categories: ['A', 'B', 'C', 'D'].map((category) => ({
+      category, score: average, answered: answeredIn(category),
+      status: average >= 3.5 ? 'ready' : 'strengthen'
+    }))
+  });
 });
 app.post('/api/hub/public/leads', (_req, res) => res.status(201).json({ message: '접수 완료', reference: 'mock-lead' }));
 app.get('/api/hub/deals', (_req, res) => res.json(deals.map(({ fqa_scores, fqa_totals, isv_combo, packages, ...deal }) => deal)));
@@ -100,6 +108,17 @@ const mockSlots = (() => {
 // (openai-enterprise · articul8 · anthropic-claude · twelve-labs · eleven-labs ·
 //  replit · dataiku · litellm · anaconda), Trust Layer 4종과 껍데기 9종은 비어 있다.
 // Portal26 초안은 아직 DB 에 넣지 않았으므로 여기서도 비어 있어야 한다.
+// Portal26 본문은 022 시드에서 그대로 읽는다. 목업에 따로 베껴 두면 둘이 어긋난다.
+const portal26Sections = (() => {
+  const sql = require('fs').readFileSync(
+    path.join(__dirname, '..', 'db', 'migrations', '022_portal26_content.sql'), 'utf8');
+  const out = {};
+  for (const m of sql.matchAll(/'(\d)',\s*E'((?:[^'\\]|\\.|'')*)'/g)) {
+    out[m[1]] = m[2].replace(/\\n/g, '\n').replace(/''/g, "'");
+  }
+  return out;
+})();
+
 const mockSolutions = [
   {
     id: 'sol-1', slug: 'openai-enterprise', name: 'OpenAI Enterprise', layer: 'L1', slot: 'llm-platform',
@@ -154,14 +173,58 @@ const mockSolutions = [
     price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
   },
   {
-    // Trust Layer 4종은 007 이 slug/name/layer/category/jtbd 만 넣은 껍데기다.
-    // 초안은 있으나 DB 에 반영하지 않았으므로 판정 데이터가 비어 있다.
+    // 022 로 8탭 본문을 채운 상태. 019 가 판정 데이터를 넣었다.
     id: 'sol-3', slug: 'portal26', name: 'Portal26', layer: 'L4', slot: 'ai-usage-governance',
-    delivery: null, synergy: null, category: 'AI 거버넌스·가시성',
-    jtbd: '누가 어떤 AI를 얼마나 쓰는지 가시화하고 프롬프트 위험·토큰 비용을 통제',
-    value_chain: null, status: 'published', version: 1, bundle_potential: null,
-    sections: {}, sections_internal: {}, industries: [], simulator_mappings: [],
-    fqa_coverage: [], prerequisites: [], red_flags: [],
+    delivery: 'SaaS', synergy: '높음', category: 'AI 거버넌스·가시성 (AI TRiSM)',
+    jtbd: '누가 어떤 AI를 얼마나 쓰는지 가시화하고, Shadow AI·프롬프트 위험·토큰 비용을 통제',
+    value_chain: 'AI Governance', status: 'published', version: 2, grade: 2, scale: 'M',
+    bundle_potential: 3,
+    sections: portal26Sections, sections_internal: {}, industries: [], simulator_mappings: [],
+    fqa_coverage: [
+      { category: 'A', items: ['감사 로그와 추적성'], strength: 3 },
+      { category: 'A', items: ['데이터 분류와 민감도 기준'], strength: 2 },
+      { category: 'C', items: ['비용 모니터링'], strength: 2 }
+    ],
+    prerequisites: [
+      { kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3, blocking: true,
+        label: '사용자·부서 식별이 가능한 계정 체계' },
+      { kind: 'manual', label: '임직원 AI 사용 로그 수집에 대한 노무·개인정보 검토', blocking: true }
+    ],
+    red_flags: [
+      { signal: 'AI 사용 인원이 수십 명 규모라 가시화 투자 대비 효과가 낮음',
+        alternatives: [{ label: 'Enterprise 관리자 콘솔 기본 리포트' }] },
+      { signal: '직원 활동 로깅에 대한 사내 합의 불가',
+        alternatives: [{ label: '정책 수립 선행' }] }
+    ],
+    price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
+  },
+  {
+    // Anthropic Claude — 012 가 판정 데이터를 넣은 9종 중 하나. 노출 목록 8종에 포함된다.
+    id: 'sol-5', slug: 'anthropic-claude', name: 'Anthropic Claude', layer: 'L1', slot: 'llm-platform',
+    delivery: 'API (Bedrock)', synergy: '매우 높음', category: 'GenAI / 범용 LLM',
+    jtbd: '긴 문서 추론과 안전성이 중요한 업무에 쓰는 엔터프라이즈 LLM',
+    value_chain: 'AI Platform', status: 'published', version: 2, grade: 3, scale: 'L',
+    bundle_potential: 3,
+    sections: {
+      1: 'Anthropic Claude 는 긴 문맥 추론과 안전성(Constitutional AI)에 강점을 둔 엔터프라이즈 LLM 입니다. AWS Bedrock 을 통해 고객 VPC 안에서 호출할 수 있어, 데이터를 외부 SaaS 로 보내기 어려운 고객에게 현실적인 선택지가 됩니다.\n- **제품 라인업**: Claude (claude.ai 기업용), Claude API, AWS Bedrock 경유 호출\n- **차별적 비즈니스 가치**: ① 긴 문서·계약서·규정 해석에서 안정적인 추론 ② Bedrock 경유 시 리전·네트워크 통제를 고객이 유지 ③ Portal26 for Claude 무상 거버넌스 프로그램으로 도입 초기 통제 확보',
+      3: '### 3.1 산업 적합도\n- **○ 매우 적합**: 금융·법무·공공 — 긴 규정 문서 해석과 데이터 통제 요구가 큰 영역\n### 3.2 핵심 의사결정 페르소나\n- **CIO / CDO (의사결정자)**: 데이터가 어느 리전에 머무는지가 첫 질문입니다\n- **정보보호 담당 (게이트키퍼)**: Bedrock 경유 여부로 검토 난이도가 크게 갈립니다',
+      7: '### 7.1 필수 요건 (5가지)\n- [ ] AWS 계정과 Bedrock 사용 가능 리전이 확보되어 있는가?\n- [ ] 사용자 식별을 위한 SSO 인프라가 있는가?\n- [ ] 사내 데이터의 모델 호출 전송에 법무·보안 승인이 가능한가?\n- [ ] 활용을 이끌 현업 챔피언이 지정되어 있는가?\n- [ ] 응답 품질을 판정할 평가 기준이 있는가?\n### 7.3 부적합 신호: Red Flag (3가지)\n- [ ] 1. 완전 폐쇄망 에어갭 요구 ➔ **Articul8 제안**\n- [ ] 2. 이미지·음성 생성이 주 목적 ➔ **다른 모달리티 특화 제품 제안**\n- [ ] 3. AWS 를 쓰지 않고 도입 계획도 없음 ➔ **직접 API 계약 검토**'
+    },
+    sections_internal: {}, industries: [], simulator_mappings: [],
+    fqa_coverage: [
+      { category: 'D', items: ['명확한 업무 문제'], strength: 2 },
+      { category: 'B', items: ['지식 소스 품질'], strength: 2 },
+      { category: 'A', items: ['데이터 분류와 민감도 기준'], strength: 2 }
+    ],
+    prerequisites: [
+      { kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3, blocking: true,
+        label: 'SSO 인프라' },
+      { kind: 'manual', label: 'AWS Bedrock 사용 가능 리전 확보', blocking: true }
+    ],
+    red_flags: [
+      { signal: '완전 폐쇄망 에어갭 환경 요구',
+        alternatives: [{ slug: 'articul8', label: 'Articul8' }] }
+    ],
     price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
   },
   {
@@ -186,7 +249,27 @@ app.get('/api/admin/focal-contacts', (_req, res) => res.json([{ id: 'f1', name: 
 app.get('/api/admin/profiles', (_req, res) => res.json([{ id: user.id, email: user.email, full_name: user.name, team: 'ISSU', role: 'admin', approved: true }]));
 app.get('/api/admin/packages', (_req, res) => res.json(refs.packages.map((p) => ({ ...p, base_md: 20, unit_price: 0, price_is_placeholder: true }))));
 app.get('/api/admin/settings', (_req, res) => res.json({ usd_krw: 1400 }));
-app.get('/api/solutions', (_req, res) => res.json(mockSolutions.map(({ sections, ...rest }) => rest)));
+app.get('/api/solutions', (req, res) => {
+  // 실제 서버는 include_hidden / include_archived 가 1 일 때만 돌려준다 (server.js).
+  const showHidden = String(req.query.include_hidden) === '1';
+  const showArchived = String(req.query.include_archived) === '1';
+  res.json(mockSolutions
+    .filter((sol) => (showHidden || !sol.is_hidden) && (showArchived || !sol.is_archived))
+    .map(({ sections, ...rest }) => ({
+      ...rest, is_hidden: Boolean(rest.is_hidden), is_archived: Boolean(rest.is_archived)
+    })));
+});
+app.patch('/api/admin/solutions/:id/visibility', (req, res) => {
+  const sol = mockSolutions.find((item) => item.id === req.params.id);
+  if (!sol) return res.status(404).json({ error: '솔루션을 찾을 수 없습니다.' });
+  if (typeof req.body?.hidden === 'boolean') sol.is_hidden = req.body.hidden;
+  if (typeof req.body?.archived === 'boolean') sol.is_archived = req.body.archived;
+  res.json({
+    slug: sol.slug, name: sol.name,
+    is_hidden: Boolean(sol.is_hidden), is_archived: Boolean(sol.is_archived),
+    message: `${sol.name} — ${sol.is_hidden ? '숨김' : '노출'} 처리했습니다(목업).`
+  });
+});
 app.get('/api/solutions/:slug', (req, res) => {
   const found = mockSolutions.find((s) => s.slug === req.params.slug);
   return found ? res.json(found) : res.status(404).json({ error: 'not found' });
