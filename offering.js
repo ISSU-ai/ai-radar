@@ -6,7 +6,7 @@ const CATEGORY_LABELS = Object.freeze({
   C: '운영·관리',
   D: '업무·성과'
 });
-const offeringState = { items: [], scores: {}, packages: [], resultReady: false, currentCategoryIndex: 0 };
+const offeringState = { items: [], scores: {}, packages: [], result: null, resultReady: false, currentCategoryIndex: 0 };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -32,6 +32,7 @@ async function initOffering() {
   $('#next-category').addEventListener('click', showNextCategory);
   $('#previous-category').addEventListener('click', showPreviousCategory);
   $('#lead-form').addEventListener('submit', submitLead);
+  bindReportButtons();
   try {
     [offeringState.items, offeringState.packages] = await Promise.all([
       getJson('/api/hub/public/fqa-items'),
@@ -160,6 +161,7 @@ async function calculateResult() {
       const good = category.status === 'ready';
       return `<article class="result-card ${good ? 'good' : 'watch'}"><span>${escapeHtml(category.category)} AREA</span><strong>${Number(category.score).toFixed(1)} / 5</strong><p><b>${escapeHtml(CATEGORY_LABELS[category.category] || `${category.category} 영역`)}</b><br>${good ? '현재 강점을 유지하면서 실제 업무 검증으로 이어갈 수 있습니다.' : '작은 검증 전에 책임자와 기본 통제를 먼저 정리하면 좋습니다.'}</p></article>`;
     }).join('');
+    offeringState.result = result;
     offeringState.resultReady = true;
     $('#result').classList.remove('hidden');
     $('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -170,6 +172,79 @@ async function calculateResult() {
   } finally {
     button.disabled = false;
   }
+}
+
+/**
+ * 화면에 보이는 것과 같은 값으로 리포트를 만든다.
+ * 점수는 서버(`/public/diagnose`)가 계산해 준 값을 그대로 쓴다 — 여기서 다시 계산하면
+ * 고객이 화면에서 본 숫자와 파일 안 숫자가 갈라질 수 있다.
+ */
+function buildReportMarkdown() {
+  const result = offeringState.result;
+  if (!result) return '';
+  const today = new Date().toISOString().slice(0, 10);
+  const answered = Object.keys(offeringState.scores).length;
+
+  const scoreRows = result.categories
+    .map((c) => `| ${c.category} · ${CATEGORY_LABELS[c.category] || ''} | ${Number(c.score).toFixed(1)} / 5 `
+      + `| ${c.answered}개 | ${c.status === 'ready' ? '기준 충족' : '보완 필요'} |`)
+    .join('\n');
+
+  const watch = result.categories.filter((c) => c.status !== 'ready');
+
+  const answerRows = categories().flatMap((category) => itemsForCategory(category).map((item) => {
+    const score = offeringState.scores[item.no];
+    return `| ${item.category}-${String(item.no).padStart(2, '0')} | ${item.name} | ${score ? `${score} / 5` : '미응답'} |`;
+  })).join('\n');
+
+  return `# AI 준비도 진단 결과
+
+| | |
+|---|---|
+| 진단일 | ${today} |
+| 응답 문항 | ${answered}개 |
+| 종합 판정 | **${result.summary}** |
+
+## 영역별 결과
+
+| 영역 | 점수 | 응답 | 판정 |
+|---|---|---|---|
+${scoreRows}
+
+## 우선 보완 영역
+
+${watch.length
+    ? watch.map((c) => `- **${c.category} · ${CATEGORY_LABELS[c.category] || ''}** (${Number(c.score).toFixed(1)} / 5) — 작은 검증에 앞서 책임자와 기본 통제를 먼저 정리하는 편이 안전합니다.`).join('\n')
+    : '- 현재 응답 기준으로는 모든 영역이 기준을 충족합니다. 실제 업무 검증으로 이어갈 수 있습니다.'}
+
+## 다음 단계로 검토할 수 있는 구성
+
+${offeringState.packages.length
+    ? offeringState.packages.map((pkg) => `- **${pkg.name}** (${pkg.period || '기간 협의'}) — ${pkg.target || ''}`).join('\n')
+    : '- 상담 시 고객 환경에 맞춰 구성을 제안드립니다.'}
+
+## 문항별 응답
+
+| 번호 | 문항 | 응답 |
+|---|---|---|
+${answerRows}
+
+---
+
+이 결과는 현재 상태를 빠르게 확인하기 위한 참고용입니다.
+실제 실행 범위는 업무·보안·데이터 환경을 함께 검토해 확정합니다.`;
+}
+
+function bindReportButtons() {
+  const baseName = `AI_준비도_진단결과_${new Date().toISOString().slice(0, 10)}`;
+  $$('[data-report]').forEach((button) => button.addEventListener('click', () => {
+    if (!offeringState.resultReady) return;
+    const markdown = buildReportMarkdown();
+    const kind = button.dataset.report;
+    if (kind === 'md') window.IssuReport.markdown(markdown, baseName);
+    else if (kind === 'docx') window.IssuReport.docx(markdown, baseName);
+    else window.IssuReport.pdf('AI 준비도 진단 결과', markdown);
+  }));
 }
 
 function renderPackages() {

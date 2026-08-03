@@ -1778,10 +1778,13 @@ const sendFrontendFile = (filename, cacheControl = 'no-store') => (_req, res) =>
 };
 
 // 대외 공개 자산. 로그인 페이지와 offering 랜딩이 쓰는 것만 둔다.
+// report.js 는 문서 조립만 한다. 내부 영업 로직이 없어 offering(공개)과 hub(로그인)
+// 양쪽에서 같은 파일을 쓴다.
 const publicFrontendAssets = Object.freeze({
   '/style.css': 'style.css',
   '/offering.css': 'offering.css',
-  '/offering.js': 'offering.js'
+  '/offering.js': 'offering.js',
+  '/report.js': 'report.js'
 });
 
 // 사내 자산. app.js/hub.js 에는 내부 영업 로직(딜사이즈 계산, 벤더 추천 매핑,

@@ -1051,8 +1051,56 @@ ${selectedPackages.length ? selectedPackages.map((pkg) => `• ${pkg.name} (${pk
 의사결정자·현업 오너와 PoC 성공 KPI, 보안 검토 범위, 일정과 예산을 확정합니다. 최종 제안 전 기술 제약과 포컬 배정을 다시 확인합니다.`;
 }
 
+/**
+ * 내려받을 리포트. 화면의 피치를 그대로 담되 진단 점수표와 미응답 문항을 덧붙인다.
+ * 고객에게 건네는 문서라 근거가 되는 숫자가 같이 있어야 한다.
+ */
+function buildReportMarkdown() {
+  const meta = state.deal.customer_meta || {};
+  const totals = state.deal.fqa_totals || {};
+  const scores = state.deal.fqa_scores || {};
+
+  const scoreRows = ['A', 'B', 'C', 'D'].map((category) => {
+    const total = totals[category];
+    if (!total) return `| ${category} · ${fqaCategoryLabels[category]} | — | 0개 | 응답 대기 |`;
+    return `| ${category} · ${fqaCategoryLabels[category]} | ${total.score.toFixed(2)} / ${total.threshold} `
+      + `| ${total.answered}개 | ${total.ready ? '기준 충족' : '보완 필요'} |`;
+  }).join('\n');
+
+  const unanswered = state.refs.fqaItems.filter((item) => !hasFqaScore(scores, item.no));
+
+  return `# ${state.deal.customer} — AI 도입 준비도 및 제안 요약
+
+| | |
+|---|---|
+| 작성일 | ${new Date().toISOString().slice(0, 10)} |
+| 업종 | ${meta.industry || '—'} |
+| 조직 규모 | ${meta.companySize || '—'} |
+| 도입 대상 | ${meta.targetUsers || '—'} |
+
+## 진단 결과
+
+| 영역 | 점수 / 기준 | 응답 | 판정 |
+|---|---|---|---|
+${scoreRows}
+
+${unanswered.length
+    ? `> 미응답 ${unanswered.length}개 문항이 있습니다: `
+      + unanswered.map((item) => `${item.category}-${String(item.no).padStart(2, '0')}`).join(', ')
+      + ' — 판정은 응답한 문항만으로 계산됩니다.'
+    : '모든 문항에 응답이 입력되어 있습니다.'}
+
+---
+
+${buildPitch()}`;
+}
+
 function renderPitch() {
-  return `${stageHeader('05', '세일즈 피치 준비', '앞 단계에서 확정한 고객 맥락·트랙·ISV·패키지를 한 번에 묶은 대화 가이드입니다.', '<button id="copy-pitch" class="secondary-button" type="button"><i data-lucide="copy"></i> 피치 복사</button>')}
+  const actions = '<button id="copy-pitch" class="secondary-button" type="button"><i data-lucide="copy"></i> 피치 복사</button>'
+    + '<button class="secondary-button" type="button" data-report="pdf"><i data-lucide="printer"></i> PDF</button>'
+    + '<button class="secondary-button" type="button" data-report="docx"><i data-lucide="file-text"></i> Word</button>'
+    + '<button class="secondary-button" type="button" data-report="md"><i data-lucide="file-code-2"></i> Markdown</button>';
+  return `${stageHeader('05', '세일즈 피치 준비', '앞 단계에서 확정한 고객 맥락·트랙·ISV·패키지를 한 번에 묶은 대화 가이드입니다.', actions)}
     <div id="pitch-content" class="pitch-box">${escapeHtml(buildPitch())}</div>`;
 }
 
@@ -1124,6 +1172,14 @@ function bindStageEvents() {
     await navigator.clipboard.writeText(buildPitch());
     toast('피치 가이드를 복사했습니다.');
   });
+  $$('[data-report]').forEach((button) => button.addEventListener('click', () => {
+    const markdown = buildReportMarkdown();
+    const baseName = `${state.deal.customer || '고객'}_AI도입_제안요약_${new Date().toISOString().slice(0, 10)}`;
+    const kind = button.dataset.report;
+    if (kind === 'md') window.IssuReport.markdown(markdown, baseName);
+    else if (kind === 'docx') window.IssuReport.docx(markdown, baseName);
+    else window.IssuReport.pdf(`${state.deal.customer} — AI 도입 제안 요약`, markdown);
+  }));
 }
 
 function scheduleSave(patch, quick = false) {

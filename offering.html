@@ -71,6 +71,12 @@
     <section id="result" class="result section-wrap hidden">
       <div class="result-head"><div><p class="kicker">YOUR READINESS SNAPSHOT</p><h2>현재 준비도 결과</h2></div><span id="result-summary" class="result-summary"></span></div>
       <div id="result-grid" class="result-grid"></div>
+      <div class="report-actions">
+        <span class="report-actions-label">진단 리포트 내려받기</span>
+        <button class="button secondary" type="button" data-report="pdf"><i data-lucide="printer"></i> PDF</button>
+        <button class="button secondary" type="button" data-report="docx"><i data-lucide="file-text"></i> Word</button>
+        <button class="button secondary" type="button" data-report="md"><i data-lucide="file-code-2"></i> Markdown</button>
+      </div>
       <div class="result-note"><i data-lucide="info"></i><p>이 결과는 현재 상태를 빠르게 확인하는 참고용입니다. 실제 실행 범위는 업무·보안·데이터 환경을 함께 검토해 확정합니다.</p></div>
     </section>
 
@@ -103,6 +109,7 @@
   </main>
 
   <footer><div class="offering-brand"><span>ISSU</span><small>ENTERPRISE AI</small></div><p>Enterprise AI, built for how your business actually works.</p><small>© 2026 ISSU. All rights reserved.</small></footer>
+  <script src="/report.js" defer></script>
   <script src="/offering.js" defer></script>
 </body>
 </html>
