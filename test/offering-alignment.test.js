@@ -84,10 +84,23 @@ function solutionsIn019() {
 
 // ── 017 ──────────────────────────────────────────────────────────
 
-test('017 — 오퍼링 5종과 패키지 6종이 빠짐없이 연결된다', () => {
-  const offeringIds = [...offering.matchAll(/^\s*\('(\d{2})', '[^']+', '[^']*',$/gm)].map((m) => m[1]);
-  assert.deepEqual(offeringIds, ['01', '02', '03', '04', '05'], '기획안 5대 코어 오퍼링');
+test('017 — 오퍼링 5종이 제출본(2026-08-02) 구성과 같다', () => {
+  const rows = [...offering.matchAll(/^\s*\('(\d{2})', '([^']+)', '([^']*)',$/gm)]
+    .map((m) => [m[1], m[2], m[3]]);
+  assert.deepEqual(
+    rows,
+    [
+      ['01', 'AI Consulting', 'PS'],
+      ['02', 'OpenAI Ready', 'DS·PS'],
+      ['03', 'AIR Service (AI-Ready)', 'PS'],
+      ['04', 'AI Adoption & Change Management', 'PS'],
+      ['05', 'Billing & Managed Service', 'MS']
+    ],
+    '제출본 기준. v0.1 의 "AI Consulting & PoC" / "AI Trust & Guardrails" 로 되돌아가면 안 된다'
+  );
+});
 
+test('017 — 패키지 6종이 오퍼링에 배정된다 (PoC 는 03)', () => {
   const assigned = new Map();
   for (const m of offering.matchAll(/offering_id = '(\d{2})'[\s\S]{0,200}?where id (?:=|in) \(?((?:'\w+'(?:,\s*)?)+)\)?;/g)) {
     for (const p of m[2].matchAll(/'(\w+)'/g)) assigned.set(p[1], m[1]);
@@ -95,9 +108,21 @@ test('017 — 오퍼링 5종과 패키지 6종이 빠짐없이 연결된다', ()
   assert.deepEqual(
     [...assigned.entries()].sort(),
     [['ADOPTION', '04'], ['DISCOVERY', '01'], ['INTEGRATION', '03'],
-      ['OPERATE', '05'], ['POC', '01'], ['SECURITY', '02']],
-    'DISCOVERY·POC 는 한 오퍼링(01)으로 묶이고 나머지는 1:1'
+      ['OPERATE', '05'], ['POC', '03'], ['SECURITY', '02']],
+    // 제출본은 PoC 를 03 AIR Service 의 제공 범위에 넣었다("OpenAI API 기반 맞춤형
+    // AI 애플리케이션 개발 및 PoC"). v0.1 의 01 이 아니다.
+    'PoC 는 03 AIR Service 소속'
   );
+  // 03 에 둘이 붙는다 = 오퍼링:패키지가 1:N 이다
+  assert.equal([...assigned.values()].filter((v) => v === '03').length, 2);
+});
+
+test('017 — 패키지 이름을 오퍼링 이름으로 덮어쓰지 않는다', () => {
+  // 03 아래 POC·INTEGRATION 둘이 붙으므로 이름을 오퍼링 이름으로 바꾸면 화면에
+  // 'AIR Service' 가 둘 나와 구분이 사라진다.
+  const renames = [...offering.matchAll(/update packages set[\s\S]{0,200}?\bname\s*=/g)];
+  assert.equal(renames.length, 0,
+    '패키지 이름은 001 시드 그대로 둔다 — 오퍼링과 1:N 이라 겹치면 안 된다');
 });
 
 test('017 — 패키지 판정 데이터의 문항명이 001 시드와 일치한다', () => {

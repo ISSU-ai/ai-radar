@@ -1,19 +1,36 @@
--- OpenAI 통합 오퍼링 기획안 v0.1 (2026-07-28, ISV BU) 반영 — 5대 코어 오퍼링.
+-- OpenAI 통합 오퍼링 기획안 반영 — 5대 코어 오퍼링.
 -- Run after 016. Apply in the Supabase SQL Editor (dfbx).
 --
+-- ⚠ 기준 문서: **제출본 2026-08-02**
+--   처음엔 v0.1(2026-07-28)로 썼는데 제출본에서 오퍼링 구성이 바뀌었다.
+--   미적용 상태라 이 파일을 직접 고쳤다. v0.1 기준으로 적용된 DB 는 없다.
+--
+--   | | v0.1 (폐기) | 제출본 (현행) |
+--   |01| AI Consulting **& PoC**   | AI Consulting            |
+--   |02| **AI Trust & Guardrails** | **OpenAI Ready** (DS&PS) |
+--   |03| AI-Ready Service          | AIR Service (AI-Ready)   |
+--   |04| AI Adoption & Change Mgmt | (동일)                   |
+--   |05| Billing & Managed Service | (동일)                   |
+--
+--   02 는 이름이 아니라 상품이 바뀌었다. 제출본 02 는 "기업용 OpenAI 제품을 공급하고
+--   안전하게 사용할 수 있는 기본 환경 구성"이고 유형이 DS&PS(제품 공급 포함)다.
+--   `Trust & Guardrails` 는 오퍼링에서 빠지고 도입 3단계 중 Step 1(통제)의 제공
+--   내용으로 흡수됐다.
+--
+--   PoC 는 01 → 03 으로 옮겨졌다 ("OpenAI API 기반 맞춤형 AI 애플리케이션 개발 및 PoC").
+--
 -- 무엇이 바뀌나: 지금까지 패키지 6종은 각자 독립된 상품이었다. 기획안은 이것을
--- 5개 상위 오퍼링으로 묶는다. "고객이 이해하기 쉽고 Sales가 반복적으로 제안할 수
--- 있도록" 이 목적이므로, 영업이 보는 단위는 오퍼링이고 딜사이징 단위는 패키지다.
+-- 5개 상위 오퍼링으로 묶는다. 영업이 보는 단위는 오퍼링이고 딜사이징 단위는 패키지다.
 --
---   01 AI Consulting & PoC        DS/PS   DISCOVERY + POC
---   02 AI Trust & Guardrails      DS/PS   SECURITY
---   03 AI-Ready Service           PS      INTEGRATION
---   04 AI Adoption & Change Mgmt  PS      ADOPTION
---   05 Billing & Managed Service  MS      OPERATE
+--   01 AI Consulting                  PS      DISCOVERY
+--   02 OpenAI Ready                   DS·PS   SECURITY
+--   03 AIR Service (AI-Ready)         PS      POC + INTEGRATION
+--   04 AI Adoption & Change Mgmt      PS      ADOPTION
+--   05 Billing & Managed Service      MS      OPERATE
 --
--- DISCOVERY 와 POC 는 한 오퍼링으로 보이되 행은 둘로 남긴다. 기간(2주 / 4~6주)과
--- 공수가 다르고 기획안도 "AI Consulting (PoC 비용 별도)"로 분리 과금을 명시한다.
--- 한 행으로 합치면 STEP04 딜사이징에서 PoC 만 떼어 파는 딜을 표현할 수 없다.
+-- **패키지 이름은 원래대로 둔다.** 03 에 패키지가 둘(POC·INTEGRATION) 붙으므로
+-- 패키지 이름을 오퍼링 이름으로 바꾸면 둘 다 'AIR Service' 가 되어 구분이 사라진다.
+-- 오퍼링과 패키지는 1:N 이다 — 이름을 같게 만들 이유가 없다.
 --
 -- 판정 데이터(fqa_coverage·readiness_lift)도 기획안의 제공 범위에 맞춰 다시 쓴다.
 -- 014·016 이 만든 값을 덮어쓰므로 그 두 파일은 이제 이력용이다.
@@ -36,24 +53,25 @@ create table if not exists offerings (
 comment on table offerings is '기획안 5대 코어 오퍼링. 영업 제안 단위이며 딜사이징 단위는 packages';
 
 insert into offerings (id, name, kind, purpose, composition, note, sort_order) values
-  ('01', 'AI Consulting & PoC', 'DS·PS',
-   '도입 방향·우선 유즈케이스·사업성 검증',
-   'OpenAI 제품·라이선스, TCO, Discovery, PoC',
-   'PoC 비용은 별도 산정한다', 10),
-  ('02', 'AI Trust & Guardrails', 'DS·PS',
-   '안전하고 통제 가능한 AI 환경 확보',
-   '정책, Security Guide, 데이터 보호, Agent 통제',
-   'HALO·Check Point·Portal26 등 고객 환경에 필요한 솔루션을 선택 연계', 20),
-  ('03', 'AI-Ready Service', 'PS',
-   'AI 활용을 위한 데이터·기술·거버넌스 기반 구축',
-   'Architecture, Governance, RAG, API Connect',
-   'AIR Unit 전문인력의 M/D 또는 M/M 기반으로 별도 산정', 30),
+  ('01', 'AI Consulting', 'PS',
+   '고객의 AI 준비 수준과 업무 목표를 진단하고 최적의 OpenAI 도입안 설계',
+   'AI Readiness Assessment 6대 영역 진단, Gap 분석 및 솔루션 제시, 라이선스·Credit·비용 설계',
+   '라이선스 도입 고객에게 초기 진단은 표준 범위 내 무상. 심화 컨설팅은 별도 산정', 10),
+  ('02', 'OpenAI Ready', 'DS·PS',
+   '기업용 OpenAI 제품을 공급하고 안전하게 사용할 수 있는 기본 환경 구성',
+   'Business·Enterprise·Codex·API, Workspace·관리자·사용자·권한·보안 설정, 기본 사용정책 및 온보딩, 기초 교육',
+   '라이선스 도입 고객에게 초기 구축은 표준 범위 내 무상. 심화 교육·맞춤 연계·PoC·추가 구축은 별도 산정', 20),
+  ('03', 'AIR Service (AI-Ready)', 'PS',
+   '고객 데이터와 업무시스템을 연결하여 기업용 AI 서비스와 Agent 를 구축하는 전문서비스',
+   '데이터 정제, RAG, Agent, MCP·Workflow 연계, 데이터 권한 및 Governance Architecture',
+   'AIR Unit 전문인력의 M/D 또는 M/M 기반으로 프로젝트 규모에 따라 별도 산정', 30),
   ('04', 'AI Adoption & Change Management', 'PS',
    '사용자 정착과 조직 변화·전사 확산',
    '교육, Champion, Change Plan, 성과측정', null, 40),
   ('05', 'Billing & Managed Service', 'MS',
-   '비용·사용량·품질·장애의 지속 운영',
-   'Billing, Credit·Token, Monitoring, Support', null, 50)
+   'OpenAI 라이선스·사용량·비용·운영 관리',
+   'Billing, Credit·Token, Monitoring, Support',
+   '마진 구조·원화 Billing 제공 가능 여부·관리자 권한 위임 범위 확인 후 세부 Scope 확정', 50)
 on conflict (id) do update set
   name = excluded.name, kind = excluded.kind, purpose = excluded.purpose,
   composition = excluded.composition, note = excluded.note,
@@ -62,16 +80,21 @@ on conflict (id) do update set
 alter table packages add column if not exists offering_id text references offerings(id);
 comment on column packages.offering_id is '소속 오퍼링. 화면은 오퍼링 단위로 묶고 견적은 패키지 단위로 낸다';
 
--- ── 패키지 6행: 이름·소속 오퍼링 ────────────────────────────────
--- DISCOVERY·POC 는 기획안 01 의 본문 문구를 그대로 쓰므로 이름을 바꾸지 않는다.
-update packages set offering_id = '01' where id in ('DISCOVERY', 'POC');
-update packages set offering_id = '02', name = 'AI Trust & Guardrails',
-  target = 'AI 사용정책·데이터 보호·Agent 통제 설계' where id = 'SECURITY';
-update packages set offering_id = '03', name = 'AI-Ready Service',
+-- ── 패키지 6행: 소속 오퍼링 ─────────────────────────────────────
+-- 이름은 001 시드 그대로 둔다. 오퍼링과 1:N 이라 이름을 겹치면 03 아래 두 패키지가
+-- 구분되지 않는다. 바뀌는 것은 소속(offering_id)과 대상 문구(target)뿐이다.
+update packages set offering_id = '01',
+  target = 'AI 준비도 진단·Gap 분석과 우선 과제 도출' where id = 'DISCOVERY';
+update packages set offering_id = '02',
+  target = 'OpenAI 관리·보안 설정과 기본 사용정책 수립' where id = 'SECURITY';
+-- PoC 는 제출본에서 03 AIR Service 소속이다 (v0.1 의 01 이 아니다).
+update packages set offering_id = '03',
+  target = '핵심 유즈케이스 기술·업무 검증' where id = 'POC';
+update packages set offering_id = '03',
   target = '데이터·업무시스템 연결과 거버넌스 기반 구축' where id = 'INTEGRATION';
-update packages set offering_id = '04', name = 'AI Adoption & Change Management',
+update packages set offering_id = '04',
   target = '사용자 정착·Champion 육성·전사 확산' where id = 'ADOPTION';
-update packages set offering_id = '05', name = 'Billing & Managed Service',
+update packages set offering_id = '05',
   target = '비용·사용량·품질·장애의 지속 운영' where id = 'OPERATE';
 
 -- ── 산출물 (기획안 "핵심 산출물" 문구) ──────────────────────────
@@ -79,7 +102,7 @@ update package_items set label = 'AI 도입 로드맵, 제품·라이선스 구�
   where package_id = 'DISCOVERY' and type = 'deliverable';
 update package_items set label = 'PoC 평가 리포트 및 확장 권고안'
   where package_id = 'POC' and type = 'deliverable';
-update package_items set label = 'AI Trust Framework, Security Architecture, 정책·통제 체크리스트 및 솔루션 적용안'
+update package_items set label = 'Workspace·권한·보안 설정 내역, 기본 AI 사용정책, 관리자 가이드 및 온보딩 자료'
   where package_id = 'SECURITY' and type = 'deliverable';
 update package_items set label = 'Governance Framework, Reference Architecture, RAG·API·Workflow 연동환경 및 운영 이관 문서'
   where package_id = 'INTEGRATION' and type = 'deliverable';
@@ -89,7 +112,7 @@ update package_items set label = 'Billing·Chargeback 대시보드, SLO 대시�
   where package_id = 'OPERATE' and type = 'deliverable';
 
 -- ── 판정 데이터 ─────────────────────────────────────────────────
--- 01 DISCOVERY. 기획안이 "시트·Workspace Credit·API 사용량을 반영한 TCO 및 예산
+-- 01 AI Consulting · DISCOVERY. 기획안이 "시트·Workspace Credit·API 사용량을 반영한 TCO 및 예산
 --   시뮬레이션"을 제공 범위에, TCO 를 핵심 산출물에 넣었다. 그래서 이번에 D
 --   "예산·구매 준비도"를 덮는다 — 6종 중 아무도 이 문항을 못 덮던 구멍이 메워진다.
 --   (그 전까지 이 문항이 막힌 ISV 는 선행 패키지를 찾지 못해 전부 탈락했다.)
@@ -100,7 +123,7 @@ update packages set
   readiness_lift = '{"D": 1.2}'::jsonb
   where id = 'DISCOVERY';
 
--- 01 POC. 4~6주 기술·업무 검증. 개발·테스트 환경을 실제로 세우고 성공 KPI 를 확정한다.
+-- 03 AIR Service · POC. 4~6주 기술·업무 검증. 개발·테스트 환경을 실제로 세우고 성공 KPI 를 확정한다.
 update packages set
   fqa_coverage = '[
     {"category":"B","items":["개발·테스트 환경"],"strength":2},
@@ -109,9 +132,11 @@ update packages set
   readiness_lift = '{"B": 0.8, "D": 0.8}'::jsonb
   where id = 'POC';
 
--- 02 AI Trust & Guardrails. A 6문항을 정면으로 다룬다(범위는 넓어졌지만 축은 그대로).
---   기획안이 더한 것: Agent Tool Call·외부전송 승인체계, 프롬프트·파일 DLP,
---   Shadow AI 통제. 전부 A 안에 있는 이야기다.
+-- 02 OpenAI Ready · SECURITY. A 6문항을 정면으로 다룬다.
+--   제출본 02 의 제공 범위가 Workspace·관리자·사용자·권한·보안 설정, SSO·도메인·
+--   보존정책 등 OpenAI Native 관리·보안 기능, 기본 AI 사용정책이다. 전부 A 안이다.
+--   ※ 02 의 표준 범위는 라이선스 도입 고객에게 무상이다. 이 패키지는 그 위의
+--     심화 범위(정책 설계·통제 체크리스트)를 유상으로 다루는 자리다.
 update packages set
   fqa_coverage = '[
     {"category":"A","items":["데이터 분류와 민감도 기준","접근권한과 계정 체계","보안 게이트웨이 준비도",
@@ -120,7 +145,7 @@ update packages set
   readiness_lift = '{"A": 1.5}'::jsonb
   where id = 'SECURITY';
 
--- 03 AI-Ready Service. 여기가 이번에 가장 많이 넓어졌다.
+-- 03 AIR Service · INTEGRATION. 여기가 이번에 가장 많이 넓어졌다.
 --   기획안 제공 범위 첫 줄이 "AI·데이터 Governance 정책, 데이터 분류 및 사용자별
 --   접근권한 설계"다. 즉 A 를 일부 덮는다. 다만 설계 수준이라 02(strength 3)보다
 --   얕게 2 로 두고, lift 도 02 의 1.5 가 아니라 0.8 로 둔다.
