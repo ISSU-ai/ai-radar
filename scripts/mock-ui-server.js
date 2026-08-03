@@ -119,6 +119,16 @@ const portal26Sections = (() => {
   return out;
 })();
 
+const cohereSections = (() => {
+  const sql = require('fs').readFileSync(
+    path.join(__dirname, '..', 'db', 'migrations', '023_cohere.sql'), 'utf8');
+  const out = {};
+  for (const m of sql.matchAll(/'(\d)',\s*E'((?:[^'\\]|\\.|'')*)'/g)) {
+    out[m[1]] = m[2].replace(/\\n/g, '\n').replace(/''/g, "'");
+  }
+  return out;
+})();
+
 const mockSolutions = [
   {
     id: 'sol-1', slug: 'openai-enterprise', name: 'OpenAI Enterprise', layer: 'L1', slot: 'llm-platform',
@@ -223,6 +233,32 @@ const mockSolutions = [
     ],
     red_flags: [
       { signal: '완전 폐쇄망 에어갭 환경 요구',
+        alternatives: [{ slug: 'articul8', label: 'Articul8' }] }
+    ],
+    price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
+  },
+  {
+    // Cohere — 023 으로 신규 등록. llm-platform 슬롯이라 OpenAI·Claude 와 경쟁한다.
+    id: 'sol-6', slug: 'cohere', name: 'Cohere', layer: 'L1', slot: 'llm-platform',
+    delivery: 'SaaS / VPC / On-prem', synergy: '높음',
+    category: 'GenAI / 범용 LLM (데이터 주권형)',
+    jtbd: '데이터를 외부로 내보내지 않고 다국어 검색·RAG·에이전트를 기업 내부에 구축',
+    value_chain: 'AI Platform', status: 'published', version: 1, grade: 2, scale: 'L',
+    bundle_potential: 3,
+    sections: cohereSections, sections_internal: {}, industries: [], simulator_mappings: [],
+    fqa_coverage: [
+      { category: 'B', items: ['지식 소스 품질'], strength: 3 },
+      { category: 'B', items: ['업무 시스템 연동성'], strength: 2 }
+    ],
+    prerequisites: [
+      { kind: 'fqa', category: 'A', item: '데이터 분류와 민감도 기준', min: 3, blocking: true,
+        label: '검색 인덱스 대상 데이터 범위 확정' },
+      { kind: 'manual', label: '배포 형태 확정 — Bedrock 경유 / VPC / 온프레·에어갭', blocking: true }
+    ],
+    red_flags: [
+      { signal: '데이터 반출 제약이 없고 임직원 생산성만 목적',
+        alternatives: [{ slug: 'openai-enterprise', label: 'OpenAI Enterprise' }] },
+      { signal: '제조 현장 데이터 중심 폐쇄망',
         alternatives: [{ slug: 'articul8', label: 'Articul8' }] }
     ],
     price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
