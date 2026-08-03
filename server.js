@@ -629,12 +629,16 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 
 // GET /api/solutions
 app.get('/api/solutions', authenticateToken, async (req, res) => {
-  const { layer, synergy, delivery, category, q, industry, simulator_mapping, include_hidden } = req.query;
+  const { layer, synergy, delivery, category, q, industry, simulator_mapping,
+    include_hidden, include_archived } = req.query;
 
   const canSeeInternal = isCatalogEditor(req.user);
   // 숨김 솔루션은 어드민 목록에서만 보인다. 안 그러면 되돌릴 화면이 없어
   // is_archived 와 같은 편도 스위치가 되어버린다.
   const showHidden = canSeeInternal && String(include_hidden) === '1';
+  // 아카이브도 같은 이유로 어드민 목록에는 보여야 한다. 안 보이면 되돌릴 행이 없어
+  // PATCH .../visibility 의 복구 분기에 도달할 방법이 없다.
+  const showArchived = canSeeInternal && String(include_archived) === '1';
   // 020 미적용 구간에도 코드가 먼저 배포될 수 있다 (위 hasColumn 주석 참고).
   const hasHidden = await hasColumn('solutions', 'is_hidden');
   // opinion 은 정책상 카탈로그 편집자 전용이면 아예 조회하지 않는다(응답에서 지우는 것보다 안전).
@@ -642,11 +646,13 @@ app.get('/api/solutions', authenticateToken, async (req, res) => {
   const listColumns = [
     'id', 'legacy_id', 'slug', 'name', 'delivery', 'layer', 'synergy', 'category',
     'jtbd', 'value_chain', 'status', 'version', 'updated_at', 'simulator_mappings', 'industries',
+    'is_archived',
     ...(hasHidden ? ['is_hidden'] : []),
     ...(exposeOpinion ? ['opinion'] : [])
   ];
   let queryStr = `SELECT ${listColumns.join(', ')} FROM solutions`;
-  let conditions = ['is_archived = false'];
+  let conditions = [];
+  if (!showArchived) conditions.push('is_archived = false');
   if (hasHidden && !showHidden) conditions.push('is_hidden = false');
   let params = [];
 

@@ -65,12 +65,30 @@ test('토글은 양방향이다 — is_archived 의 편도 문제를 반복하�
   assert.match(route, /020 마이그레이션/, '컬럼 미적용을 503 으로 알려야 한다');
 });
 
+test('아카이브 복구가 화면에서 도달 가능하다', () => {
+  // API 에 복구 분기만 만들어 두면 소용이 없다. 목록이 is_archived = false 로 거르면
+  // 되돌릴 행 자체가 없어 누를 수가 없다 — 실제로 그 상태였다.
+  const at = serverSource.indexOf("app.get('/api/solutions'");
+  const route = serverSource.slice(at, at + 1400);
+  assert.match(route, /const showArchived = canSeeInternal && String\(include_archived\) === '1'/);
+  assert.match(route, /if \(!showArchived\) conditions\.push\('is_archived = false'\)/);
+  assert.ok(!/conditions = \['is_archived = false'\]/.test(route),
+    '무조건 거르면 어드민도 아카이브를 못 본다');
+
+  assert.match(adminSource, /include_archived=1/);
+  assert.match(adminSource, /isv\.is_archived \? \{ archived: false \}/,
+    '아카이브된 행은 복구부터 보내야 한다');
+  assert.match(adminSource, /archive-restore/, '복구 아이콘으로 구분돼야 한다');
+});
+
 test('어드민 목록은 숨긴 것까지 조회한다', () => {
   // include_hidden 없이 조회하면 감춘 순간 화면에서 사라져 되돌릴 방법이 없다.
-  assert.match(adminSource, /fetch\('\/api\/solutions\?include_hidden=1'\)/);
+  assert.match(adminSource, /fetch\('\/api\/solutions\?include_hidden=1&include_archived=1'\)/);
   assert.match(serverSource, /const showHidden = canSeeInternal && String\(include_hidden\) === '1'/);
   assert.match(adminSource, /toggleSolutionVisibility/);
-  assert.match(adminSource, /data-lucide="\$\{isv\.is_hidden \? 'eye-off' : 'eye'\}"/);
+  // 아이콘이 세 상태(아카이브/숨김/노출)를 구분해야 무엇을 누르는지 알 수 있다
+  assert.match(adminSource, /isv\.is_archived \? 'archive-restore'/);
+  assert.match(adminSource, /isv\.is_hidden \? 'eye-off' : 'eye'/);
 });
 
 test('include_hidden 은 카탈로그 편집자에게만 열린다', () => {

@@ -65,6 +65,7 @@
     .sol-item-btn .status-badge.draft { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
     .sol-item-btn .status-badge.published { background: rgba(34, 197, 94, 0.15); color: #34d399; }
     .sol-item-btn .status-badge.hidden-badge { background: rgba(148, 163, 184, 0.18); color: #94a3b8; }
+    .sol-item-btn .status-badge.archived-badge { background: rgba(239, 68, 68, 0.15); color: #f87171; }
     .sol-item-btn.is-hidden-row strong { color: var(--text-secondary) !important; }
     .sol-item-btn.is-hidden-row { opacity: .62; }
     .sol-item-btn { position: relative; }
@@ -1504,8 +1505,9 @@
     // Load Solutions Menu List
     async function loadSolutionsList() {
       try {
-        // 숨긴 솔루션도 받아야 어드민에서 되돌릴 수 있다.
-        const res = await fetch('/api/solutions?include_hidden=1');
+        // 숨긴 것과 아카이브한 것까지 받아야 어드민에서 되돌릴 수 있다.
+        // 빼면 감춘 순간 행이 사라져 복구할 자리가 없다.
+        const res = await fetch('/api/solutions?include_hidden=1&include_archived=1');
         if (!res.ok) throw new Error('솔루션 목록을 불러올 수 없습니다.');
         solutions = await res.json();
         
@@ -1516,18 +1518,20 @@
     }
 
     async function toggleSolutionVisibility(isv) {
-      const next = !isv.is_hidden;
+      // 아카이브된 것은 먼저 복구한다. 숨김 토글은 그다음 클릭에서 동작한다.
+      const body = isv.is_archived ? { archived: false } : { hidden: !isv.is_hidden };
       try {
         const res = await fetch(`/api/admin/solutions/${encodeURIComponent(isv.id)}/visibility`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ hidden: next })
+          body: JSON.stringify(body)
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || '노출 상태를 변경하지 못했습니다.');
         isv.is_hidden = data.is_hidden;
+        isv.is_archived = data.is_archived;
         renderSolutionsMenu();
-        showToast(data.message, next ? 'eye-off' : 'eye');
+        showToast(data.message, isv.is_archived ? 'archive' : isv.is_hidden ? 'eye-off' : 'eye');
       } catch (err) {
         showToast(err.message, 'alert-triangle');
       }
@@ -1569,7 +1573,13 @@
         priority.style.cssText = 'color:var(--accent-blue); font-weight:600;';
         priority.textContent = stars;
         badgeRow.append(statusBadge, version, priority);
-        if (isv.is_hidden) {
+        if (isv.is_archived) {
+          const archivedBadge = document.createElement('span');
+          archivedBadge.className = 'status-badge archived-badge';
+          archivedBadge.textContent = '아카이브';
+          badgeRow.append(archivedBadge);
+          btn.classList.add('is-hidden-row');
+        } else if (isv.is_hidden) {
           const hiddenBadge = document.createElement('span');
           hiddenBadge.className = 'status-badge hidden-badge';
           hiddenBadge.textContent = '숨김';
@@ -1578,13 +1588,15 @@
         }
         btn.append(name, badgeRow);
 
-        // 영업 화면 노출 토글. is_archived 와 달리 양방향이라 같은 자리에서 되돌린다.
+        // 노출 토글. 아카이브된 행은 "복구"가 먼저라 아이콘과 동작이 달라진다.
         const eye = document.createElement('span');
         eye.className = 'visibility-toggle';
-        eye.title = isv.is_hidden ? '영업 화면에 노출하기' : '영업 화면에서 숨기기';
+        eye.title = isv.is_archived ? '아카이브에서 복구하기'
+          : isv.is_hidden ? '영업 화면에 노출하기' : '영업 화면에서 숨기기';
         eye.setAttribute('role', 'button');
         eye.setAttribute('tabindex', '0');
-        eye.innerHTML = `<i data-lucide="${isv.is_hidden ? 'eye-off' : 'eye'}"></i>`;
+        eye.innerHTML = `<i data-lucide="${isv.is_archived ? 'archive-restore'
+          : isv.is_hidden ? 'eye-off' : 'eye'}"></i>`;
         const toggle = async (event) => {
           event.stopPropagation();
           await toggleSolutionVisibility(isv);
