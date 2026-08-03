@@ -164,3 +164,25 @@ test('offering·hub 양쪽이 report.js 를 로드한다', () => {
     assert.ok(reportAt < consumerAt, `${page}: report.js 가 먼저 로드돼야 한다`);
   }
 });
+
+test('머리글 없는 표(| | |)는 키-값 표로 나간다', async () => {
+  // 리포트 상단 메타 표가 이 형태다. 빈 칸을 굵게 감싸면 "****" 가 본문에 찍히고,
+  // 머리글 행을 그대로 내면 빈 칸에 회색 음영이 깔린다.
+  const { IssuReport, lastBlob } = loadReport();
+  const md = '| | |\n|---|---|\n| 진단일 | 2026-08-03 |\n| 업종 | 금융 |';
+
+  IssuReport.docx(md, 'x');
+  const doc = readZip(Buffer.from(await lastBlob().arrayBuffer()))['word/document.xml'];
+  assert.ok(!doc.includes('****'), '빈 머리글이 별표로 새면 안 된다');
+  assert.ok(!doc.includes('F2F2F2'), '머리글이 없으면 음영도 없어야 한다');
+  assert.equal((doc.match(/<w:tr>/g) || []).length, 2, '데이터 2행만 나가야 한다');
+  assert.match(doc, /진단일/);
+
+  const html = IssuReport.toHtml(md);
+  assert.ok(!html.includes('<thead>'), '머리글 없는 표에 thead 를 만들지 않는다');
+  assert.match(html, /<td>진단일<\/td>/);
+
+  // 머리글이 있는 표는 그대로 동작해야 한다
+  const withHead = IssuReport.toHtml('| 영역 | 점수 |\n|---|---|\n| A | 1.8 |');
+  assert.match(withHead, /<thead><tr><th>영역<\/th>/);
+});

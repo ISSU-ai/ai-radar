@@ -91,8 +91,9 @@
   }
 
   // ── ZIP (저장 전용) ──────────────────────────────────────────────────────
-  // deflate 없이 method 0 으로만 쓴다. 압축 없는 zip 도 규격상 정상이고
-  // Word 가 그대로 연다. 브라우저에 deflate API 가 없어 이 편이 확실하다.
+  // deflate 없이 method 0 으로만 쓴다. 압축 없는 zip 도 규격상 정상이고 Word 가 그대로 연다.
+  // 브라우저에 CompressionStream('deflate-raw') 이 있긴 하지만 스트림 기반이라 쓰려면
+  // 이 경로 전체가 비동기가 된다. 리포트는 수십 KB 라 압축해서 얻는 게 거의 없다.
   const CRC_TABLE = (() => {
     const table = new Uint32Array(256);
     for (let n = 0; n < 256; n += 1) {
@@ -178,11 +179,16 @@
         return '<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:color="CCCCCC"/></w:pBdr></w:pPr></w:p>';
       }
       if (b.type === 'table') {
-        const rows = b.rows.map((cells, rowIndex) => {
+        // 머리글이 전부 빈 표(`| | |`)는 키-값 표로 쓰는 것이다. 머리글 행을 그대로 내면
+        // 빈 칸에 회색 음영이 깔리고, 빈 칸을 굵게 감싸면 "****" 가 본문에 찍힌다.
+        const headed = b.rows[0].some((cell) => cell.trim());
+        const body = headed ? b.rows : b.rows.slice(1);
+        const rows = body.map((cells, index) => {
+          const isHead = headed && index === 0;
           const tc = cells.map((cell) =>
             `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/>`
-            + (rowIndex === 0 ? '<w:shd w:val="clear" w:fill="F2F2F2"/>' : '')
-            + `</w:tcPr><w:p>${docxRuns(rowIndex === 0 ? `**${cell}**` : cell)}</w:p></w:tc>`
+            + (isHead ? '<w:shd w:val="clear" w:fill="F2F2F2"/>' : '')
+            + `</w:tcPr><w:p>${docxRuns(isHead && cell ? `**${cell}**` : cell)}</w:p></w:tc>`
           ).join('');
           return `<w:tr>${tc}</w:tr>`;
         }).join('');
@@ -254,10 +260,12 @@
       if (b.type === 'h') out.push(`<h${b.level}>${htmlRuns(b.text)}</h${b.level}>`);
       else if (b.type === 'hr') out.push('<hr>');
       else if (b.type === 'table') {
-        const [head, ...body] = b.rows;
-        out.push('<table><thead><tr>'
-          + head.map((c) => `<th>${htmlRuns(c)}</th>`).join('')
-          + '</tr></thead><tbody>'
+        const headed = b.rows[0].some((cell) => cell.trim());
+        const [head, ...rest] = b.rows;
+        const body = headed ? rest : b.rows.slice(1);
+        out.push('<table>'
+          + (headed ? `<thead><tr>${head.map((c) => `<th>${htmlRuns(c)}</th>`).join('')}</tr></thead>` : '')
+          + '<tbody>'
           + body.map((r) => `<tr>${r.map((c) => `<td>${htmlRuns(c)}</td>`).join('')}</tr>`).join('')
           + '</tbody></table>');
       } else out.push(`<p>${htmlRuns(b.text)}</p>`);
@@ -301,7 +309,8 @@
       + `<p class="hint">인쇄 대화상자에서 대상을 <strong>PDF로 저장</strong>으로 선택하세요.</p>`
       + `</body></html>`);
     win.document.close();
-    // 폰트가 적용되기 전에 인쇄창이 뜨면 레이아웃이 흔들린다.
+    // print() 는 그 시점의 화면을 잡는다. document.write 직후에 부르면 아직 레이아웃이
+    // 잡히기 전이라 표가 잘린 채로 인쇄되는 경우가 있어 한 틱 뒤로 미룬다.
     win.addEventListener('load', () => setTimeout(() => win.print(), 120));
   }
 

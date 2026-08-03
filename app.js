@@ -261,6 +261,7 @@ async function loadDashboardData() {
     const solRes = await fetch('/api/solutions');
     if (!solRes.ok) throw new Error('솔루션 데이터를 가져올 수 없습니다.');
     isvData = await solRes.json();
+    isvTotalCount = isvData.length;
 
     // 3. Render components
     lucide.createIcons();
@@ -441,9 +442,22 @@ function renderMatrixTags() {
 // ----------------------------------------------------
 // 3. Explorer Table & Filtering
 // ----------------------------------------------------
+/** 전체 카탈로그 크기. 필터를 걸었을 때 "3 / 17" 로 보여주기 위해 들고 있는다. */
+let isvTotalCount = 0;
+
+function renderISVCount(shown) {
+  const node = document.getElementById("isv-count");
+  if (!node) return;
+  const total = isvTotalCount || shown;
+  node.textContent = shown === total
+    ? `(${total}개 솔루션)`
+    : `(${shown} / ${total}개 솔루션)`;
+}
+
 function renderISVTable(data) {
   const tbody = document.getElementById("isv-table-body");
   tbody.innerHTML = "";
+  renderISVCount(data.length);
   
   if (data.length === 0) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:2rem;">검색 및 필터링 결과가 없습니다.</td></tr>`;
