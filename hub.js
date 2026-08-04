@@ -128,6 +128,7 @@ function bindGlobalEvents() {
     window.location.href = '/login.html';
   });
   $('#new-deal-button').addEventListener('click', () => {
+    fillNewDealTaxonomy();
     $('#new-deal-dialog').showModal();
     requestAnimationFrame(() => $('#new-customer').focus());
   });
@@ -235,7 +236,10 @@ async function createDeal(event) {
       body: JSON.stringify({
         customer: form.get('customer'),
         source: form.get('source'),
-        customer_meta: { industry: form.get('industry') }
+        customer_meta: {
+          industry: form.get('industry') || undefined,
+          companySize: form.get('companySize') || undefined
+        }
       })
     });
     $('#new-deal-dialog').close();
@@ -578,6 +582,31 @@ function hasJudgementData(solution) {
 }
 
 /**
+ * 규모 선택지. 목록은 taxonomy.js 에만 둔다 — 화면마다 적으면 같은 필드에 다른 어휘가
+ * 섞여 들어간다(실제로 그래서 "100~499명" 과 "200~500명" 이 공존했다).
+ * 028 이전에 저장된 값은 새 구간으로 읽어 선택 상태를 잃지 않게 한다.
+ */
+/** 새 딜 다이얼로그의 업종·규모 셀렉트를 채운다. 목록은 taxonomy.js 한 곳에서 온다. */
+function fillNewDealTaxonomy() {
+  const industry = document.getElementById('new-industry');
+  if (industry && industry.options.length <= 1) {
+    industry.insertAdjacentHTML('beforeend', window.IssuTaxonomy.INDUSTRIES
+      .map(([code, label]) => `<option value="${escapeHtml(code)}">${escapeHtml(label)} (${escapeHtml(code)})</option>`).join(''));
+  }
+  const size = document.getElementById('new-company-size');
+  if (size && size.options.length <= 1) {
+    size.insertAdjacentHTML('beforeend', window.IssuTaxonomy.COMPANY_SIZES
+      .map((v) => `<option>${escapeHtml(v)}</option>`).join(''));
+  }
+}
+
+function companySizeOptions(current) {
+  const value = window.IssuTaxonomy.normaliseCompanySize(current);
+  return window.IssuTaxonomy.COMPANY_SIZES
+    .map((v) => `<option ${value === v ? 'selected' : ''}>${v}</option>`).join('');
+}
+
+/**
  * 포탈로 들어온 담당자 정보. leads 에만 있고 customer_meta 에는 없다 —
  * 개인정보라 동의 이력과 같은 표에 두고 딜로 복사하지 않는다(027).
  * 그래서 편집 불가 표시로만 보여준다. 영업이 고쳐야 할 값이 아니라 고객이 남긴 값이다.
@@ -596,7 +625,7 @@ function renderIntake() {
     <div class="form-grid">
       <div class="field"><label for="deal-customer">고객사</label><input id="deal-customer" type="text" data-deal-field="customer" value="${escapeHtml(state.deal.customer)}" ${disabledAttr()}></div>
       <div class="field"><label for="deal-industry">업종</label><input id="deal-industry" type="text" data-meta-field="industry" value="${escapeHtml(meta.industry || '')}" placeholder="금융 / 제조 / 공공" ${disabledAttr()}></div>
-      <div class="field"><label for="deal-company-size">조직 규모</label><select id="deal-company-size" data-meta-field="companySize" ${disabledAttr()}><option value="">선택</option>${['1~99명','100~499명','500~1,999명','2,000명 이상'].map((v) => `<option ${meta.companySize === v ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div class="field"><label for="deal-company-size">조직 규모</label><select id="deal-company-size" data-meta-field="companySize" ${disabledAttr()}><option value="">선택</option>${companySizeOptions(meta.companySize)}</select></div>
       <div class="field"><label for="deal-target-users">도입 대상</label><input id="deal-target-users" type="text" data-meta-field="targetUsers" value="${escapeHtml(meta.targetUsers || '')}" placeholder="예: 전사 2,000명 / 개발조직 200명" ${disabledAttr()}></div>
       <div class="field"><label for="deal-contact">고객 연락처</label><input id="deal-contact" type="text" data-meta-field="contact" value="${escapeHtml(meta.contact || state.deal.lead_contact || '')}" placeholder="업무 이메일 또는 전화번호" ${disabledAttr()}></div>
       ${portalContactMarkup()}

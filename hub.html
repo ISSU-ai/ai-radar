@@ -113,7 +113,8 @@
     <form id="new-deal-form" method="dialog">
       <div class="dialog-head"><div><p class="eyebrow">NEW DEAL</p><h2>새 딜 시작</h2></div><button class="icon-button" data-close-dialog type="button" aria-label="새 딜 창 닫기"><i data-lucide="x"></i></button></div>
       <label>고객사<input id="new-customer" name="customer" type="text" maxlength="120" required placeholder="예: A사"></label>
-      <label>업종<input name="industry" type="text" maxlength="80" placeholder="예: 금융 / 제조 / 공공"></label>
+      <label>업종<select id="new-industry" name="industry"><option value="">선택</option></select></label>
+      <label>고객사 규모<select id="new-company-size" name="companySize"><option value="">선택</option></select></label>
       <label>유입 경로<select name="source"><option value="manual">미팅·전화 직접 유입</option><option value="sheet">진단 시트 회수</option></select></label>
       <p id="new-deal-error" class="form-error"></p>
       <div class="dialog-actions"><button class="ghost-button" data-close-dialog type="button">취소</button><button class="primary-button" type="submit">딜 만들기</button></div>
@@ -121,6 +122,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status"></div>
+  <script src="/taxonomy.js" defer></script>
   <script src="/report.js" defer></script>
   <script src="/hub.js" defer></script>
 </body>

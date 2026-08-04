@@ -1840,7 +1840,9 @@ const publicFrontendAssets = Object.freeze({
   '/style.css': 'style.css',
   '/offering.css': 'offering.css',
   '/offering.js': 'offering.js',
-  '/report.js': 'report.js'
+  '/report.js': 'report.js',
+  // 고객 분류 어휘. 상담 폼과 허브 인테이크가 같은 목록을 써야 값이 안 갈린다.
+  '/taxonomy.js': 'taxonomy.js'
 });
 
 // 사내 자산. app.js/hub.js 에는 내부 영업 로직(딜사이즈 계산, 벤더 추천 매핑,

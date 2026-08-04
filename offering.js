@@ -8,31 +8,19 @@ const CATEGORY_LABELS = Object.freeze({
 });
 const offeringState = { items: [], scores: {}, packages: [], result: null, resultReady: false, currentCategoryIndex: 0 };
 
-/**
- * 업종 분류. 진단기준 엑셀「SFDC산업」시트의 33종을 그대로 쓴다.
- * 자유입력으로 두면 "금융"·"금융업"·"은행" 이 다 다른 값이 되어 업종 벤치마크
- * 비교를 못 한다. CRM 과도 값이 맞는다.
- */
-const INDUSTRIES = Object.freeze([
-  ['Agriculture', '농업'], ['Apparel', '의류'], ['Banking', '은행'],
-  ['Biotechnology', '생명공학'], ['Chemicals', '화학'], ['Communications', '커뮤니케이션'],
-  ['Construction', '건설'], ['Consulting', '컨설팅'], ['Education', '교육'],
-  ['Electronics', '전자'], ['Energy', '에너지'], ['Engineering', '기술'],
-  ['Entertainment', '엔터테인먼트'], ['Environmental', '환경'], ['Finance', '금융'],
-  ['Food & Beverage', '식음료'], ['Government', '정부'], ['Healthcare', '건강'],
-  ['Hospitality', '숙박'], ['Insurance', '보험'], ['Machinery', '기계'],
-  ['Manufacturing', '제조'], ['Media', '미디어'], ['Not for Profit', '비영리'],
-  ['Recreation', '레크레이션'], ['Retail', '유통'], ['Shipping', '선박'],
-  ['Technology', 'IT'], ['Telecommunications', '통신'], ['Transportation', '교통'],
-  ['Utilities', '인프라'], ['Other', '기타']
-]);
-
-function renderIndustryOptions() {
-  const select = $('#lead-industry');
-  if (!select) return;
-  select.insertAdjacentHTML('beforeend', INDUSTRIES
-    .map(([code, label]) => `<option value="${escapeHtml(code)}">${escapeHtml(label)} (${escapeHtml(code)})</option>`)
-    .join(''));
+/** 업종·규모 선택지는 taxonomy.js 한 곳에서 온다. 여기 또 적으면 값이 갈린다. */
+function renderTaxonomyOptions() {
+  const industry = $('#lead-industry');
+  if (industry) {
+    industry.insertAdjacentHTML('beforeend', window.IssuTaxonomy.INDUSTRIES
+      .map(([code, label]) => `<option value="${escapeHtml(code)}">${escapeHtml(label)} (${escapeHtml(code)})</option>`)
+      .join(''));
+  }
+  const size = $('#lead-company-size');
+  if (size) {
+    size.insertAdjacentHTML('beforeend', window.IssuTaxonomy.COMPANY_SIZES
+      .map((value) => `<option>${escapeHtml(value)}</option>`).join(''));
+  }
 }
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -60,7 +48,7 @@ async function initOffering() {
   $('#previous-category').addEventListener('click', showPreviousCategory);
   $('#lead-form').addEventListener('submit', submitLead);
   bindReportButtons();
-  renderIndustryOptions();
+  renderTaxonomyOptions();
   try {
     [offeringState.items, offeringState.packages] = await Promise.all([
       getJson('/api/hub/public/fqa-items'),

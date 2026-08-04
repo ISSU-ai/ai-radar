@@ -34,9 +34,12 @@ commit;
 --    order by ordinal_position;
 --
 --   -- 최근 유입 리드가 새 항목을 담고 있는지
---   select customer, contact_name, contact_phone, contact,
+--   -- ⚠ customer 는 leads·deals 양쪽에 있다. 접두사를 빼면 "column reference
+--   --   customer is ambiguous" 로 쿼리가 아예 안 돈다.
+--   select l.customer, l.contact_name, l.contact_phone, l.contact,
 --          d.customer_meta -> 'industry'    as 업종,
 --          d.customer_meta -> 'companySize' as 규모,
 --          l.created_at
---     from leads l left join deals d on d.id = l.promoted_deal
+--     from leads l
+--     left join deals d on d.id = l.promoted_deal
 --    order by l.created_at desc limit 10;

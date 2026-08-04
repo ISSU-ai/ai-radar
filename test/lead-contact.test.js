@@ -95,7 +95,7 @@ test('업종은 SFDC 분류 셀렉트다 — 자유입력이 아니다', () => {
   const html = read('offering.html');
   assert.match(html, /<select name="industry"/, '업종이 select 여야 한다');
 
-  const js = read('offering.js');
+  const js = read('taxonomy.js');
   const block = js.slice(js.indexOf('const INDUSTRIES'), js.indexOf(']);', js.indexOf('const INDUSTRIES')));
   const codes = [...block.matchAll(/\['([^']+)', '/g)].map((m) => m[1]);
   assert.ok(codes.length >= 30, `SFDC 분류가 ${codes.length}종뿐이다`);
@@ -154,4 +154,76 @@ test('027 은 스키마만 바꾼다', () => {
   assert.match(sql, /alter table leads add column if not exists contact_phone/);
   assert.ok(!/insert into|update .* set/i.test(sql.replace(/^--.*$/gm, '')),
     '시드가 섞이면 재실행이 위험해진다');
+});
+
+// ── 분류 어휘 (028) ──────────────────────────────────────────────
+test('규모·업종 목록이 taxonomy.js 한 곳에만 있다', () => {
+  // 화면마다 적으면 같은 필드에 다른 어휘가 섞인다. 실제로 "100~499명"(허브) 과
+  // "200~500명"(상담 폼) 이 공존했고, 그러면 규모로 묶어 보는 일이 전부 어긋난다.
+  const taxonomy = read('taxonomy.js');
+  assert.match(taxonomy, /COMPANY_SIZES = Object\.freeze/);
+  assert.match(taxonomy, /INDUSTRIES = Object\.freeze/);
+
+  // 주석은 뺀다. "왜 이렇게 됐는지" 를 설명하는 글에 옛 값이 나오는 건 정상이고,
+  // 오히려 그 이력을 지우면 다음 사람이 같은 실수를 반복한다.
+  const stripComments = (body) => body
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+
+  for (const file of ['offering.js', 'hub.js', 'offering.html', 'hub.html']) {
+    const body = stripComments(read(file));
+    for (const dead of ['1~99명', '100~499명', '500~1,999명', '2,000명 이상']) {
+      assert.ok(!body.includes(dead), `${file} 코드에 옛 규모 어휘 "${dead}" 가 남아 있다`);
+    }
+    // 새 값도 화면 파일에 직접 박으면 안 된다 — taxonomy.js 에서 와야 한다
+    if (file.endsWith('.js')) {
+      assert.ok(!/\['200명 미만'|"200명 미만"|>200명 미만</.test(body),
+        `${file} 이 규모 목록을 다시 적고 있다`);
+    }
+  }
+});
+
+test('두 페이지가 taxonomy.js 를 소비자보다 먼저 로드한다', () => {
+  for (const [page, consumer] of [['offering.html', '/offering.js'], ['hub.html', '/hub.js']]) {
+    const html = read(page);
+    const at = html.indexOf('/taxonomy.js');
+    assert.ok(at > 0, `${page} 에 taxonomy.js 로드가 없다`);
+    assert.ok(at < html.indexOf(consumer), `${page}: taxonomy.js 가 먼저여야 한다`);
+  }
+  const server = read('server.js');
+  const open = server.indexOf('const publicFrontendAssets');
+  assert.match(server.slice(open, server.indexOf('});', open)), /'\/taxonomy\.js'/,
+    '공개 자산이 아니면 비로그인 상담 폼에서 목록이 안 채워진다');
+});
+
+test('업종은 허브 새 딜에서도 셀렉트다', () => {
+  // 상담 폼만 고치면 영업이 직접 만든 딜에서 자유입력이 다시 들어온다
+  const html = read('hub.html');
+  assert.match(html, /<select id="new-industry"/);
+  assert.ok(!/<input name="industry"/.test(html), '자유입력이 남아 있다');
+  assert.match(read('hub.js'), /fillNewDealTaxonomy/);
+});
+
+test('028 이전 값을 화면이 만나도 선택 상태를 잃지 않는다', () => {
+  // DB 는 028 이 한 번에 바꾸지만 그 전에 저장된 값을 셀렉트가 만나면 아무것도
+  // 선택되지 않은 것처럼 보이고, 그대로 저장하면 값이 날아간다.
+  const { IssuTaxonomy } = require('../taxonomy.js') || {};
+  const t = globalThis.IssuTaxonomy;
+  assert.equal(t.normaliseCompanySize('100~499명'), '200~500명');
+  assert.equal(t.normaliseCompanySize('1~99명'), '200명 미만');
+  assert.equal(t.normaliseCompanySize('2,000명 이상'), '1,000명 초과');
+  assert.equal(t.normaliseCompanySize('200~500명'), '200~500명', '새 값은 그대로');
+  assert.equal(t.normaliseCompanySize(''), '');
+  assert.match(read('hub.js'), /normaliseCompanySize/, '허브가 정규화를 거쳐야 한다');
+});
+
+test('028 이 옛 어휘 네 가지를 모두 옮긴다', () => {
+  const sql = read('db/migrations/028_company_size_vocabulary.sql');
+  for (const old of ['1~99명', '100~499명', '500~1,999명', '2,000명 이상']) {
+    assert.ok(sql.includes(`'${old}'`), `028 에 ${old} 매핑이 없다`);
+  }
+  // 경계를 걸치는 구간은 옮긴 뒤 확인이 필요하다 — 쿼리로 뽑아 줘야 한다
+  assert.match(sql, /1,000 을 걸친다|영업 확인이 필요/);
+  assert.match(sql, /where d\.customer_meta ->> 'companySize' = m\.old_value/);
 });
