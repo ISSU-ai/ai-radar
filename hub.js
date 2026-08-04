@@ -577,6 +577,19 @@ function hasJudgementData(solution) {
   return asArray(solution?.fqa_coverage).length > 0;
 }
 
+/**
+ * 포탈로 들어온 담당자 정보. leads 에만 있고 customer_meta 에는 없다 —
+ * 개인정보라 동의 이력과 같은 표에 두고 딜로 복사하지 않는다(027).
+ * 그래서 편집 불가 표시로만 보여준다. 영업이 고쳐야 할 값이 아니라 고객이 남긴 값이다.
+ */
+function portalContactMarkup() {
+  const name = state.deal.lead_contact_name;
+  const phone = state.deal.lead_contact_phone;
+  if (!name && !phone) return '';
+  return `<div class="field"><label>포탈 담당자 <small>(고객 입력)</small></label>
+    <div class="readonly-value">${escapeHtml([name, phone].filter(Boolean).join(' · '))}</div></div>`;
+}
+
 function renderIntake() {
   const meta = state.deal.customer_meta || {};
   return `${stageHeader('01', '들어온 데이터', '포탈·미팅·시트에서 들어온 고객 맥락을 한곳에 정리합니다. 이 정보는 이후 모든 단계에 그대로 이어집니다.')}
@@ -585,7 +598,8 @@ function renderIntake() {
       <div class="field"><label for="deal-industry">업종</label><input id="deal-industry" type="text" data-meta-field="industry" value="${escapeHtml(meta.industry || '')}" placeholder="금융 / 제조 / 공공" ${disabledAttr()}></div>
       <div class="field"><label for="deal-company-size">조직 규모</label><select id="deal-company-size" data-meta-field="companySize" ${disabledAttr()}><option value="">선택</option>${['1~99명','100~499명','500~1,999명','2,000명 이상'].map((v) => `<option ${meta.companySize === v ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
       <div class="field"><label for="deal-target-users">도입 대상</label><input id="deal-target-users" type="text" data-meta-field="targetUsers" value="${escapeHtml(meta.targetUsers || '')}" placeholder="예: 전사 2,000명 / 개발조직 200명" ${disabledAttr()}></div>
-      <div class="field full"><label for="deal-contact">고객 연락처</label><input id="deal-contact" type="text" data-meta-field="contact" value="${escapeHtml(meta.contact || state.deal.lead_contact || '')}" placeholder="업무 이메일 또는 전화번호" ${disabledAttr()}></div>
+      <div class="field"><label for="deal-contact">고객 연락처</label><input id="deal-contact" type="text" data-meta-field="contact" value="${escapeHtml(meta.contact || state.deal.lead_contact || '')}" placeholder="업무 이메일 또는 전화번호" ${disabledAttr()}></div>
+      ${portalContactMarkup()}
       <div class="field"><label for="deal-security-stack">현재 보안 환경</label><select id="deal-security-stack" data-meta-field="securityStack" ${disabledAttr()}><option value="">미정</option><option value="none" ${meta.securityStack === 'none' ? 'selected' : ''}>별도 SWG 없음</option><option value="zscaler" ${meta.securityStack === 'zscaler' ? 'selected' : ''}>Zscaler</option><option value="other-swg" ${meta.securityStack === 'other-swg' ? 'selected' : ''}>타사 SWG</option></select></div>
       <div class="field"><label for="deal-investment">투자 여력</label><select id="deal-investment" data-meta-field="investment" ${disabledAttr()}><option value="">미정</option><option value="low" ${meta.investment === 'low' ? 'selected' : ''}>제한적</option><option value="medium" ${meta.investment === 'medium' ? 'selected' : ''}>PoC 예산 확보</option><option value="high" ${meta.investment === 'high' ? 'selected' : ''}>전사 확장 가능</option></select></div>
       <div class="field full"><label for="deal-notes">고객 상황·요청 메모</label><textarea id="deal-notes" data-meta-field="notes" ${disabledAttr()} placeholder="미팅에서 확인한 문제, 의사결정자, 일정 등을 적어주세요.">${escapeHtml(meta.notes || state.deal.lead_message || '')}</textarea></div>

@@ -57,7 +57,18 @@ app.post('/api/hub/public/diagnose', (req, res) => {
     }))
   });
 });
-app.post('/api/hub/public/leads', (_req, res) => res.status(201).json({ message: '접수 완료', reference: 'mock-lead' }));
+// 실제 서버와 같은 검증을 거친다. 목업이 무조건 201 을 주면 폼 오류를 화면에서 못 본다.
+const { validateLead } = require('../lib/hub-domain');
+const mockLeads = [];
+app.post('/api/hub/public/leads', (req, res) => {
+  let lead;
+  try { lead = validateLead(req.body); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  mockLeads.push({ ...lead, id: `mock-${mockLeads.length + 1}`, created_at: new Date().toISOString() });
+  res.status(201).json({ message: '접수 완료(목업)', reference: mockLeads[mockLeads.length - 1].id });
+});
+// 저장된 리드 확인용. 실제 서버에는 없는 목업 전용 경로다.
+app.get('/api/hub/public/_leads', (_req, res) => res.json(mockLeads));
 app.get('/api/hub/deals', (_req, res) => res.json(deals.map(({ fqa_scores, fqa_totals, isv_combo, packages, ...deal }) => deal)));
 app.post('/api/hub/deals', (req, res) => {
   const deal = { id: `d${deals.length + 1}`, customer: req.body.customer, customer_meta: req.body.customer_meta || {}, fqa_scores: {}, fqa_totals: {}, track: null, isv_combo: [], packages: [], stage: 0, source: req.body.source || 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() };

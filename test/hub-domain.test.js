@@ -38,23 +38,36 @@ test('inferTrack keeps internal classification deterministic', () => {
 });
 
 test('validateLead normalises public input and blocks missing contact', () => {
+  // 027 로 담당자 이름·전화번호가 필수가 됐다. 둘 다 개인정보라 customer_meta 가
+  // 아니라 별도 필드로 나온다 — leads 컬럼으로 저장돼 동의 이력과 같은 자리에 있는다.
   assert.deepEqual(validateLead({
     customer: '  A사\n 본사 ',
     contact: ' owner@example.com ',
+    contact_name: ' 김 담당 ',
+    contact_phone: ' 02-1234-5678 ',
     consent: true,
     customer_meta: { securityStack: 'zscaler' },
     fqa_scores: { 1: 4 }
   }), {
     customer: 'A사 본사',
     contact: 'owner@example.com',
+    contact_name: '김 담당',
+    contact_phone: '02-1234-5678',
     message: '',
     customer_meta: { securityStack: 'zscaler' },
     fqa_scores: { 1: 4 },
     track: 'T-C',
     consent: true
   });
-  assert.throws(() => validateLead({ customer: 'A사', consent: true }), /연락처/);
-  assert.throws(() => validateLead({ customer: 'A사', contact: 'a@example.com' }), /동의/);
+
+  const complete = {
+    customer: 'A사', contact: 'a@example.com',
+    contact_name: '김담당', contact_phone: '02-1234-5678', consent: true
+  };
+  assert.throws(() => validateLead({ ...complete, contact: undefined }), /이메일/);
+  assert.throws(() => validateLead({ ...complete, contact_name: undefined }), /담당자 이름/);
+  assert.throws(() => validateLead({ ...complete, contact_phone: undefined }), /전화번호/);
+  assert.throws(() => validateLead({ ...complete, consent: undefined }), /동의/);
 });
 
 test('deal validation permits only known patch shapes', () => {

@@ -231,25 +231,34 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
          values ($1, $2, $3, $4, $5, 0, 'portal') returning id`,
         [lead.customer, lead.customer_meta, lead.fqa_scores, fqaTotals, lead.track]
       );
+      // 027 미적용 구간에도 코드가 먼저 배포될 수 있다. 컬럼이 없으면 두 항목을 빼고
+      // 넣는다 — 리드 접수 자체가 실패하는 것보다 낫다. 담당자 정보는 상담 내용에
+      // 남지 않지만 리드는 살아서 영업에게 간다.
+      const hasContactCols = hasColumn
+        ? await hasColumn('leads', 'contact_name') : false;
+      const leadColumns = ['customer', 'contact', 'fqa_scores', 'message', 'promoted_deal',
+        'consent_version', 'consent_purpose', 'consent_retention'];
+      const leadValues = [lead.customer, lead.contact, lead.fqa_scores, lead.message,
+        dealResult.rows[0].id, PRIVACY_NOTICE.version, PRIVACY_NOTICE.purpose,
+        PRIVACY_NOTICE.retention];
+      if (hasContactCols) {
+        leadColumns.push('contact_name', 'contact_phone');
+        leadValues.push(lead.contact_name, lead.contact_phone);
+      }
       const leadResult = await client.query(
-        `insert into leads
-          (customer, contact, fqa_scores, message, promoted_deal,
-           consent_at, consent_version, consent_purpose, consent_retention)
-         values ($1, $2, $3, $4, $5, now(), $6, $7, $8)
+        `insert into leads (${leadColumns.join(', ')}, consent_at)
+         values (${leadValues.map((_, i) => `$${i + 1}`).join(', ')}, now())
          returning id, created_at`,
-        [
-          lead.customer,
-          lead.contact,
-          lead.fqa_scores,
-          lead.message,
-          dealResult.rows[0].id,
-          PRIVACY_NOTICE.version,
-          PRIVACY_NOTICE.purpose,
-          PRIVACY_NOTICE.retention
-        ]
+        leadValues
       );
       await client.query('commit');
-      void slackNotify(`🔵 신규 딜: ${lead.customer} · 포탈 유입 · 담당 미배정`);
+      // 영업이 가장 먼저 보는 곳이라 연락에 필요한 것만 담는다. 전화번호는 넣지 않는다 —
+      // Slack 채널은 보존기간 관리 밖이고 개인정보를 흘릴 자리가 아니다.
+      const meta = lead.customer_meta || {};
+      const badge = [meta.industry, meta.companySize].filter(Boolean).join(' · ');
+      void slackNotify(`🔵 신규 딜: ${lead.customer}`
+        + (badge ? ` (${badge})` : '')
+        + ` · 담당 ${lead.contact_name} · 포탈 유입 · 담당 미배정`);
       res.status(201).json({
         message: '상담 요청이 접수되었습니다.',
         reference: leadResult.rows[0].id,
@@ -339,14 +348,22 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       // 상세 응답에는 고객 실명·연락처·리드 원문이 들어간다. 담당자(owner)와 admin,
       // 그리고 아직 주인이 없어 claim 대상인 딜에만 연다. 남의 딜은 존재 여부까지
       // 숨기려고 403 이 아니라 404 로 답한다.
+      // 027 미적용 구간을 대비해 컬럼 존재를 확인하고 고른다. 없으면 null 로 내려
+      // 화면이 "포탈 정보 없음" 으로 그려진다 — 상세 조회 자체가 깨지는 것보다 낫다.
+      const hasContactCols = hasColumn ? await hasColumn('leads', 'contact_name') : false;
+      const leadContactCols = hasContactCols
+        ? 'l.contact, l.message, l.contact_name, l.contact_phone'
+        : 'l.contact, l.message, null::text as contact_name, null::text as contact_phone';
       const result = await pool.query(
         `select d.*, p.full_name as owner_name, t.name as track_name,
-                lead.contact as lead_contact, lead.message as lead_message
+                lead.contact as lead_contact, lead.message as lead_message,
+                lead.contact_name as lead_contact_name,
+                lead.contact_phone as lead_contact_phone
          from deals d
          left join profiles p on p.id = d.owner_id
          left join tracks t on t.id = d.track
          left join lateral (
-           select l.contact, l.message from leads l
+           select ${leadContactCols} from leads l
            where l.promoted_deal = d.id order by l.created_at desc limit 1
          ) lead on true
          where d.id = $1

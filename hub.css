@@ -402,3 +402,8 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
   background: rgba(96,165,250,.14); color: #60a5fa; white-space: nowrap; }
 .reco-depends { color: var(--text-secondary); }
 .catalog-hidden-note { margin: 10px 0 0; font-size: .74rem; color: var(--text-secondary); }
+
+/* 포탈로 들어온 값 — 영업이 고칠 대상이 아니라 고객이 남긴 값이다 */
+.readonly-value { display:flex; align-items:center; min-height:38px; padding:0 12px;
+  color:var(--text-primary); font-size:.9rem; background:var(--surface-muted);
+  border:1px dashed var(--card-border); border-radius:8px; }
