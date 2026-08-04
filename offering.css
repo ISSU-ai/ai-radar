@@ -149,3 +149,23 @@ footer p { margin:0; } footer > small { color:#526170; }
 .diagnosis-deep i { color: #2563eb; }
 .diagnosis-deep span { font-size: 13px; line-height: 1.65; color: #56617a; }
 .diagnosis-deep b { display: block; margin-bottom: 3px; font-size: 14px; color: #101828; }
+
+/* 진단 입구 — 6대 영역 미리보기. 진단 자체는 /readiness 에서 한다 */
+.area-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.area-chip { padding: 14px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.area-chip b { display: block; margin-bottom: 6px; color: #2563eb; font: 700 11px var(--font-mono, monospace); }
+.area-chip span { display: block; font-size: 13px; font-weight: 600; color: #101828; }
+.area-chip small { display: block; margin-top: 4px; color: #8a94a6; font-size: 11px; }
+.diagnosis-guide { display: grid; gap: 10px; margin: 18px 0 20px; }
+.diagnosis-guide > div { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; align-items: start; }
+.diagnosis-guide i { margin-top: 2px; color: #2563eb; }
+.diagnosis-guide span { font-size: 13px; line-height: 1.6; color: #56617a; }
+.diagnosis-guide b { display: block; color: #101828; }
+#start-assessment { width: 100%; justify-content: center; }
+
+/* 상담은 진단을 거쳐 받는다 */
+.contact-cta ol { display: grid; gap: 14px; margin: 0 0 24px; padding: 0; list-style: none; counter-reset: step; }
+.contact-cta li { position: relative; padding-left: 38px; font-size: 13px; line-height: 1.65; color: #a8b6cc; counter-increment: step; }
+.contact-cta li::before { content: counter(step, decimal-leading-zero); position: absolute; left: 0; top: 1px; color: #7ea6f0; font: 700 11px var(--font-mono, monospace); }
+.contact-cta b { display: block; margin-bottom: 2px; color: #fff; font-size: 14px; }
+@media (max-width: 620px) { .area-preview { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

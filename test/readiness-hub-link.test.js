@@ -158,3 +158,44 @@ test('목업이 030 bridge 를 직접 읽고 딜까지 만든다', () => {
   assert.match(mock, /mockApplyReadiness/);
   assert.match(mock, /deals\.push\(/);
 });
+
+// ── 고객 진단은 한 곳뿐이다 ──────────────────────────────────────
+test('랜딩이 21문항을 직접 받지 않는다', () => {
+  // 21문항은 ISV 전제조건 판정용이라 영업이 답할 문항이다. 고객에게 물으면
+  // "답할 수 없는 문항" 이 생기고, 그 응답으로 판정이 돌아간다.
+  const html = read('offering.html');
+  const js = read('offering.js');
+
+  assert.ok(!/id="questions"|category-tab|calculate-result/.test(html),
+    '랜딩에 21문항 진단 패널이 남아 있다');
+  assert.ok(!/public\/fqa-items|public\/diagnose/.test(js),
+    '랜딩이 아직 21문항 API 를 부른다');
+  assert.ok(!/id="lead-form"/.test(html),
+    '진단을 안 거친 상담 폼이 랜딩에 남아 있다 — 게이트가 400 으로 막는다');
+});
+
+test('랜딩의 진단 경로가 전부 /readiness 로 간다', () => {
+  const html = read('offering.html');
+  for (const [label, pattern] of [
+    ['상단 CTA', /class="nav-cta" href="\/readiness"/],
+    ['진단 시작 버튼', /id="start-assessment"[^>]*href="\/readiness"/],
+    ['상담 안내', /class="contact-cta"[\s\S]*?href="\/readiness"/]
+  ]) {
+    assert.match(html, pattern, `${label} 가 /readiness 로 가지 않는다`);
+  }
+});
+
+test('랜딩이 영역·문항 수를 API 에서 받는다', () => {
+  // 베껴 두면 문항을 늘렸을 때 랜딩만 옛 숫자를 말한다. 고객이 "42문항" 을 보고
+  // 들어갔는데 49문항이 나온다.
+  const js = read('offering.js');
+  assert.match(js, /public\/readiness-items/);
+  assert.match(js, /#item-count/);
+  assert.ok(!/'S'.*'P'.*'D'.*'T'/.test(js), '랜딩이 축 목록을 다시 적고 있다');
+});
+
+test('한쪽이 죽어도 나머지는 뜬다', () => {
+  // 오퍼링 목록이 안 뜬다고 진단 입구까지 닫을 이유가 없다.
+  const js = read('offering.js');
+  assert.match(js, /Promise\.allSettled/);
+});

@@ -64,8 +64,10 @@ test('개인정보는 customer_meta 로 새지 않는다', () => {
 });
 
 // ── 폼 ───────────────────────────────────────────────────────────
+// 상담 폼은 랜딩이 아니라 진단 결과 화면에 있다. 진단 없이 리드만 들어오면
+// 영업이 맥락 없이 만나고, 딜에 고객 상태가 비어 추천도 돌지 않는다.
 test('상담 폼이 네 항목을 받는다', () => {
-  const html = read('offering.html');
+  const html = read('readiness.html');
   for (const [name, label] of [
     ['industry', '업종'], ['companySize', '고객사 규모'],
     ['contactName', '담당자 이름'], ['contactPhone', '전화번호']
@@ -82,7 +84,7 @@ test('상담 폼이 네 항목을 받는다', () => {
 
 test('개인정보 고지가 늘어난 항목을 담는다', () => {
   // 항목만 늘리고 고지를 안 고치면 동의 범위를 벗어난다. 법적 문제이지 UI 문제가 아니다.
-  const html = read('offering.html');
+  const html = read('readiness.html');
   const notice = html.slice(html.indexOf('privacy-notice'), html.indexOf('class="consent"'));
   for (const item of ['업종', '고객사 규모', '담당자 이름', '전화번호']) {
     assert.ok(notice.includes(item), `고지에 "${item}" 이 없다`);
@@ -92,7 +94,7 @@ test('개인정보 고지가 늘어난 항목을 담는다', () => {
 
 test('업종은 SFDC 분류 셀렉트다 — 자유입력이 아니다', () => {
   // 자유입력이면 "금융"·"금융업"·"은행" 이 다 다른 값이 되어 업종 벤치마크 비교를 못 한다.
-  const html = read('offering.html');
+  const html = read('readiness.html');
   assert.match(html, /<select name="industry"/, '업종이 select 여야 한다');
 
   const js = read('taxonomy.js');
@@ -171,7 +173,8 @@ test('규모·업종 목록이 taxonomy.js 한 곳에만 있다', () => {
     .replace(/^\s*\/\/.*$/gm, '')
     .replace(/<!--[\s\S]*?-->/g, '');
 
-  for (const file of ['offering.js', 'hub.js', 'offering.html', 'hub.html']) {
+  for (const file of ['offering.js', 'hub.js', 'readiness.js',
+    'offering.html', 'hub.html', 'readiness.html']) {
     const body = stripComments(read(file));
     for (const dead of ['1~99명', '100~499명', '500~1,999명', '2,000명 이상']) {
       assert.ok(!body.includes(dead), `${file} 코드에 옛 규모 어휘 "${dead}" 가 남아 있다`);
@@ -184,8 +187,9 @@ test('규모·업종 목록이 taxonomy.js 한 곳에만 있다', () => {
   }
 });
 
-test('두 페이지가 taxonomy.js 를 소비자보다 먼저 로드한다', () => {
-  for (const [page, consumer] of [['offering.html', '/offering.js'], ['hub.html', '/hub.js']]) {
+test('폼이 있는 페이지가 taxonomy.js 를 소비자보다 먼저 로드한다', () => {
+  // 랜딩(offering.html)에는 폼이 없어 빠졌다. 폼이 다시 생기면 여기 추가해야 한다.
+  for (const [page, consumer] of [['readiness.html', '/readiness.js'], ['hub.html', '/hub.js']]) {
     const html = read(page);
     const at = html.indexOf('/taxonomy.js');
     assert.ok(at > 0, `${page} 에 taxonomy.js 로드가 없다`);

@@ -156,12 +156,13 @@ test('공개 자산 목록에 report.js 가 들어 있다', () => {
   assert.ok(!block.includes('app.js'));
 });
 
-test('offering·hub 양쪽이 report.js 를 로드한다', () => {
-  for (const page of ['offering.html', 'hub.html']) {
+test('리포트를 내려받는 두 페이지가 report.js 를 로드한다', () => {
+  // 랜딩은 결과를 보여주지 않으므로 빠졌다. 진단 결과는 /readiness 에만 있다.
+  for (const page of ['readiness.html', 'hub.html']) {
     const html = fs.readFileSync(path.join(root, page), 'utf8');
     assert.match(html, /<script src="\/report\.js"/, `${page} 에 report.js 로드가 없다`);
     const reportAt = html.indexOf('/report.js');
-    const consumerAt = html.indexOf(page === 'offering.html' ? '/offering.js' : '/hub.js');
+    const consumerAt = html.indexOf(page === 'readiness.html' ? '/readiness.js' : '/hub.js');
     assert.ok(reportAt < consumerAt, `${page}: report.js 가 먼저 로드돼야 한다`);
   }
 });

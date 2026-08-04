@@ -419,8 +419,13 @@ app.get(['/readiness', '/readiness.html'], (_req, res) =>
 
 app.get('/admin', (_req, res) => res.sendFile(path.join(__dirname, '..', 'admin.html')));
 
+// 프로덕션의 / 는 랜딩(offering.html)이다. express.static 보다 먼저 걸어야
+// index.html(=/radar 영업 화면)이 대신 뜨지 않는다 — 그러면 로컬 확인이 거짓말이 된다.
+app.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'offering.html')));
+
 app.use(express.static(path.join(__dirname, '..')));
 app.get('/hub', (_req, res) => res.sendFile(path.join(__dirname, '..', 'hub.html')));
-app.get('/offering', (_req, res) => res.sendFile(path.join(__dirname, '..', 'offering.html')));
+app.get(['/offering', '/offering.html'], (_req, res) => res.sendFile(path.join(__dirname, '..', 'offering.html')));
+app.get(['/radar', '/radar/'], (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
 
 app.listen(4173, '127.0.0.1', () => console.log('Mock UI server: http://127.0.0.1:4173'));

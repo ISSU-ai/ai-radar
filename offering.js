@@ -1,29 +1,17 @@
 'use strict';
 
-const CATEGORY_LABELS = Object.freeze({
-  A: '보안·데이터',
-  B: '연동·기술',
-  C: '운영·관리',
-  D: '업무·성과'
-});
-const offeringState = { items: [], scores: {}, packages: [], result: null, resultReady: false, currentCategoryIndex: 0 };
+/**
+ * 랜딩(/).
+ *
+ * 진단은 여기서 하지 않는다. 고객이 답하는 진단은 /readiness 42문항 하나뿐이고,
+ * 이 페이지는 그 입구와 오퍼링 목록만 맡는다.
+ *
+ * 예전에는 여기서 21문항(FQA)을 직접 받았다. 21문항은 ISV 전제조건 판정용이라
+ * 고객이 아니라 영업이 답해야 하는 문항이었고, 그래서 허브(STEP02)로 옮겼다.
+ * 겹치는 13개는 030 bridge 가 42문항 응답에서 자동으로 채운다.
+ */
 
-/** 업종·규모 선택지는 taxonomy.js 한 곳에서 온다. 여기 또 적으면 값이 갈린다. */
-function renderTaxonomyOptions() {
-  const industry = $('#lead-industry');
-  if (industry) {
-    industry.insertAdjacentHTML('beforeend', window.IssuTaxonomy.INDUSTRIES
-      .map(([code, label]) => `<option value="${escapeHtml(code)}">${escapeHtml(label)} (${escapeHtml(code)})</option>`)
-      .join(''));
-  }
-  const size = $('#lead-company-size');
-  if (size) {
-    size.insertAdjacentHTML('beforeend', window.IssuTaxonomy.COMPANY_SIZES
-      .map((value) => `<option>${escapeHtml(value)}</option>`).join(''));
-  }
-}
 const $ = (selector, root = document) => root.querySelector(selector);
-const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (char) => ({
@@ -41,282 +29,55 @@ async function getJson(path, options = {}) {
   return data;
 }
 
-async function initOffering() {
-  window.lucide?.createIcons();
-  $('#calculate-result').addEventListener('click', calculateResult);
-  $('#next-category').addEventListener('click', showNextCategory);
-  $('#previous-category').addEventListener('click', showPreviousCategory);
-  $('#lead-form').addEventListener('submit', submitLead);
-  bindReportButtons();
-  renderTaxonomyOptions();
-  try {
-    [offeringState.items, offeringState.packages] = await Promise.all([
-      getJson('/api/hub/public/fqa-items'),
-      getJson('/api/hub/public/packages')
-    ]);
-    renderQuestions();
-    renderPackages();
-  } catch (error) {
-    console.error('Offering bootstrap failed:', error.message);
-    $('#questions').innerHTML = '<div class="loading">진단 문항을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>';
-    $('#package-list').innerHTML = `<div class="loading">오퍼링 정보를 불러오지 못했습니다.</div>`;
-    $('#next-category').disabled = true;
-    $('#calculate-result').disabled = true;
-  }
-}
-
-function renderQuestions() {
-  const category = currentCategory();
-  const items = itemsForCategory(category);
-  $('#current-category-label').textContent = `${category} · ${CATEGORY_LABELS[category] || '진단'} 영역`;
-  $('#question-count').textContent = items.length;
-  $('#questions').innerHTML = items.map((item) => `<div class="question">
-    <span class="question-no">${escapeHtml(item.category)}-${String(item.no).padStart(2, '0')}</span>
-    <span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.detail || '')}</small></span>
-    <span class="score-options">${[1, 2, 3, 4, 5].map((score) => `<span><input id="score-${item.no}-${score}" type="radio" name="score-${item.no}" value="${score}" data-score-no="${item.no}" data-category="${escapeHtml(item.category)}" ${Number(offeringState.scores[item.no]) === score ? 'checked' : ''}><label for="score-${item.no}-${score}">${score}</label></span>`).join('')}</span>
-  </div>`).join('');
-  $$('[data-score-no]').forEach((input) => input.addEventListener('change', () => {
-    offeringState.scores[input.dataset.scoreNo] = Number(input.value);
-    offeringState.resultReady = false;
-    $('#result').classList.add('hidden');
-    $('#diagnosis-error').textContent = '';
-    updateProgress();
-  }));
-  renderCategoryTabs();
-  updateProgress();
-  window.lucide?.createIcons();
-}
-
-function updateProgress() {
-  const category = currentCategory();
-  const items = itemsForCategory(category);
-  const answered = items.filter((item) => hasScore(item.no)).length;
-  const totalAnswered = offeringState.items.filter((item) => hasScore(item.no)).length;
-  $('#answer-count').textContent = answered;
-  $('#progress-value').style.width = `${offeringState.items.length ? totalAnswered / offeringState.items.length * 100 : 0}%`;
-  renderCategoryTabs();
-  updateStepControls();
-}
-
-function categories() {
-  return [...new Set(offeringState.items.map((item) => item.category))];
-}
-
-function currentCategory() {
-  return categories()[offeringState.currentCategoryIndex] || '';
-}
-
-function itemsForCategory(category) {
-  return offeringState.items.filter((item) => item.category === category);
-}
-
-function hasScore(no) {
-  const score = Number(offeringState.scores[no]);
-  return Number.isFinite(score) && score >= 1 && score <= 5;
-}
-
-function categoryComplete(category) {
-  const items = itemsForCategory(category);
-  return items.length > 0 && items.every((item) => hasScore(item.no));
-}
-
-function renderCategoryTabs() {
-  const activeCategory = currentCategory();
-  $('#category-tabs').innerHTML = categories().map((category) => {
-    const active = category === activeCategory;
-    const done = categoryComplete(category);
-    const className = `category-tab${active ? ' active' : ''}${done && !active ? ' done' : ''}`;
-    const status = done ? '완료' : active ? '진행 중' : '대기';
-    return `<div class="${className}" aria-current="${active ? 'step' : 'false'}"><b>${escapeHtml(category)}</b><span><strong>${escapeHtml(CATEGORY_LABELS[category] || `${category} 영역`)}</strong><small>${status}</small></span></div>`;
+/**
+ * 6대 영역과 영역별 문항 수.
+ *
+ * 목록을 여기 적지 않고 /readiness 와 같은 API 에서 받는다. 베껴 두면 문항을
+ * 늘렸을 때 랜딩만 옛 숫자를 말한다 — 고객이 "42문항" 을 보고 들어갔는데 49문항이
+ * 나오는 식이다.
+ */
+function renderAreas(data) {
+  $('#item-count').textContent = data.items.length;
+  $('#area-preview').innerHTML = data.areas.map((area) => {
+    const count = data.items.filter((item) => item.area === area.id).length;
+    return `<article class="area-chip">
+      <b>${escapeHtml(area.id)}</b>
+      <span>${escapeHtml(area.name)}</span>
+      <small>${count}문항</small>
+    </article>`;
   }).join('');
 }
 
-function updateStepControls() {
-  const categoryList = categories();
-  const last = offeringState.currentCategoryIndex === categoryList.length - 1;
-  const complete = categoryComplete(currentCategory());
-  const previousButton = $('#previous-category');
-  const nextButton = $('#next-category');
-  const resultButton = $('#calculate-result');
-
-  previousButton.classList.toggle('hidden', offeringState.currentCategoryIndex === 0);
-  nextButton.classList.toggle('hidden', last);
-  resultButton.classList.toggle('hidden', !last);
-  nextButton.disabled = !complete;
-  resultButton.disabled = !complete || !categoryList.every(categoryComplete);
+function renderPackages(packages) {
+  $('#package-list').innerHTML = packages.map((pkg, index) => `<article class="package"><small>${String(index + 1).padStart(2, '0')} · ${escapeHtml(pkg.period || '기간 협의')}</small><h3>${escapeHtml(pkg.name)}</h3><p>${escapeHtml(pkg.target || '')}</p><ul>${(pkg.items || []).map((item) => `<li>${escapeHtml(item.label)}</li>`).join('')}</ul></article>`).join('');
 }
 
-function showNextCategory() {
-  if (!categoryComplete(currentCategory())) return;
-  offeringState.currentCategoryIndex = Math.min(categories().length - 1, offeringState.currentCategoryIndex + 1);
-  renderQuestions();
-  $('.diagnosis-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
+async function initOffering() {
+  window.lucide?.createIcons();
 
-function showPreviousCategory() {
-  offeringState.currentCategoryIndex = Math.max(0, offeringState.currentCategoryIndex - 1);
-  renderQuestions();
-  $('.diagnosis-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
+  // 둘을 따로 처리한다. 한쪽이 실패해도 나머지는 보여야 한다 — 오퍼링 목록이
+  // 안 뜬다고 진단 입구까지 닫을 이유가 없다.
+  const [areas, packages] = await Promise.allSettled([
+    getJson('/api/hub/public/readiness-items'),
+    getJson('/api/hub/public/packages')
+  ]);
 
-async function calculateResult() {
-  if (!categories().every(categoryComplete)) {
-    $('#diagnosis-error').textContent = '모든 영역의 문항에 답해주세요.';
-    return;
-  }
-  $('#diagnosis-error').textContent = '';
-  const button = $('#calculate-result');
-  button.disabled = true;
-  try {
-    const result = await getJson('/api/hub/public/diagnose', {
-      method: 'POST',
-      body: JSON.stringify({ fqa_scores: offeringState.scores })
-    });
-    $('#result-summary').textContent = result.summary;
-    $('#result-grid').innerHTML = result.categories.map((category) => {
-      const good = category.status === 'ready';
-      return `<article class="result-card ${good ? 'good' : 'watch'}"><span>${escapeHtml(category.category)} AREA</span><strong>${Number(category.score).toFixed(1)} / 5</strong><p><b>${escapeHtml(CATEGORY_LABELS[category.category] || `${category.category} 영역`)}</b><br>${good ? '현재 강점을 유지하면서 실제 업무 검증으로 이어갈 수 있습니다.' : '작은 검증 전에 책임자와 기본 통제를 먼저 정리하면 좋습니다.'}</p></article>`;
-    }).join('');
-    offeringState.result = result;
-    offeringState.resultReady = true;
-    $('#result').classList.remove('hidden');
-    $('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    window.lucide?.createIcons();
-  } catch (error) {
-    console.error('Offering diagnosis failed:', error.message);
-    $('#diagnosis-error').textContent = '진단 결과를 계산하지 못했습니다. 잠시 후 다시 시도해주세요.';
-  } finally {
-    button.disabled = false;
-  }
-}
-
-/**
- * 화면에 보이는 것과 같은 값으로 리포트를 만든다.
- * 점수는 서버(`/public/diagnose`)가 계산해 준 값을 그대로 쓴다 — 여기서 다시 계산하면
- * 고객이 화면에서 본 숫자와 파일 안 숫자가 갈라질 수 있다.
- */
-function buildReportMarkdown() {
-  const result = offeringState.result;
-  if (!result) return '';
-  const today = new Date().toISOString().slice(0, 10);
-  const answered = Object.keys(offeringState.scores).length;
-
-  const scoreRows = result.categories
-    .map((c) => `| ${c.category} · ${CATEGORY_LABELS[c.category] || ''} | ${Number(c.score).toFixed(1)} / 5 `
-      + `| ${c.answered}개 | ${c.status === 'ready' ? '기준 충족' : '보완 필요'} |`)
-    .join('\n');
-
-  const watch = result.categories.filter((c) => c.status !== 'ready');
-
-  const answerRows = categories().flatMap((category) => itemsForCategory(category).map((item) => {
-    const score = offeringState.scores[item.no];
-    return `| ${item.category}-${String(item.no).padStart(2, '0')} | ${item.name} | ${score ? `${score} / 5` : '미응답'} |`;
-  })).join('\n');
-
-  return `# AI 준비도 진단 결과
-
-| | |
-|---|---|
-| 진단일 | ${today} |
-| 응답 문항 | ${answered}개 |
-| 종합 판정 | **${result.summary}** |
-
-## 영역별 결과
-
-| 영역 | 점수 | 응답 | 판정 |
-|---|---|---|---|
-${scoreRows}
-
-## 우선 보완 영역
-
-${watch.length
-    ? watch.map((c) => `- **${c.category} · ${CATEGORY_LABELS[c.category] || ''}** (${Number(c.score).toFixed(1)} / 5) — 작은 검증에 앞서 책임자와 기본 통제를 먼저 정리하는 편이 안전합니다.`).join('\n')
-    : '- 현재 응답 기준으로는 모든 영역이 기준을 충족합니다. 실제 업무 검증으로 이어갈 수 있습니다.'}
-
-## 다음 단계로 검토할 수 있는 구성
-
-${offeringState.packages.length
-    ? offeringState.packages.map((pkg) => `- **${pkg.name}** (${pkg.period || '기간 협의'}) — ${pkg.target || ''}`).join('\n')
-    : '- 상담 시 고객 환경에 맞춰 구성을 제안드립니다.'}
-
-## 문항별 응답
-
-| 번호 | 문항 | 응답 |
-|---|---|---|
-${answerRows}
-
----
-
-이 결과는 현재 상태를 빠르게 확인하기 위한 참고용입니다.
-실제 실행 범위는 업무·보안·데이터 환경을 함께 검토해 확정합니다.`;
-}
-
-function bindReportButtons() {
-  const baseName = `AI_준비도_진단결과_${new Date().toISOString().slice(0, 10)}`;
-  $$('[data-report]').forEach((button) => button.addEventListener('click', () => {
-    if (!offeringState.resultReady) return;
-    const markdown = buildReportMarkdown();
-    const kind = button.dataset.report;
-    if (kind === 'md') window.IssuReport.markdown(markdown, baseName);
-    else if (kind === 'docx') window.IssuReport.docx(markdown, baseName);
-    else window.IssuReport.pdf('AI 준비도 진단 결과', markdown);
-  }));
-}
-
-function renderPackages() {
-  $('#package-list').innerHTML = offeringState.packages.map((pkg, index) => `<article class="package"><small>${String(index + 1).padStart(2, '0')} · ${escapeHtml(pkg.period || '기간 협의')}</small><h3>${escapeHtml(pkg.name)}</h3><p>${escapeHtml(pkg.target || '')}</p><ul>${(pkg.items || []).map((item) => `<li>${escapeHtml(item.label)}</li>`).join('')}</ul></article>`).join('');
-}
-
-async function submitLead(event) {
-  event.preventDefault();
-  // Capture the form element now: event.currentTarget becomes null after the
-  // first await below (the event has finished dispatching by then), which was
-  // throwing "Cannot read properties of null (reading 'classList')" on the
-  // success path even though the lead had already been saved.
-  const formEl = event.currentTarget;
-  const form = new FormData(formEl);
-  const errorNode = $('#lead-error');
-  errorNode.textContent = '';
-  if (!offeringState.resultReady) {
-    errorNode.textContent = '먼저 준비도 진단 결과를 확인해주세요.';
-    $('#diagnosis').scrollIntoView({ behavior: 'smooth' });
-    return;
+  if (areas.status === 'fulfilled') {
+    renderAreas(areas.value);
+  } else {
+    // 원문 메시지를 그대로 뿌리면 DB 내부가 고객 화면에 드러난다.
+    console.error('Offering bootstrap failed:', areas.reason?.message);
+    $('#area-preview').innerHTML = '<div class="loading">진단 문항을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>';
   }
 
-  const submitButton = $('button[type="submit"]', formEl);
-  submitButton.disabled = true;
-  submitButton.textContent = '접수 중…';
-  try {
-    await getJson('/api/hub/public/leads', {
-      method: 'POST',
-      body: JSON.stringify({
-        customer: form.get('customer'),
-        contact: form.get('contact'),
-        // 개인정보라 서버에서 leads 컬럼으로 들어간다(027). customer_meta 로 보내지
-        // 않는다 — 거기 두면 deals 로 흘러가 어디까지 퍼졌는지 추적할 수 없다.
-        contact_name: form.get('contactName'),
-        contact_phone: form.get('contactPhone'),
-        message: form.get('message'),
-        consent: form.get('consent') === 'on',
-        fqa_scores: offeringState.scores,
-        customer_meta: {
-          industry: form.get('industry'),
-          companySize: form.get('companySize'),
-          securityStack: form.get('securityStack'),
-          investment: form.get('investment'),
-          needsInfrastructure: form.get('securityStack') === 'none'
-        }
-      })
-    });
-    formEl.classList.add('hidden');
-    $('#lead-success').classList.remove('hidden');
-    window.lucide?.createIcons();
-  } catch (error) {
-    errorNode.textContent = error.message;
-    submitButton.disabled = false;
-    submitButton.innerHTML = '상담 요청 보내기 <i data-lucide="send"></i>';
-    window.lucide?.createIcons();
+  if (packages.status === 'fulfilled') {
+    renderPackages(packages.value);
+  } else {
+    console.error('Package load failed:', packages.reason?.message);
+    $('#package-list').innerHTML = '<div class="loading">오퍼링 정보를 불러오지 못했습니다.</div>';
   }
+
+  window.lucide?.createIcons();
 }
 
 document.addEventListener('DOMContentLoaded', initOffering);
