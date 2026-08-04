@@ -8,6 +8,7 @@ const vm = require('node:vm');
 const zlib = require('node:zlib');
 
 const root = path.join(__dirname, '..');
+const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 
 /**
  * report.js 는 브라우저 전역에 붙는 스크립트다. 최소한의 window 만 만들어 실행한다.
@@ -185,4 +186,43 @@ test('머리글 없는 표(| | |)는 키-값 표로 나간다', async () => {
   // 머리글이 있는 표는 그대로 동작해야 한다
   const withHead = IssuReport.toHtml('| 영역 | 점수 |\n|---|---|\n| A | 1.8 |');
   assert.match(withHead, /<thead><tr><th>영역<\/th>/);
+});
+
+test('긴 내용 표가 A4 를 넘치지 않게 열 너비를 계산한다', async () => {
+  // 진단 리포트의 문항 셀이 89자다. 자동 너비로 두면 그 한 칸이 표를 밀어내
+  // 인쇄본이 잘린다 — 실제로 그랬다.
+  const { IssuReport, lastBlob } = loadReport();
+  const long = '경영진이 AI로 무엇을 할 것인가에 대한 명확한 방향과 3년 이상의 실행 계획을 공식 문서로 수립했습니까?';
+  const md = `| 번호 | 문항 | 점수 | 선택한 상태 |\n|---|---|---|---|\n`
+    + `| S1 | ${long} | 3점 | 전사 AI 전략은 있으나 실행이 더디다 |\n`
+    + `| S2 | ${long} | 2점 | 단기 시범 계획만 있다 |`;
+
+  const html = IssuReport.toHtml(md);
+  const cols = [...html.matchAll(/width:([\d.]+)%/g)].map((m) => Number(m[1]));
+  assert.equal(cols.length, 4, '열 4개 너비가 나와야 한다');
+  assert.ok(Math.abs(cols.reduce((a, b) => a + b, 0) - 100) < 1.5, `합이 ${cols}`);
+  assert.ok(cols[1] > cols[0] * 3, '문항 열이 번호 열보다 훨씬 넓어야 한다');
+  assert.ok(Math.max(...cols) <= 55.5, '한 열이 표를 독식하면 안 된다');
+  assert.ok(Math.min(...cols) >= 5.5, '한 열이 사라지면 안 된다');
+  assert.match(html, /<colgroup>/);
+
+  // Word 도 같은 너비를 받아야 브라우저와 다르게 그리지 않는다
+  IssuReport.docx(md, 'x');
+  const doc = readZip(Buffer.from(await lastBlob().arrayBuffer()))['word/document.xml'];
+  const pct = [...doc.matchAll(/<w:tcW w:w="(\d+)" w:type="pct"\/>/g)].map((m) => Number(m[1]));
+  assert.ok(pct.length >= 4, 'tcW 가 pct 로 박혀야 한다');
+  assert.ok(!doc.includes('w:type="auto"'), '자동 너비로 두면 Word 가 다시 계산한다');
+  // 42행짜리 표가 페이지를 넘어가면 머리글이 반복돼야 무슨 열인지 안다
+  assert.match(doc, /<w:trPr><w:tblHeader\/><\/w:trPr>/);
+});
+
+test('인쇄 CSS 가 표를 페이지 단위로 자르지 않는다', () => {
+  const { IssuReport } = loadReport();
+  const css = read('report.js');
+  // 표 전체에 break-inside: avoid 를 걸면 한 장을 넘는 표가 통째로 밀려 잘린다
+  assert.ok(!/table,\s*ul\s*\{\s*break-inside:\s*avoid/.test(css));
+  assert.match(css, /tr\s*\{\s*break-inside:\s*avoid/);
+  assert.match(css, /thead\s*\{\s*display:\s*table-header-group/);
+  assert.match(css, /table-layout:\s*fixed/, 'colgroup 너비를 강제하려면 필요하다');
+  assert.match(css, /word-break:\s*keep-all/, '한국어는 단어 안에서 끊지 않는다');
 });

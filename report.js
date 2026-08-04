@@ -90,6 +90,55 @@
     return out.length ? out : [{ text, bold: false }];
   }
 
+  /**
+   * 표의 열 너비를 내용 길이로 정한다. 퍼센트 배열을 돌려준다.
+   *
+   * 왜 필요한가: 자동 너비로 두면 89자짜리 문항 한 칸이 표 전체를 밀어내 A4 를
+   * 넘친다(실제로 진단 리포트에서 그랬다). 브라우저와 Word 가 각자 다르게 재는
+   * 것도 문제다 — 여기서 정해 양쪽에 같은 값을 준다.
+   *
+   * 머리글 길이와 본문 평균 길이 중 큰 쪽을 무게로 쓰고, 한 열이 표를 독식하거나
+   * 사라지지 않도록 6~55% 로 조인 뒤 다시 정규화한다.
+   */
+  function columnWidths(rows) {
+    const columns = Math.max(...rows.map((r) => r.length));
+    const weights = [];
+    for (let i = 0; i < columns; i += 1) {
+      const head = (rows[0][i] || '').length;
+      const body = rows.slice(1);
+      const avg = body.length
+        ? body.reduce((sum, r) => sum + (r[i] || '').length, 0) / body.length
+        : 0;
+      weights.push(Math.max(head, avg, 2));
+    }
+    const MIN = 6;
+    const MAX = 55;
+    const total = weights.reduce((a2, b2) => a2 + b2, 0) || 1;
+    let pct = weights.map((w) => (w / total) * 100);
+
+    // 조인 뒤 다시 정규화하면 조였던 값이 한계를 도로 넘는다. 한계에 걸린 열은
+    // 고정해 두고 남은 몫만 나머지 열에 나눠 몇 번 수렴시킨다.
+    for (let pass = 0; pass < 4; pass += 1) {
+      pct = pct.map((w) => Math.min(MAX, Math.max(MIN, w)));
+      const sum = pct.reduce((a2, b2) => a2 + b2, 0);
+      if (Math.abs(sum - 100) < 0.05) break;
+      const free = pct.map((w) => w > MIN && w < MAX);
+      const freeSum = pct.reduce((acc, w, i) => acc + (free[i] ? w : 0), 0);
+      if (!freeSum) break;
+      const delta = 100 - sum;
+      pct = pct.map((w, i) => (free[i] ? w + delta * (w / freeSum) : w));
+    }
+
+    // 열이 둘뿐이고 둘 다 한계에 걸리면 남은 몫이 갈 데가 없다(6% + 55% = 61%).
+    // 그때는 최대치를 포기하고 가장 넓은 열에 몰아준다 — 최소 너비는 지킨다.
+    const sum = pct.reduce((a2, b2) => a2 + b2, 0);
+    if (Math.abs(sum - 100) > 0.05) {
+      const widest = pct.indexOf(Math.max(...pct));
+      pct[widest] += 100 - sum;
+    }
+    return pct.map((w) => Math.round(w * 10) / 10);
+  }
+
   // ── ZIP (저장 전용) ──────────────────────────────────────────────────────
   // deflate 없이 method 0 으로만 쓴다. 압축 없는 zip 도 규격상 정상이고 Word 가 그대로 연다.
   // 브라우저에 CompressionStream('deflate-raw') 이 있긴 하지만 스트림 기반이라 쓰려면
@@ -183,14 +232,18 @@
         // 빈 칸에 회색 음영이 깔리고, 빈 칸을 굵게 감싸면 "****" 가 본문에 찍힌다.
         const headed = b.rows[0].some((cell) => cell.trim());
         const body = headed ? b.rows : b.rows.slice(1);
+        const widths = columnWidths(b.rows);
         const rows = body.map((cells, index) => {
           const isHead = headed && index === 0;
-          const tc = cells.map((cell) =>
-            `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/>`
+          const tc = cells.map((cell, col) =>
+            `<w:tc><w:tcPr><w:tcW w:w="${Math.round((widths[col] || 0) * 50)}" w:type="pct"/>`
             + (isHead ? '<w:shd w:val="clear" w:fill="F2F2F2"/>' : '')
             + `</w:tcPr><w:p>${docxRuns(isHead && cell ? `**${cell}**` : cell)}</w:p></w:tc>`
           ).join('');
-          return `<w:tr>${tc}</w:tr>`;
+          // 머리글 행은 페이지가 넘어가도 반복된다. 42행짜리 표에서 이게 없으면
+          // 둘째 장부터 무슨 열인지 알 수 없다.
+          const trPr = isHead ? '<w:trPr><w:tblHeader/></w:trPr>' : '';
+          return `<w:tr>${trPr}${tc}</w:tr>`;
         }).join('');
         return '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/>'
           + '<w:tblBorders>'
@@ -263,7 +316,9 @@
         const headed = b.rows[0].some((cell) => cell.trim());
         const [head, ...rest] = b.rows;
         const body = headed ? rest : b.rows.slice(1);
-        out.push('<table>'
+        const cols = columnWidths(b.rows)
+          .map((w) => `<col style="width:${w}%">`).join('');
+        out.push('<table>' + `<colgroup>${cols}</colgroup>`
           + (headed ? `<thead><tr>${head.map((c) => `<th>${htmlRuns(c)}</th>`).join('')}</tr></thead>` : '')
           + '<tbody>'
           + body.map((r) => `<tr>${r.map((c) => `<td>${htmlRuns(c)}</td>`).join('')}</tr>`).join('')
@@ -287,12 +342,22 @@
     ul { margin: 0 0 3mm; padding-left: 5mm; }
     li { margin-bottom: 1mm; }
     hr { border: 0; border-top: 1px solid #e3e6ec; margin: 5mm 0; }
-    table { width: 100%; border-collapse: collapse; margin: 0 0 4mm; font-size: 9.5pt; }
+    /* table-layout: fixed 가 colgroup 너비를 실제로 강제한다. 없으면 브라우저가
+       내용 길이로 다시 계산해 89자짜리 칸이 표를 A4 밖으로 밀어낸다. */
+    table { width: 100%; table-layout: fixed; border-collapse: collapse;
+            margin: 0 0 4mm; font-size: 9.5pt; }
     th, td { border: 1px solid #ccd0d8; padding: 1.8mm 2.5mm; text-align: left;
-             vertical-align: top; }
+             vertical-align: top;
+             /* 한국어는 단어 안에서 끊지 않는 편이 읽기 좋다. 띄어쓰기 없는 긴
+                토큰만 예외적으로 끊는다. */
+             word-break: keep-all; overflow-wrap: anywhere; }
     th { background: #f3f5f8; font-weight: 700; }
     h1, h2, h3 { break-after: avoid; }
-    table, ul { break-inside: avoid; }
+    ul { break-inside: avoid; }
+    /* 표 전체에 break-inside: avoid 를 걸면 한 장을 넘는 표가 통째로 밀려 잘린다.
+       행 단위로만 막고, 머리글은 페이지마다 반복시킨다. */
+    tr { break-inside: avoid; }
+    thead { display: table-header-group; }
     .hint { margin-top: 8mm; padding-top: 3mm; border-top: 1px solid #e3e6ec;
             font-size: 8.5pt; color: #6b7280; }
     @media print { .hint { display: none; } }`;
