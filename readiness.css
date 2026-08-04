@@ -139,3 +139,8 @@
 .rd-contact .privacy-notice { color: #a8b6cc; }
 .rd-contact .privacy-notice strong { color: #fff; }
 @media (max-width: 900px) { .rd-contact { grid-template-columns: 1fr; padding: 28px 22px; } }
+
+/* 홈으로 — 좁은 화면에서는 상단 nav 링크가 숨어서 본문에도 둔다 */
+.rd-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 18px; color: #56617a; font-size: 13px; font-weight: 600; text-decoration: none; }
+.rd-back:hover { color: #2563eb; }
+.rd-back i { width: 15px; height: 15px; }

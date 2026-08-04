@@ -199,3 +199,12 @@ test('한쪽이 죽어도 나머지는 뜬다', () => {
   const js = read('offering.js');
   assert.match(js, /Promise\.allSettled/);
 });
+
+test('진단 화면에서 랜딩으로 돌아올 수 있다', () => {
+  // 좁은 화면에서는 상단 nav 링크가 숨는다(offering.css 900px). 본문에도 있어야
+  // 진단만 보고 나가는 길이 브랜드 로고뿐인 상황이 안 생긴다.
+  const html = read('readiness.html');
+  assert.match(html, /<nav><a href="\/">홈<\/a>/, '상단에 홈 링크가 없다');
+  assert.match(html, /class="rd-back" href="\/"/, '본문에 홈 링크가 없다');
+  assert.match(read('readiness.css'), /\.rd-back/);
+});
