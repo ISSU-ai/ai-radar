@@ -31,12 +31,6 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const asArray = (value) => (Array.isArray(value) ? value : []);
 const sourceNames = { portal: '포탈 유입', manual: '직접 생성', sheet: '시트 회수' };
 const DEAL_SIM_TYPE_LABEL = { seat: '좌석 라이선스', once: '일회성', mrr: '운영 MRR' };
-const fqaScoreLabels = Object.freeze(['', '매우 미흡', '미흡', '보통', '양호', '준비됨']);
-
-function hasFqaScore(scores, no) {
-  const score = Number(scores[no]);
-  return Number.isInteger(score) && score >= 1 && score <= 5;
-}
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (char) => ({
@@ -815,46 +809,13 @@ function renderReadinessGaps() {
   </section>`;
 }
 
-/**
- * bridge 가 못 채우는 21문항.
- *
- * 지우지 않고 접어 둔다. 42문항이 채우는 것은 13개뿐이고, 나머지는 ISV 전제조건
- * 판정에 그대로 쓰인다. 값이 없으면 엔진이 "모르면 거르지 않는다" 로 통과시켜
- * 막혔어야 할 후보가 추천에 올라온다 — 조용히 낙관적으로 틀린다.
- */
-function renderResidualFqa() {
-  const bridged = new Set(asArray((state.deal.readiness_totals || {}).fqaFilled).map(Number));
-  const scores = state.deal.fqa_scores || {};
-  const items = state.refs.fqaItems.filter((item) => !bridged.has(Number(item.no)));
-  if (!items.length) return '';
-
-  const done = items.filter((item) => hasFqaScore(scores, item.no)).length;
-  const rows = items.map((item) => {
-    const buttons = [1, 2, 3, 4, 5].map((score) => `<label class="fqa-score-option" title="${score}점 · ${fqaScoreLabels[score]}">
-      <input type="radio" name="fqa-${item.no}" value="${score}" data-fqa-no="${item.no}" data-fqa-category="${item.category}" ${Number(scores[item.no]) === score ? 'checked' : ''} ${disabledAttr()}>
-      <span><strong>${score}</strong><small>${fqaScoreLabels[score]}</small></span>
-    </label>`).join('');
-    return `<div class="fqa-row">
-      <div class="fqa-question"><span class="fqa-no">${item.category}-${String(item.no).padStart(2, '0')}</span><span class="fqa-copy"><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.detail || '')}</small></span></div>
-      <div class="fqa-score-control"><fieldset class="fqa-score-group" aria-label="${escapeHtml(item.name)} 점수 선택">${buttons}</fieldset><button class="fqa-score-clear ${hasFqaScore(scores, item.no) ? '' : 'hidden'}" type="button" data-fqa-clear="${item.no}" data-fqa-category="${item.category}" ${disabledAttr()}>선택 해제</button></div>
-    </div>`;
-  }).join('');
-
-  return `<details class="residual-fqa"${done < items.length ? ' open' : ''}>
-    <summary>ISV 판정 문항 — 42문항으로 채울 수 없는 ${items.length}개 <b id="residual-progress">${done}/${items.length}</b></summary>
-    <p class="residual-note">42문항과 뜻이 어긋나 자동으로 채우지 않은 항목입니다. 비워 두면 전제조건 판정이 이 항목을 건너뛰어, 막혔어야 할 ISV 가 추천에 올라옵니다.</p>
-    <div class="fqa-list">${rows}</div>
-  </details>`;
-}
-
 function renderFqa() {
   const trackOptions = state.refs.tracks.map((track) => `<option value="${track.id}" ${state.deal.track === track.id ? 'selected' : ''}>${track.id} · ${escapeHtml(track.name)}</option>`).join('');
   return `${stageHeader('02', 'AI 준비도 진단', '6대 영역 42문항으로 고객의 현재 수준을 확인합니다. 고객이 포탈에서 답했으면 그 값이 들어와 있고, 아니면 여기서 함께 채웁니다.')}
     ${renderReadinessPanel()}
     <div class="field" style="margin-bottom:18px"><label for="deal-track">딜 트랙</label><select id="deal-track" ${disabledAttr()}><option value="">트랙 선택</option>${trackOptions}</select></div>
     ${renderReadinessGaps()}
-    <div class="rd-groups">${renderReadinessQuestions()}</div>
-    ${renderResidualFqa()}`;
+    <div class="rd-groups">${renderReadinessQuestions()}</div>`;
 }
 
 
@@ -870,7 +831,7 @@ const RECO_GROUPS = [
   { key: 'bundles', title: '선행 조건이 필요', tone: 'bundle' },
   { path: ['proposal', 'operate'], title: '③ 정착·운영', tone: 'ok' },
   { path: ['proposal', 'unclassified'], title: '역할 미지정 패키지', tone: 'warn' },
-  { key: 'needsConfirmation', title: '확인 필요', tone: 'warn' }
+  { key: 'needsConfirmation', title: '확인 필요 — 42문항으로 판정되지 않는 전제', tone: 'warn' }
 ];
 
 async function loadRecommendations() {
@@ -940,8 +901,15 @@ function recoCardMarkup(item, tone) {
     .map((r) => `<li>${escapeHtml(r)}</li>`).join('');
   const flags = (item.redFlags || []).slice(0, 2).map((f) =>
     `<li>${escapeHtml(f.signal)} → ${escapeHtml((f.alternatives || []).map((a) => a.label).join(', '))}</li>`).join('');
-  const pending = (item.prerequisites?.pendingManual || []).map((p) =>
-    `<li>${escapeHtml(p.label)}</li>`).join('');
+  // 42문항으로 자동 판정이 안 되는 전제만 여기 온다. 확인 체크는 후보별로 남는다 —
+  // 같은 전제라도 솔루션마다 요구 수준이 다르고, 한 번 확인한 것이 다른 후보까지
+  // 통과시키면 그게 조용히 틀리는 자리다.
+  const pending = (item.prerequisites?.pendingManual || []).map((p) => `<li>
+    <label class="prereq-check">
+      <input type="checkbox" data-prereq-slug="${escapeHtml(item.slug || item.id)}"
+        data-prereq-label="${escapeHtml(p.label)}" ${isOwner() ? '' : 'disabled'}>
+      <span>${escapeHtml(p.label)}</span>
+    </label></li>`).join('');
 
   return `<div class="reco-card reco-${tone}">
     <div class="reco-head">
@@ -1023,6 +991,20 @@ function renderRecommendationPanel() {
       <ul>${noData.map((x) => `<li>${escapeHtml(x.name)}</li>`).join('')}</ul></details>` : ''}`;
 
   document.getElementById('reco-refresh')?.addEventListener('click', loadRecommendations);
+  // 확인하면 그 후보의 전제만 통과한다. 저장하고 바로 다시 계산해 후보가
+  // 「확인 필요」에서 실제 추천으로 옮겨 가는 것을 눈으로 보게 한다.
+  $$('[data-prereq-slug]').forEach((box) => box.addEventListener('change', async () => {
+    const { prereqSlug: slug, prereqLabel: label } = box.dataset;
+    const confirmations = { ...(state.deal.prereq_confirmations || {}) };
+    const forSlug = { ...(confirmations[slug] || {}) };
+    if (box.checked) forSlug[label] = true; else delete forSlug[label];
+    if (Object.keys(forSlug).length) confirmations[slug] = forSlug;
+    else delete confirmations[slug];
+    state.deal.prereq_confirmations = confirmations;
+    await scheduleSave({ prereq_confirmations: confirmations }, true);
+    await flushSave();
+    loadRecommendations();
+  }));
   $$('[data-reco-add]').forEach((button) => button.addEventListener('click', () => {
     const selected = new Set(asArray(state.deal.isv_combo));
     const id = button.dataset.recoAdd;
@@ -1056,15 +1038,6 @@ function renderSolutions() {
     <div class="catalog-toolbar"><div class="search-wrap"><i data-lucide="search"></i><input id="catalog-search" type="search" value="${escapeHtml(state.catalogQuery)}" placeholder="솔루션·카테고리 검색"></div><a class="secondary-button" href="/radar" target="_blank" rel="noopener" title="AI Radar를 새 창으로 열기"><i data-lucide="external-link"></i> AI Radar</a></div>
     <div class="selection-grid">${cards || '<div class="empty-state">검색 결과가 없습니다.</div>'}</div>
     ${hiddenCount > 0 ? `<p class="catalog-hidden-note">준비 중인 솔루션 ${hiddenCount}건은 표시하지 않았습니다.</p>` : ''}`;
-}
-
-/** 잔여 21문항은 접이식 한 덩어리라 요약줄 하나만 갱신하면 된다. */
-function updateFqaProgress(scores) {
-  const bridged = new Set(asArray((state.deal.readiness_totals || {}).fqaFilled).map(Number));
-  const items = state.refs.fqaItems.filter((item) => !bridged.has(Number(item.no)));
-  const answered = items.filter((item) => hasFqaScore(scores, item.no)).length;
-  const progress = $('#residual-progress');
-  if (progress) progress.textContent = `${answered}/${items.length}`;
 }
 
 function paintReadinessItem(code, scores) {
@@ -1538,24 +1511,6 @@ function bindStageEvents() {
     scheduleSave({ readiness_scores: scores }, true);
   }));
 
-  $$('input[data-fqa-no]').forEach((input) => input.addEventListener('change', () => {
-    if (!input.checked) return;
-    const scores = { ...(state.deal.fqa_scores || {}) };
-    scores[input.dataset.fqaNo] = Number(input.value);
-    state.deal.fqa_scores = scores;
-    input.closest('.fqa-score-control')?.querySelector('[data-fqa-clear]')?.classList.remove('hidden');
-    updateFqaProgress(scores);
-    scheduleSave({ fqa_scores: scores }, true);
-  }));
-  $$('[data-fqa-clear]').forEach((button) => button.addEventListener('click', () => {
-    const scores = { ...(state.deal.fqa_scores || {}) };
-    delete scores[button.dataset.fqaClear];
-    state.deal.fqa_scores = scores;
-    $$('input[data-fqa-no]', button.closest('.fqa-score-control')).forEach((input) => { input.checked = false; });
-    button.classList.add('hidden');
-    updateFqaProgress(scores);
-    scheduleSave({ fqa_scores: scores }, true);
-  }));
   // STEP02 → STEP03 인계. 넘어가면서 추천을 다시 계산한다 — 방금 고친 응답이
   // 반영되지 않은 예전 추천을 보여주면 근거와 결과가 어긋난다.
   $('#handoff-isv')?.addEventListener('click', async () => {

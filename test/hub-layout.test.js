@@ -61,15 +61,33 @@ test('STEP02 는 42문항을 축별로 묶고 루브릭 문장을 고르게 한�
   assert.match(css, /\.rd-pick\.picked/);
 });
 
-test('bridge 가 못 채우는 21문항은 지우지 않고 접어 둔다', () => {
-  // 값이 없으면 엔진이 "모르면 거르지 않는다" 로 통과시켜, 막혔어야 할 후보가
-  // 추천에 올라온다. 조용히 낙관적으로 틀린다.
-  assert.match(js, /function renderResidualFqa/);
-  assert.match(js, /fqaFilled[\s\S]{0,200}filter\(\(item\) => !bridged\.has/);
-  assert.match(js, /type="radio"[^>]+data-fqa-no="\$\{item\.no\}"/, '잔여 문항 입력이 남아야 한다');
-  assert.match(js, /\$\$\('input\[data-fqa-no\]'\)[\s\S]*?addEventListener\('change'/);
-  assert.match(css, /\.residual-fqa/);
-  assert.match(css, /\.fqa-score-option input:checked \+ span/);
+test('허브에서 21문항을 직접 받지 않는다', () => {
+  // 42문항이 넘어오면 같은 것을 두 번 묻는 화면이다. 겹치는 13개는 030 bridge 가
+  // 서버에서 채우고, 못 채우는 것은 STEP03 에서 후보별로 확인한다.
+  assert.doesNotMatch(js, /data-fqa-no=/, '21문항 입력이 남아 있다');
+  assert.doesNotMatch(js, /renderResidualFqa|fqaScoreLabels|hasFqaScore/);
+  assert.doesNotMatch(css, /\.residual-fqa/);
+});
+
+test('42문항으로 판정 안 되는 전제는 후보 옆에서 확인한다', () => {
+  // 모르는 것을 조용히 통과시키면 막혔어야 할 후보가 추천에 올라온다.
+  // 낙관적으로 틀리는 쪽이라 화면에서는 티가 안 난다.
+  const engine = fs.readFileSync(path.join(__dirname, '..', 'lib', 'recommendation-engine.js'), 'utf8');
+  const open = engine.indexOf("if (prereq.kind === 'fqa')");
+  const body = engine.slice(open, engine.indexOf("if (prereq.kind === 'numeric')", open));
+  assert.match(body, /pendingManual\.push/, '모르면 확인 대상으로 올려야 한다');
+  assert.doesNotMatch(body, /if \(!Number\.isFinite\(actual\)\) continue/,
+    '모르는 전제를 조용히 통과시키면 안 된다');
+
+  assert.match(js, /data-prereq-slug=/, '확인 체크박스가 있어야 한다');
+  assert.match(js, /\$\$\('\[data-prereq-slug\]'\)[\s\S]{0,600}loadRecommendations\(\)/,
+    '확인하면 바로 다시 계산해야 한다');
+  assert.match(js, /prereq_confirmations/);
+  assert.match(css, /\.prereq-check/);
+
+  // 화면이 넘기는 키와 엔진이 읽는 키가 같아야 한다
+  assert.match(engine, /prereq_confirmations\)\[candidate\.slug \|\| candidate\.id\]/);
+  assert.match(js, /data-prereq-slug="\$\{escapeHtml\(item\.slug \|\| item\.id\)\}"/);
 });
 
 test('hub flushes edits safely and normalises mobile reference back navigation', () => {

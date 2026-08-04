@@ -184,45 +184,6 @@ textarea { min-height: 100px; padding-top: 11px; resize: vertical; }
 input:focus, select:focus, textarea:focus { border-color: rgba(212, 164, 56, .62); box-shadow: 0 0 0 3px rgba(212, 164, 56, .07); }
 input:disabled, select:disabled, textarea:disabled { opacity: .58; cursor: not-allowed; }
 .section-divider { height: 1px; margin: 22px 0; background: var(--line); }
-.fqa-groups { display: grid; gap: 18px; }
-.fqa-group { --category-color: var(--blue); overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #111820; }
-.fqa-group[data-category="A"] { --category-color: var(--blue); }
-.fqa-group[data-category="B"] { --category-color: var(--green); }
-.fqa-group[data-category="C"] { --category-color: var(--purple); }
-.fqa-group[data-category="D"] { --category-color: var(--gold); }
-.fqa-group-header { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px; border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .018); }
-.fqa-category-mark { display: grid; place-items: center; width: 38px; height: 38px; color: var(--category-color); border: 1px solid var(--category-color); border-radius: 10px; background: var(--surface2); font: 800 14px var(--font-mono); }
-.fqa-group-header h3 { margin: 0; font-size: 16px; }
-.fqa-group-header p { margin: 3px 0 0; color: var(--faint); font-size: 13px; }
-.fqa-group-header > strong { color: var(--category-color); font: 700 11px var(--font-mono); white-space: nowrap; }
-.fqa-list { display: grid; gap: 7px; padding: 8px; }
-.fqa-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.1fr); align-items: center; gap: 14px; padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: #131a22; }
-.fqa-question { display: grid; grid-template-columns: 43px minmax(0, 1fr); align-items: start; gap: 10px; min-width: 0; }
-.fqa-no { padding-top: 2px; color: var(--category-color); font: 700 10px var(--font-mono); }
-.fqa-copy b { display: block; font-size: 15px; line-height: 1.45; }
-.fqa-copy small { display: block; margin-top: 4px; color: var(--faint); font-size: 13px; line-height: 1.5; }
-.fqa-score-control { display: grid; gap: 5px; min-width: 0; }
-.fqa-score-group { display: grid; grid-template-columns: repeat(5, minmax(48px, 1fr)); gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0; }
-.fqa-score-option { position: relative; display: block; min-width: 0; cursor: pointer; }
-.fqa-score-option input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.fqa-score-option > span { display: grid; align-content: center; justify-items: center; min-height: 52px; padding: 5px 2px; color: var(--dim); border: 1px solid var(--line2); border-radius: 8px; background: var(--surface2); transition: border-color .14s ease, color .14s ease, background .14s ease, transform .14s ease; }
-.fqa-score-option strong { font: 800 15px/1 var(--font-mono); }
-.fqa-score-option small { margin-top: 5px; color: var(--faint); font-size: 11px; line-height: 1.1; text-align: center; }
-.fqa-score-option:hover > span { color: var(--ink); border-color: var(--category-color); transform: translateY(-1px); }
-.fqa-score-option input:checked + span { color: var(--ink); border-color: var(--category-color); background: var(--raised); box-shadow: inset 0 0 0 1px var(--category-color), 0 5px 14px rgba(0, 0, 0, .16); }
-.fqa-score-option input:checked + span small { color: var(--ink); }
-.fqa-score-option input:focus-visible + span { outline: 2px solid var(--blue); outline-offset: 2px; }
-.fqa-score-option input:disabled + span { opacity: .56; cursor: not-allowed; transform: none; }
-.fqa-score-clear { justify-self: end; min-height: 24px; padding: 0 3px; color: var(--faint); border: 0; background: transparent; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.fqa-score-clear:hover { color: var(--ink); }
-.fqa-score-clear:disabled { opacity: .5; cursor: not-allowed; }
-.score-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-bottom: 18px; }
-.score-card { padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: #131a22; }
-.score-card span { color: var(--faint); font: 700 8px var(--font-mono); }
-.score-card strong { display: block; margin: 7px 0 4px; font: 700 18px var(--font-mono); }
-.score-card small { color: var(--faint); font-size: 10px; }
-.score-card.fail strong { color: var(--red); }
-.score-card.pass strong { color: var(--green); }
 .catalog-toolbar { display: flex; gap: 9px; margin-bottom: 12px; }
 .selection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .select-card { position: relative; display: block; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #131a22; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
@@ -285,7 +246,6 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
   .workspace-topbar { padding: 0 14px; }
   .workspace-grid { grid-template-columns: 1fr; }
   .workspace-side { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .fqa-row { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
   .stage-rail { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(130px, 1fr); padding-inline: 12px; }
   .workspace-scroll { padding: 15px 14px 34px; }
   .reference-frame-wrap, .admin-frame-wrap { padding: 6px; }
@@ -300,12 +260,6 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
   .workspace-actions .secondary-button svg { width: 15px; }
   .workspace-side { grid-template-columns: 1fr; }
   .form-grid, .selection-grid { grid-template-columns: 1fr; }
-  .score-grid { grid-template-columns: repeat(2, 1fr); }
-  .fqa-group-header { grid-template-columns: 38px minmax(0, 1fr); gap: 10px; }
-  .fqa-group-header > strong { grid-column: 2; justify-self: start; }
-  .fqa-question { grid-template-columns: 38px minmax(0, 1fr); }
-  .fqa-score-group { gap: 4px; }
-  .fqa-score-option > span { min-height: 56px; }
   .stage-header { flex-direction: column; }
   .workspace-main { padding: 17px; }
   dialog { width: 100vw; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
@@ -431,7 +385,6 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 @media (max-width: 780px) { .rdp-axes { grid-template-columns: repeat(2, minmax(0,1fr)); } .readiness-panel > header { grid-template-columns: 1fr; } .rdp-total { text-align: left; } }
 
 /* 42문항에서 자동으로 채워진 21문항 표시 */
-.fqa-auto { margin-left: 6px; padding: 1px 5px; border: 1px solid rgba(94,146,235,.4); border-radius: 4px; color: var(--blue); font: 700 9px var(--font-mono); vertical-align: 1px; }
 
 /* ── STEP02 42문항 입력 ─────────────────────────────────────── */
 .rdp-axis.none { --tone: #4a5464; }
@@ -470,10 +423,6 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 .rd-pick:disabled { cursor: not-allowed; opacity: .55; }
 
 /* bridge 가 못 채우는 21문항 — 지우지 않고 접어 둔다 */
-.residual-fqa { margin-top: 16px; border: 1px solid var(--line); border-radius: 12px; background: #111820; }
-.residual-fqa > summary { padding: 13px 14px; color: var(--gold); font-size: 13px; font-weight: 600; cursor: pointer; }
-.residual-fqa > summary b { margin-left: 6px; font: 700 11px var(--font-mono); }
-.residual-note { margin: 0; padding: 0 14px 12px; color: var(--faint); font-size: 12px; line-height: 1.6; }
 #readiness-card h3 b { margin-left: 6px; font: 700 13px var(--font-mono); }
 #readiness-card h3 small { display: block; margin-top: 2px; color: var(--faint); font-size: 10px; font-weight: 500; }
 @media (max-width: 900px) { .rd-picks { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rd-item-head { grid-template-columns: 28px minmax(0, 1fr); } .rd-item-clear { grid-column: 2; justify-self: start; } }
@@ -509,3 +458,10 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 .reco-from-readiness { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -4px 0 12px; font-size: 11px; }
 .reco-from-readiness span { color: var(--faint); font: 700 9px var(--font-mono); }
 .reco-from-readiness b { padding: 2px 7px; border: 1px solid rgba(224, 178, 90, .35); border-radius: 5px; color: var(--gold); font: 700 10px var(--font-mono); }
+
+/* 42문항으로 판정 안 되는 전제 — 후보 옆에서 바로 확인한다 */
+.prereq-check { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 7px; align-items: start; cursor: pointer; }
+.prereq-check input { width: 13px; height: 13px; margin-top: 2px; accent-color: var(--gold); cursor: pointer; }
+.prereq-check input:disabled { cursor: not-allowed; opacity: .5; }
+.prereq-check span { line-height: 1.5; }
+.prereq-check input:checked + span { color: var(--faint); text-decoration: line-through; }

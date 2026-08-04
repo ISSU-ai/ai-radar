@@ -36,8 +36,25 @@ const lowSecurityDeal = {
   prereq_confirmations: {}
 };
 
+/**
+ * 문항별 점수. 전제가 특정 문항을 지목하면 엔진은 **그 문항 점수만** 본다 —
+ * 카테고리 평균으로 때우지 않는다. 42문항이 030 bridge 로 채우는 것은 21문항 중
+ * 13개뿐이라, 나머지를 카테고리 평균으로 판정하면 조용히 틀린다.
+ *
+ * 그래서 여기 없는 문항은 "모른다" 가 되고, 후보는 제외가 아니라 확인 필요로 간다.
+ */
+const ITEM_SCORES = {
+  '데이터 분류와 민감도 기준': 2,
+  '접근권한과 계정 체계': 1.8,
+  '감사 로그와 추적성': 2,
+  '데이터 보존·삭제 정책': 1.5,
+  '보안 게이트웨이 준비도': 1.5,
+  '개발·테스트 환경': 3.4,
+  '예산·구매 준비도': 3.6
+};
+
 const run = (extra) => recommend({
-  deal: lowSecurityDeal, slots, itemCountByCategory: ITEM_COUNTS, ...extra
+  deal: lowSecurityDeal, slots, itemCountByCategory: ITEM_COUNTS, itemScores: ITEM_SCORES, ...extra
 });
 
 test('갭 분석이 미달 여부와 신뢰도를 계산한다', () => {
@@ -190,6 +207,26 @@ test('enabled_by 가 없어도 갭을 메우는 패키지를 선행으로 잇는
  * 시드 SQL 을 그대로 읽어 후보를 만든다. 판정 데이터를 손대면 아래 검사들이 반응한다.
  * 012(ISV 9종) + 019(ISV 8종 추가) + 017(패키지 6종, 014·016 대체).
  */
+/**
+ * 21문항 전체에 카테고리 점수를 펼친 문항별 점수.
+ *
+ * 실데이터 검사는 "네 축이 모두 낮은 고객" 을 만들어 번들이 나오는지 본다. 엔진은
+ * 이제 전제가 지목한 문항 점수만 보므로, 카테고리만 주면 전부 "모름" 이 되어
+ * 후보가 확인 필요로 빠진다 — 검사하려던 것이 검사되지 않는다.
+ *
+ * 화면에서는 030 bridge 가 채운 13개만 값이 있고 나머지는 확인 필요로 간다.
+ * 여기서는 그 구분이 논점이 아니므로 전부 채워 번들 계산 자체를 본다.
+ */
+function itemScoresFromCategories(fqaTotals) {
+  const seed = fs.readFileSync(path.join(root, 'db', 'migrations', '001_enablement_hub.sql'), 'utf8');
+  const scores = {};
+  for (const m of seed.matchAll(/\('([ABCD])',\s*\d+,\s*'([^']+)'/g)) {
+    const category = fqaTotals[m[1]];
+    if (category) scores[m[2]] = Number(category.score);
+  }
+  return scores;
+}
+
 function loadSeeds() {
   const read = (f) => fs.readFileSync(path.join(root, 'db', 'migrations', f), 'utf8');
   const pick = (block, field) => {
@@ -231,6 +268,15 @@ function loadSeeds() {
  */
 
 /** D 가 미달인 딜. 예산·구매 준비도 계열 전제를 시험하는 데 쓴다. */
+/** lowBusinessDeal 용 문항 점수. 카테고리 점수와 같게 둬 기존 번들 계산을 보존한다. */
+const BUSINESS_ITEM_SCORES = {
+  '개발·테스트 환경': 2.4,
+  '모델·벤더 전환성': 2.4,
+  '예산·구매 준비도': 2.0,
+  '현업 오너십': 2.0,
+  '접근권한과 계정 체계': 3.6
+};
+
 const lowBusinessDeal = {
   track: 'T-B',
   customer_meta: { industry: '제조', targetUsers: '500명', investment: '2억' },
@@ -247,7 +293,7 @@ test('문항을 안 덮는 패키지는 lift 가 있어도 선행으로 쓰지 �
   // ADOPTION 은 D 를 1.2 올리지만 덮는 것은 현업 오너십·변화관리·교육이다.
   // 예산·구매 준비도는 손도 대지 않으므로 "이걸 하면 예산 전제가 풀린다"고 말하면 안 된다.
   const out = recommend({
-    deal: lowBusinessDeal, slots, itemCountByCategory: ITEM_COUNTS,
+    deal: lowBusinessDeal, slots, itemCountByCategory: ITEM_COUNTS, itemScores: BUSINESS_ITEM_SCORES,
     solutions: [{
       slug: 'needs-budget', name: '예산전제ISV', slot: 'llm-platform', status: 'published',
       fqa_coverage: [{ category: 'D', items: ['명확한 업무 문제'], strength: 2 }],
@@ -271,7 +317,7 @@ test('같은 카테고리라도 문항을 덮는 패키지가 선행이 된다',
   // INTEGRATION 의 lift(B +1.5)가 POC(B +0.8)보다 크고 목록에도 먼저 오지만,
   // "개발·테스트 환경"을 덮는 것은 POC 뿐이다. 큰 숫자가 아니라 맞는 문항이 이긴다.
   const out = recommend({
-    deal: lowBusinessDeal, slots, itemCountByCategory: ITEM_COUNTS,
+    deal: lowBusinessDeal, slots, itemCountByCategory: ITEM_COUNTS, itemScores: BUSINESS_ITEM_SCORES,
     solutions: [{
       slug: 'needs-devenv', name: '개발환경전제ISV', slot: 'llm-platform', status: 'published',
       fqa_coverage: [{ category: 'B', items: ['모델·벤더 전환성'], strength: 2 }],
@@ -335,17 +381,16 @@ test('실데이터 — 017 의 lift 가 근거 없는 수치를 만들지 않는
   assert.deepEqual(lifts.get('SECURITY'), { A: 1.5 }, 'SECURITY A +1.5 — 가장 자주 쓰이는 값');
 
   // 네 축이 모두 낮은 고객. 번들이 가장 많이 나오는 조건이라 위반도 여기서 드러난다.
+  const lowAll = {
+    A: { score: 1.8, threshold: 3.5, answered: 6, ready: false },
+    B: { score: 2.2, threshold: 3.0, answered: 5, ready: false },
+    C: { score: 2.1, threshold: 3.0, answered: 5, ready: false },
+    D: { score: 2.0, threshold: 3.5, answered: 5, ready: false }
+  };
   const out = recommend({
-    deal: {
-      ...lowSecurityDeal,
-      fqa_totals: {
-        A: { score: 1.8, threshold: 3.5, answered: 6, ready: false },
-        B: { score: 2.2, threshold: 3.0, answered: 5, ready: false },
-        C: { score: 2.1, threshold: 3.0, answered: 5, ready: false },
-        D: { score: 2.0, threshold: 3.5, answered: 5, ready: false }
-      }
-    },
-    solutions, packages, slots, itemCountByCategory: ITEM_COUNTS
+    deal: { ...lowSecurityDeal, fqa_totals: lowAll },
+    solutions, packages, slots, itemCountByCategory: ITEM_COUNTS,
+    itemScores: itemScoresFromCategories(lowAll)
   });
 
   assert.ok(out.bundles.length > 0, '번들이 하나도 없으면 이 검사가 무의미하다');
@@ -392,15 +437,14 @@ test('실데이터 — 준비도 낮은 딜은 패키지가 먼저 나온다', (
   assert.equal(solutions.length, 17, '012 의 9종 + 019 의 8종');
   assert.equal(packages.length, 6, '017 은 패키지 6종을 심는다');
 
+  const lowAC = {
+    ...lowSecurityDeal.fqa_totals,
+    C: { score: 2.1, threshold: 3.0, answered: 5, ready: false }
+  };
   const out = recommend({
-    deal: {
-      ...lowSecurityDeal,
-      fqa_totals: {
-        ...lowSecurityDeal.fqa_totals,
-        C: { score: 2.1, threshold: 3.0, answered: 5, ready: false }
-      }
-    },
-    solutions, packages, slots, itemCountByCategory: ITEM_COUNTS
+    deal: { ...lowSecurityDeal, fqa_totals: lowAC },
+    solutions, packages, slots, itemCountByCategory: ITEM_COUNTS,
+    itemScores: itemScoresFromCategories(lowAC)
   });
 
   // A·C 가 미달인 고객에게는 그 두 축을 덮는 패키지가 나와야 한다.
@@ -435,19 +479,21 @@ test('017 — 예산·구매 준비도를 덮는 패키지가 생겼다', () => 
     'OPERATE 는 도입 후 비용 관리다 — 도입 전 예산 확보와 섞으면 안 된다');
 
   // 실제로 막힌 ISV 가 번들로 살아나는지 끝까지 확인한다.
+  const budgetGapTotals = {
+    A: { score: 3.6, threshold: 3.0, answered: 6, ready: true },
+    B: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
+    C: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
+    D: { score: 2.0, threshold: 3.0, answered: 5, ready: false }
+  };
   const out = recommend({
     deal: {
       track: 'T-B',
       customer_meta: { industry: '제조', targetUsers: '500명', investment: '2억' },
       prereq_confirmations: {},
-      fqa_totals: {
-        A: { score: 3.6, threshold: 3.0, answered: 6, ready: true },
-        B: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
-        C: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
-        D: { score: 2.0, threshold: 3.0, answered: 5, ready: false }
-      }
+      fqa_totals: budgetGapTotals
     },
     slots, itemCountByCategory: ITEM_COUNTS, packages,
+    itemScores: itemScoresFromCategories(budgetGapTotals),
     solutions: [{
       slug: 'needs-budget', name: '예산전제ISV', slot: 'llm-platform', status: 'published',
       fqa_coverage: [{ category: 'D', items: ['명확한 업무 문제'], strength: 2 }],
@@ -490,10 +536,54 @@ test('017 — 한 문항을 둘이 덮으면 더 깊게 다루는 쪽이 선행�
   for (const order of [['INTEGRATION', 'SECURITY'], ['SECURITY', 'INTEGRATION']]) {
     const out = recommend({
       deal, slots, itemCountByCategory: ITEM_COUNTS, solutions: [isv],
+      itemScores: itemScoresFromCategories(deal.fqa_totals),
       packages: order.map(byId)
     });
     assert.equal(out.bundles.length, 1, `순서 ${order.join('→')} 에서 번들이 없다`);
     assert.equal(out.bundles[0].enabler.slug, 'SECURITY',
       `순서 ${order.join('→')} 에서 얕게 다루는 쪽이 뽑혔다`);
   }
+});
+
+test('전제가 지목한 문항을 모르면 카테고리 평균으로 때우지 않는다', () => {
+  // 42문항이 030 bridge 로 채우는 것은 21문항 중 13개다. A 는 6문항 중 2개만 찬다.
+  // 다른 두 문항의 평균으로 "접근권한이 3 이상인가" 를 판정하면 조용히 틀린다.
+  const isv = {
+    slug: 'needs-iam', name: 'IAM전제ISV', slot: 'llm-platform', status: 'published',
+    fqa_coverage: [{ category: 'A', items: ['감사 로그와 추적성'], strength: 2 }],
+    prerequisites: [{ kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3,
+      blocking: true, label: 'IAM 3 이상' }]
+  };
+
+  // ① 그 문항을 모른다 — 카테고리는 1.8 이지만 그것으로 판정하지 않는다
+  const unknown = run({ solutions: [isv], itemScores: {} });
+  assert.equal(unknown.excluded.length, 0, '모르는데 제외하면 근거 없이 후보를 버린다');
+  assert.equal(unknown.needsConfirmation.length, 1, '확인 필요로 가야 한다');
+  assert.deepEqual(
+    unknown.needsConfirmation[0].prerequisites.pendingManual.map((p) => p.label),
+    ['IAM 3 이상']
+  );
+
+  // ② 영업이 확인하면 통과한다
+  const confirmed = recommend({
+    deal: { ...lowSecurityDeal, prereq_confirmations: { 'needs-iam': { 'IAM 3 이상': true } } },
+    slots, itemCountByCategory: ITEM_COUNTS, itemScores: {}, solutions: [isv]
+  });
+  assert.equal(confirmed.eligible.length, 1, '확인했는데 안 통과하면 확인이 무의미하다');
+
+  // ③ 문항 점수가 있으면 확인 없이 자동 판정한다 — bridge 가 채운 13개가 이 경로다
+  assert.equal(run({ solutions: [isv], itemScores: { '접근권한과 계정 체계': 4 } }).eligible.length, 1);
+  assert.equal(run({ solutions: [isv], itemScores: { '접근권한과 계정 체계': 2 } }).excluded.length, 1);
+});
+
+test('문항을 지목하지 않은 전제는 여전히 카테고리로 본다', () => {
+  // item 이 없으면 카테고리 전체를 묻는 전제다. 그건 평균이 맞는 답이다.
+  const isv = {
+    slug: 'needs-a-area', name: 'A영역전제ISV', slot: 'llm-platform', status: 'published',
+    fqa_coverage: [{ category: 'A', items: ['감사 로그와 추적성'], strength: 2 }],
+    prerequisites: [{ kind: 'fqa', category: 'A', min: 3, blocking: true, label: 'A 영역 3 이상' }]
+  };
+  const out = run({ solutions: [isv], itemScores: {} });
+  assert.equal(out.excluded.length, 1, 'A 1.8 이므로 제외여야 한다');
+  assert.equal(out.needsConfirmation.length, 0);
 });

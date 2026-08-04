@@ -672,7 +672,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       // array as a Postgres array literal ({...}), which jsonb rejects with
       // "invalid input syntax for type json" — so stringify these explicitly.
       const JSONB_DEAL_FIELDS = new Set(['isv_combo', 'packages', 'customer_meta',
-        'fqa_scores', 'fqa_totals', 'readiness_scores', 'readiness_totals']);
+        'fqa_scores', 'fqa_totals', 'readiness_scores', 'readiness_totals', 'prereq_confirmations']);
       const fields = Object.keys(patch);
       const values = fields.map((field) => (JSONB_DEAL_FIELDS.has(field) ? JSON.stringify(patch[field]) : patch[field]));
       values.push(req.params.id);

@@ -97,7 +97,7 @@ test('고객 원본을 따로 남긴다 (032)', () => {
   assert.match(read('routes/hub.js'), /hasColumn\('deals', 'readiness_customer_scores'\)/);
 });
 
-test('영업이 42문항을 고치면 서버가 다시 채점하고 21문항을 다시 채운다', () => {
+test('영업이 42문항을 고치면 서버가 다시 채점하고 게이트를 다시 채운다', () => {
   const routes = read('routes/hub.js');
   const open = routes.indexOf('if (patch.readiness_scores)');
   assert.ok(open > 0, 'PATCH 가 42문항을 처리하지 않는다');
@@ -108,8 +108,10 @@ test('영업이 42문항을 고치면 서버가 다시 채점하고 21문항을 
   assert.match(body, /previouslyBridged/,
     '영업이 손으로 넣은 21문항 답이 42문항 수정 때마다 지워지면 안 된다');
   assert.match(body, /hasColumn\('deals', 'readiness_scores'\)/);
-  assert.match(routes, /'readiness_scores', 'readiness_totals'\]\)/,
-    'jsonb 직렬화 목록에 빠지면 저장이 깨진다');
+  for (const field of ['readiness_scores', 'readiness_totals', 'prereq_confirmations']) {
+    assert.match(routes, new RegExp(`'${field}'[^\\n]*\\]\\)|'${field}',`),
+      `${field} 가 jsonb 직렬화 목록에 없으면 저장이 깨진다`);
+  }
 });
 
 // ── 허브 화면 ────────────────────────────────────────────────────
