@@ -338,3 +338,24 @@ test('리포트가 화면에 없는 숫자를 만들지 않는다', () => {
   assert.ok(!/reduce\([^)]*\+[^)]*\)\s*\/\s*/.test(body), '리포트가 평균을 다시 내고 있다');
   assert.match(body, /고객|영업 수정/, '문항 출처가 표에 있어야 한다');
 });
+
+// ── 화면 문구 ────────────────────────────────────────────────────
+test('단계 이름이 42문항 기준이다', () => {
+  const { PIPELINE_STAGES } = require('../lib/hub-domain');
+  assert.equal(PIPELINE_STAGES[1], 'AI 준비도 진단');
+  assert.ok(!PIPELINE_STAGES.includes('PoC 검증'));
+  assert.match(read('scripts/mock-ui-server.js'), /'AI 준비도 진단'/,
+    '목업 단계 이름이 어긋나면 화면 확인이 거짓말이 된다');
+  assert.match(read('hub.js'), /stageHeader\('03', 'ISV 조합 추천'/);
+});
+
+test('허브 화면에 21문항 문구가 없다', () => {
+  const hub = read('hub.js');
+  // 주석은 bridge 가 왜 있는지를 설명한다. 화면에 나가는 문자열만 본다.
+  const strings = hub
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  for (const dead of ['21항목', 'ISV 판정 문항', 'PoC 검증', 'bridgeNote']) {
+    assert.ok(!strings.includes(dead), `화면에 "${dead}" 가 남아 있다`);
+  }
+});

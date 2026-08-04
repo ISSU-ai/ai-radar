@@ -7,7 +7,7 @@ if (window.self !== window.top) {
 const state = {
   user: null,
   deals: [],
-  refs: { stages: [], tracks: [], fqaItems: [], readinessAreas: [], readinessItems: [], packages: [], solutions: [] },
+  refs: { stages: [], tracks: [], readinessAreas: [], readinessItems: [], packages: [], solutions: [] },
   deal: null,
   reco: null,
   activeStage: 0,
@@ -520,7 +520,7 @@ function renderWorkspace() {
 function renderStageRail() {
   const rail = $('#stage-rail');
   rail.innerHTML = state.refs.stages.map((label, index) => `<button type="button" class="stage-button ${index === state.activeStage ? 'active' : ''} ${index < state.deal.stage ? 'done' : ''}" data-stage="${index}" aria-current="${index === state.activeStage ? 'step' : 'false'}">
-    <span>${index + 1}</span><div><strong>${escapeHtml(label)}</strong><small>${['리드·고객 맥락','21항목·보완벽','카탈로그·포컬','패키지·공수','제안 스크립트'][index]}</small></div>
+    <span>${index + 1}</span><div><strong>${escapeHtml(label)}</strong><small>${['리드·고객 맥락','42문항·성숙도','카탈로그·포컬','패키지·공수','제안 스크립트'][index]}</small></div>
   </button>`).join('');
 }
 
@@ -548,7 +548,7 @@ function renderStage() {
   const content = $('#stage-content');
   const carryMessages = [
     '포탈·미팅·시트에서 들어온 고객 맥락을 정리하며 시작합니다.',
-    '↑ 들어온 데이터의 고객 맥락을 이어서 PoC 검증을 시작합니다.',
+    '↑ 들어온 데이터의 고객 맥락을 이어서 AI 준비도 진단을 시작합니다.',
     '↑ 진단 점수와 트랙을 이어서 ISV 조합을 확정합니다.',
     '↑ 선택한 ISV 조합을 이어서 패키지와 공수를 구성합니다.',
     '↑ 앞 단계의 고객·진단·조합·패키지를 한 번에 이어받습니다.'
@@ -659,7 +659,6 @@ function renderReadinessPanel() {
     return `<div class="empty-state">진단 문항을 불러오지 못했습니다. 029 마이그레이션을 확인하세요.</div>`;
   }
 
-  const answered = Object.keys(state.deal.readiness_scores || {}).length;
   const bars = (areas.length ? areas : asArray(state.refs.readinessAreas).map((a) => ({
     area: a.id, name: a.name, score: null, answered: 0
   }))).map((area) => {
@@ -685,7 +684,7 @@ function renderReadinessPanel() {
     <header>
       <div>
         <span class="rdp-mark">AI READINESS · ${items.length}문항</span>
-        <p>${source} <b>${answered}/${items.length}</b> 응답${bridgeNote()}</p>
+        <p>${source}</p>
       </div>
       <div class="rdp-total">
         <b>${hasAverage ? Number(totals.average).toFixed(2) : '—'}</b><span>/ 5.00</span>
@@ -699,13 +698,6 @@ function renderReadinessPanel() {
 /** 고객이 직접 답한 문항 수. 032 미적용이면 0 이 되어 문구만 보수적으로 나온다. */
 function customerAnsweredCount() {
   return Object.keys(state.deal.readiness_customer_scores || {}).length;
-}
-
-function bridgeNote() {
-  const filled = asArray((state.deal.readiness_totals || {}).fqaFilled).length;
-  if (!filled) return '';
-  const total = state.refs.fqaItems.length || 21;
-  return ` · ISV 판정 문항 ${total}개 중 <b>${filled}개</b>가 이 응답으로 자동 채워졌습니다`;
 }
 
 /**
@@ -1033,7 +1025,7 @@ function renderSolutions() {
     <div class="card-meta"><span>급 ${solution.grade ?? '—'}</span><span>${escapeHtml(solution.scale || '규모 미정')}</span><span>${escapeHtml(solution.focal_name || '포컬 미배정')}</span>${solution.status_op === 'paused' ? '<span>준비중</span>' : ''}</div>
     ${solution.tech_note ? `<div class="tech-note">기술 확인 · ${escapeHtml(solution.tech_note)}</div>` : ''}
   </label>`).join('');
-  return `${stageHeader('03', 'ISV 조합 확정', 'AI Radar의 내부 카탈로그를 딜과 연결합니다. 급·포컬·기술 제약은 내부에서만 보입니다.')}
+  return `${stageHeader('03', 'ISV 조합 추천', 'AI Radar의 내부 카탈로그를 딜과 연결합니다. 급·포컬·기술 제약은 내부에서만 보입니다.')}
     <div id="reco-panel" class="reco-panel"></div>
     <div class="catalog-toolbar"><div class="search-wrap"><i data-lucide="search"></i><input id="catalog-search" type="search" value="${escapeHtml(state.catalogQuery)}" placeholder="솔루션·카테고리 검색"></div><a class="secondary-button" href="/radar" target="_blank" rel="noopener" title="AI Radar를 새 창으로 열기"><i data-lucide="external-link"></i> AI Radar</a></div>
     <div class="selection-grid">${cards || '<div class="empty-state">검색 결과가 없습니다.</div>'}</div>
