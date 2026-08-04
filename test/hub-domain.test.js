@@ -56,6 +56,8 @@ test('validateLead normalises public input and blocks missing contact', () => {
     message: '',
     customer_meta: { securityStack: 'zscaler' },
     fqa_scores: { 1: 4 },
+    // 031 로 42문항 응답도 리드에 실린다. 안 보내면 빈 객체로 지나간다.
+    readiness_scores: {},
     track: 'T-C',
     consent: true
   });

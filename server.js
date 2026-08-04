@@ -1783,6 +1783,14 @@ app.post('/api/admin/suggest-edit', authenticateToken, catalogEditorOnly, async 
 });
 
 const requireCompleteFqaScores = async (req, res, next) => {
+  // 42문항(/readiness)으로 들어온 리드는 여기를 건너뛴다. 두 진단은 문항집이 다르고,
+  // 21문항 점수는 030 bridge 가 서버에서 채운다 — 고객에게 두 번 묻지 않는다.
+  const readiness = req.body?.readiness_scores;
+  if (readiness && typeof readiness === 'object' && !Array.isArray(readiness)
+      && Object.keys(readiness).length) {
+    return next();
+  }
+
   const rawScores = req.body?.fqa_scores;
   if (!rawScores || typeof rawScores !== 'object' || Array.isArray(rawScores)) {
     return res.status(400).json({ error: '모든 준비도 문항의 점수를 입력해주세요.' });

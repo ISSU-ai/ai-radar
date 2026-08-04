@@ -74,6 +74,23 @@ app.post('/api/hub/public/leads', (req, res) => {
   try { lead = validateLead(req.body); }
   catch (error) { return res.status(400).json({ error: error.message }); }
   mockLeads.push({ ...lead, id: `mock-${mockLeads.length + 1}`, created_at: new Date().toISOString() });
+
+  // 실제 서버와 같이 딜을 만든다. 이게 없으면 /readiness 로 제출한 결과가 허브에
+  // 나타나는지를 로컬에서 확인할 수 없다.
+  const readinessResult = Object.keys(lead.readiness_scores || {}).length
+    ? mockApplyReadiness(lead.readiness_scores) : null;
+  deals.push({
+    id: `d${deals.length + 1}`, customer: lead.customer,
+    customer_meta: lead.customer_meta || {},
+    fqa_scores: readinessResult ? { ...readinessResult.fqaScores, ...lead.fqa_scores } : lead.fqa_scores,
+    fqa_totals: {}, track: lead.track, track_name: null,
+    isv_combo: [], packages: [], stage: 0, source: 'portal',
+    readiness_scores: lead.readiness_scores || {},
+    readiness_totals: readinessResult ? readinessResult.totals : {},
+    lead_contact: lead.contact, lead_contact_name: lead.contact_name,
+    lead_contact_phone: lead.contact_phone, lead_message: lead.message,
+    owner_id: null, owner_name: null, updated_at: new Date().toISOString()
+  });
   res.status(201).json({ message: '접수 완료(목업)', reference: mockLeads[mockLeads.length - 1].id });
 });
 // 저장된 리드 확인용. 실제 서버에는 없는 목업 전용 경로다.
@@ -364,6 +381,30 @@ const readiness = (() => {
   }));
   return { areas, items };
 })();
+
+// 030 bridge. 어느 42문항이 어느 21문항을 채우는지 — 이것도 시드에서 직접 읽는다.
+const readinessBridge = (() => {
+  const sql = require('fs').readFileSync(
+    path.join(__dirname, '..', 'db', 'migrations', '030_readiness_fqa_bridge.sql'), 'utf8');
+  const body = sql.slice(sql.indexOf('insert into readiness_fqa_bridge'));
+  return [...body.matchAll(/\('([SPDTBG]\d+)',\s*'([ABCD])',\s*'([^']+)'/g)]
+    .map((m) => ({ item_code: m[1], fqa_category: m[2], fqa_item: m[3].trim() }));
+})();
+
+/** 실제 서버의 applyReadiness 와 같은 일. 채점하고 bridge 로 21문항을 채운다. */
+function mockApplyReadiness(scores) {
+  const totals = scoreReadiness(readiness.items, readiness.areas, scores);
+  const fqaScores = {};
+  for (const link of readinessBridge) {
+    const item = refs.fqaItems.find((i) => i.category === link.fqa_category && i.name === link.fqa_item);
+    const value = Number(scores[link.item_code]);
+    if (item && Number.isInteger(value) && value >= 1 && value <= 5) fqaScores[item.no] = value;
+  }
+  return {
+    totals: { ...totals, fqaFilled: Object.keys(fqaScores).map(Number).sort((x, y) => x - y) },
+    fqaScores
+  };
+}
 
 app.get('/api/hub/public/readiness-items', (_req, res) => res.json(readiness));
 app.post('/api/hub/public/readiness', (req, res) => {

@@ -635,6 +635,51 @@ function renderIntake() {
     </div>`;
 }
 
+/**
+ * 고객이 /readiness 에서 답한 42문항 결과.
+ *
+ * 여기서 다시 계산하지 않는다. 접수 시점에 서버가 낸 값을 그대로 보여준다 —
+ * 고객이 결과 화면에서 본 숫자와 영업이 허브에서 보는 숫자가 갈라지면 안 된다.
+ * 31 미적용이거나 포탈이 아닌 경로로 들어온 딜에는 값이 없어 통째로 빠진다.
+ */
+function renderReadinessPanel() {
+  const totals = state.deal.readiness_totals || {};
+  const areas = asArray(totals.areas);
+  if (!totals.average || !areas.length) return '';
+
+  const bars = areas.map((area) => {
+    const score = Number(area.score) || 0;
+    const tone = score < 2.5 ? 'low' : score < 3.5 ? 'mid' : 'high';
+    return `<div class="rdp-axis ${tone}">
+      <span class="rdp-axis-id">${escapeHtml(area.area)}</span>
+      <div class="rdp-axis-body">
+        <b>${escapeHtml(area.name)}</b>
+        <div class="rdp-track"><i style="width:${(score / 5 * 100).toFixed(1)}%"></i></div>
+      </div>
+      <strong>${score.toFixed(2)}</strong>
+    </div>`;
+  }).join('');
+
+  const filled = asArray(totals.fqaFilled).length;
+  const totalItems = state.refs.fqaItems.length || 21;
+  const maturity = totals.maturity || {};
+
+  return `<section class="readiness-panel">
+    <header>
+      <div>
+        <span class="rdp-mark">AI READINESS · 42문항</span>
+        <p>고객이 포탈에서 직접 답한 결과입니다. 아래 21문항 중 <b>${filled}개</b>는 이 응답으로 채워졌고,
+           <b>${Math.max(0, totalItems - filled)}개</b>는 영업이 확인해 채워야 합니다.</p>
+      </div>
+      <div class="rdp-total">
+        <b>${Number(totals.average).toFixed(2)}</b><span>/ 5.00</span>
+        <small>Level ${escapeHtml(maturity.level ?? '—')} · ${escapeHtml(maturity.name || '')}</small>
+      </div>
+    </header>
+    <div class="rdp-axes">${bars}</div>
+  </section>`;
+}
+
 function renderFqa() {
   const totals = state.deal.fqa_totals || {};
   const scoreCards = ['A','B','C','D'].map((category) => {
@@ -644,6 +689,9 @@ function renderFqa() {
   }).join('');
   const trackOptions = state.refs.tracks.map((track) => `<option value="${track.id}" ${state.deal.track === track.id ? 'selected' : ''}>${track.id} · ${escapeHtml(track.name)}</option>`).join('');
   const scores = state.deal.fqa_scores || {};
+  // 고객 응답에서 넘어온 문항은 표시해 준다. 표시가 없으면 영업이 자기가 넣은
+  // 값인 줄 알고 근거 없이 신뢰하거나, 반대로 지우고 다시 묻는다.
+  const autoFilled = new Set(asArray((state.deal.readiness_totals || {}).fqaFilled).map(Number));
   const groups = ['A','B','C','D'].map((category) => {
     const items = state.refs.fqaItems.filter((item) => item.category === category);
     if (!items.length) return '';
@@ -654,7 +702,7 @@ function renderFqa() {
         <span><strong>${score}</strong><small>${fqaScoreLabels[score]}</small></span>
       </label>`).join('');
       return `<div class="fqa-row">
-        <div class="fqa-question"><span class="fqa-no">${category}-${String(item.no).padStart(2,'0')}</span><span class="fqa-copy"><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.detail || '')}</small></span></div>
+        <div class="fqa-question"><span class="fqa-no">${category}-${String(item.no).padStart(2,'0')}</span><span class="fqa-copy"><b>${escapeHtml(item.name)}${autoFilled.has(Number(item.no)) ? '<span class="fqa-auto" title="고객이 42문항에서 답한 값으로 채워졌습니다">고객 응답</span>' : ''}</b><small>${escapeHtml(item.detail || '')}</small></span></div>
         <div class="fqa-score-control"><fieldset class="fqa-score-group" aria-label="${escapeHtml(item.name)} 점수 선택">${scoreButtons}</fieldset><button class="fqa-score-clear ${hasFqaScore(scores, item.no) ? '' : 'hidden'}" type="button" data-fqa-clear="${item.no}" data-fqa-category="${category}" ${disabledAttr()}>선택 해제</button></div>
       </div>`;
     }).join('');
@@ -664,6 +712,7 @@ function renderFqa() {
     </section>`;
   }).join('');
   return `${stageHeader('02', 'PoC 검증과 보완 벽', '21개 항목을 1~5점으로 진단합니다. 가중 평균이 기준에 못 미치는 영역은 견적 전 보완 과제로 남습니다.')}
+    ${renderReadinessPanel()}
     <div class="score-grid">${scoreCards}</div>
     <div class="field" style="margin-bottom:18px"><label for="deal-track">딜 트랙</label><select id="deal-track" ${disabledAttr()}><option value="">트랙 선택</option>${trackOptions}</select></div>
     <div class="fqa-groups">${groups}</div>`;

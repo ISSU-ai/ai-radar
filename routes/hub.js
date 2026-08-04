@@ -202,6 +202,38 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     return { areas: areas.rows, items: items.rows };
   };
 
+  /**
+   * 42문항 응답을 채점하고, 030 bridge 로 21문항 점수를 채운다.
+   *
+   * 겹치는 13개만 채운다. 나머지 8개는 비워 두고 영업이 허브에서 넣는다 —
+   * 뜻이 어긋나는 문항을 억지로 채우면 ISV 전제조건 판정이 조용히 틀어진다.
+   * 틀린 자동 채움은 빈칸보다 나쁘다. 빈칸은 영업이 보고 채우지만 틀린 값은
+   * 그냥 통과한다.
+   */
+  const applyReadiness = async (readinessScores) => {
+    const data = await loadReadinessItems();
+    if (!data) return null;
+    const totals = scoreReadiness(data.items, data.areas, readinessScores);
+
+    const fqaScores = {};
+    if (hasColumn && await hasColumn('readiness_fqa_bridge', 'item_code')) {
+      const bridge = await pool.query(
+        `select b.item_code, i.no
+           from readiness_fqa_bridge b
+           join fqa_items i on i.category = b.fqa_category and i.name = b.fqa_item
+          where i.status = 'active'`
+      );
+      for (const row of bridge.rows) {
+        const value = Number(readinessScores[row.item_code]);
+        if (Number.isInteger(value) && value >= 1 && value <= 5) fqaScores[row.no] = value;
+      }
+    }
+    // 어느 21문항이 자동으로 채워졌는지 결과에 실어 둔다. 허브에서 영업이
+    // "이건 고객이 답한 값" 과 "내가 채워야 할 값" 을 구분해야 하는데, 나중에
+    // bridge 를 다시 조회하면 그 사이 bridge 가 바뀌었을 때 표시가 어긋난다.
+    return { totals: { ...totals, fqaFilled: Object.keys(fqaScores).map(Number).sort((x, y) => x - y) }, fqaScores };
+  };
+
   router.get('/public/readiness-items', async (_req, res) => {
     try {
       const data = await loadReadinessItems();
@@ -264,15 +296,35 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     try {
       client = await pool.connect();
       await client.query('begin');
+      // 42문항으로 들어왔으면 채점하고 bridge 로 21문항을 채운다.
+      let readiness = null;
+      if (Object.keys(lead.readiness_scores || {}).length) {
+        readiness = await applyReadiness(lead.readiness_scores);
+      }
+      const effectiveFqaScores = readiness
+        ? { ...readiness.fqaScores, ...lead.fqa_scores }   // 직접 답한 값이 우선
+        : lead.fqa_scores;
+
       const fqaItems = await client.query(
         `select category, no, weight, threshold from fqa_items where status = 'active' order by no`
       );
-      const fqaTotals = calculateFqaTotals(fqaItems.rows, lead.fqa_scores);
+      const fqaTotals = calculateFqaTotals(fqaItems.rows, effectiveFqaScores);
+
+      // 031 미적용 구간에도 코드가 먼저 배포될 수 있다. 컬럼이 없으면 빼고 넣는다 —
+      // 리드 접수 자체가 실패하는 것보다 낫다.
+      const hasReadinessCols = hasColumn
+        ? await hasColumn('deals', 'readiness_scores') : false;
+      const dealColumns = ['customer', 'customer_meta', 'fqa_scores', 'fqa_totals', 'track'];
+      const dealValues = [lead.customer, lead.customer_meta, effectiveFqaScores, fqaTotals, lead.track];
+      if (hasReadinessCols && readiness) {
+        dealColumns.push('readiness_scores', 'readiness_totals');
+        dealValues.push(lead.readiness_scores, readiness.totals);
+      }
       const dealResult = await client.query(
-        `insert into deals
-          (customer, customer_meta, fqa_scores, fqa_totals, track, stage, source)
-         values ($1, $2, $3, $4, $5, 0, 'portal') returning id`,
-        [lead.customer, lead.customer_meta, lead.fqa_scores, fqaTotals, lead.track]
+        `insert into deals (${dealColumns.join(', ')}, stage, source)
+         values (${dealValues.map((_, i) => `$${i + 1}`).join(', ')}, 0, 'portal')
+         returning id`,
+        dealValues
       );
       // 027 미적용 구간에도 코드가 먼저 배포될 수 있다. 컬럼이 없으면 두 항목을 빼고
       // 넣는다 — 리드 접수 자체가 실패하는 것보다 낫다. 담당자 정보는 상담 내용에

@@ -129,3 +129,13 @@
   .rd-score-row { grid-template-columns: 20px 1fr 60px; }
   .rd-score-row .rd-bar { grid-column: 1 / -1; }
 }
+
+/* 상담 요청 — 결과를 본 뒤에만 열린다 */
+.rd-contact { display: grid; gap: 34px; grid-template-columns: 380px 1fr; align-items: start; margin-top: 40px; padding: 40px; border-radius: 20px; background: #16233a; color: #fff; }
+.rd-contact .kicker { color: #7ea6f0; }
+.rd-contact h2 { margin: 8px 0 12px; color: #fff; font-size: 26px; line-height: 1.35; }
+.rd-contact-copy p { color: #a8b6cc; font-size: 14px; line-height: 1.7; }
+.rd-contact .lead-form label { color: #cdd8e8; }
+.rd-contact .privacy-notice { color: #a8b6cc; }
+.rd-contact .privacy-notice strong { color: #fff; }
+@media (max-width: 900px) { .rd-contact { grid-template-columns: 1fr; padding: 28px 22px; } }

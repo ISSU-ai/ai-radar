@@ -34,7 +34,9 @@ const MIGRATIONS = [
   // 020 은 컬럼·인덱스만 만든다. 021(노출 목록 시드)은 어드민 토글 상태를 덮어쓰므로 제외.
   '020_solution_visibility.sql',
   // 027 도 컬럼만 추가한다. 022~026 은 1회성 시드라 제외.
-  '027_lead_contact_fields.sql'
+  '027_lead_contact_fields.sql',
+  // 031 도 컬럼·인덱스만 만든다. 028~030 은 어휘 정리·문항 시드라 1회성으로 제외.
+  '031_deal_readiness.sql'
 ];
 
 async function main() {

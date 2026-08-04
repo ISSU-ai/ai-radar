@@ -142,3 +142,10 @@ footer p { margin:0; } footer > small { color:#526170; }
 .report-actions { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:22px; }
 .report-actions-label { margin-right:2px; color:#6a7889; font-size:12.5px; font-weight:700; letter-spacing:.02em; }
 .report-actions .button { min-height:40px; padding:0 14px; font-size:13px; }
+
+/* 42문항 심화 진단으로 가는 문. 여기 21문항과는 묻는 층이 다르다 */
+.diagnosis-deep { display: grid; grid-template-columns: 20px minmax(0, 1fr) 16px; align-items: center; gap: 12px; margin-top: 22px; padding: 16px 18px; border: 1px solid rgba(37, 99, 235, .22); border-radius: 12px; background: rgba(37, 99, 235, .05); color: inherit; text-decoration: none; transition: border-color .15s, background .15s; }
+.diagnosis-deep:hover { border-color: rgba(37, 99, 235, .45); background: rgba(37, 99, 235, .09); }
+.diagnosis-deep i { color: #2563eb; }
+.diagnosis-deep span { font-size: 13px; line-height: 1.65; color: #56617a; }
+.diagnosis-deep b { display: block; margin-bottom: 3px; font-size: 14px; color: #101828; }

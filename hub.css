@@ -407,3 +407,28 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 .readonly-value { display:flex; align-items:center; min-height:38px; padding:0 12px;
   color:var(--text-primary); font-size:.9rem; background:var(--surface-muted);
   border:1px dashed var(--card-border); border-radius:8px; }
+
+/* 42문항 준비도 — 고객이 포탈에서 답한 결과. 영업은 읽기만 한다 */
+.readiness-panel { margin-bottom: 18px; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(180deg, rgba(94,146,235,.08), transparent 70%), #111820; }
+.readiness-panel > header { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 16px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.rdp-mark { color: var(--blue); font: 700 9px var(--font-mono); letter-spacing: .08em; }
+.readiness-panel header p { margin: 6px 0 0; color: var(--faint); font-size: 12px; line-height: 1.6; }
+.readiness-panel header p b { color: var(--text); }
+.rdp-total { text-align: right; white-space: nowrap; }
+.rdp-total b { font: 700 24px var(--font-mono); }
+.rdp-total span { margin-left: 3px; color: var(--faint); font: 700 11px var(--font-mono); }
+.rdp-total small { display: block; margin-top: 3px; color: var(--blue); font: 700 10px var(--font-mono); }
+.rdp-axes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 18px; padding: 14px 16px; }
+.rdp-axis { display: grid; grid-template-columns: 18px minmax(0,1fr) 34px; align-items: center; gap: 8px; --tone: var(--blue); }
+.rdp-axis.low { --tone: var(--red); }
+.rdp-axis.mid { --tone: var(--gold); }
+.rdp-axis.high { --tone: var(--green); }
+.rdp-axis-id { color: var(--tone); font: 700 11px var(--font-mono); }
+.rdp-axis-body b { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 600; }
+.rdp-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,.07); }
+.rdp-track i { display: block; height: 100%; border-radius: 2px; background: var(--tone); }
+.rdp-axis > strong { color: var(--tone); font: 700 12px var(--font-mono); text-align: right; }
+@media (max-width: 780px) { .rdp-axes { grid-template-columns: repeat(2, minmax(0,1fr)); } .readiness-panel > header { grid-template-columns: 1fr; } .rdp-total { text-align: left; } }
+
+/* 42문항에서 자동으로 채워진 21문항 표시 */
+.fqa-auto { margin-left: 6px; padding: 1px 5px; border: 1px solid rgba(94,146,235,.4); border-radius: 4px; color: var(--blue); font: 700 9px var(--font-mono); vertical-align: 1px; }

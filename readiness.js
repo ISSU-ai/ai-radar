@@ -187,6 +187,8 @@ async function calculate() {
     state.result = result;
     renderResult(result);
     $('#result').classList.remove('hidden');
+    // 결과를 본 뒤에만 상담 폼을 연다. 진단 없이 리드만 받으면 영업이 맥락 없이 만난다.
+    $('#contact').classList.remove('hidden');
     $('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
     const codes = error.payload?.unanswered;
@@ -387,15 +389,89 @@ function bindReport() {
   }));
 }
 
+// ── 상담 요청 ─────────────────────────────────────────────────────
+/** 업종·규모 선택지는 taxonomy.js 한 곳에서 온다. 여기 또 적으면 값이 갈린다. */
+function renderTaxonomyOptions() {
+  const industry = $('#lead-industry');
+  if (industry) {
+    industry.insertAdjacentHTML('beforeend', window.IssuTaxonomy.INDUSTRIES
+      .map(([code, label]) => `<option value="${escapeHtml(code)}">${escapeHtml(label)} (${escapeHtml(code)})</option>`).join(''));
+  }
+  const size = $('#lead-company-size');
+  if (size) {
+    size.insertAdjacentHTML('beforeend', window.IssuTaxonomy.COMPANY_SIZES
+      .map((value) => `<option>${escapeHtml(value)}</option>`).join(''));
+  }
+}
+
+async function submitLead(event) {
+  event.preventDefault();
+  // event.currentTarget 은 첫 await 뒤 null 이 된다. 지금 잡아 둔다.
+  const formEl = event.currentTarget;
+  const form = new FormData(formEl);
+  const error = $('#lead-error');
+  error.textContent = '';
+
+  if (!state.result) {
+    error.textContent = '먼저 진단을 완료해주세요.';
+    return;
+  }
+
+  const button = $('button[type="submit"]', formEl);
+  button.disabled = true;
+  const label = button.innerHTML;
+  button.textContent = '접수 중…';
+  try {
+    await getJson('/api/hub/public/leads', {
+      method: 'POST',
+      body: JSON.stringify({
+        customer: form.get('customer'),
+        contact: form.get('contact'),
+        contact_name: form.get('contactName'),
+        contact_phone: form.get('contactPhone'),
+        message: form.get('message'),
+        consent: form.get('consent') === 'on',
+        // 42문항 응답을 그대로 보낸다. 채점과 21문항 채우기(030 bridge)는 서버가 한다 —
+        // 화면에서 계산하면 고객이 본 숫자와 영업이 보는 숫자가 갈라진다.
+        readiness_scores: state.scores,
+        customer_meta: {
+          industry: form.get('industry'),
+          companySize: form.get('companySize'),
+          securityStack: form.get('securityStack'),
+          investment: form.get('investment'),
+          needsInfrastructure: form.get('securityStack') === 'none'
+        }
+      })
+    });
+    formEl.classList.add('hidden');
+    $('#lead-success').classList.remove('hidden');
+    window.lucide?.createIcons();
+  } catch (err) {
+    error.textContent = err.message;
+    button.disabled = false;
+    button.innerHTML = label;
+  }
+}
+
+function startAssessment() {
+  $('#assessment').classList.remove('hidden');
+  goToArea(0);
+}
+
 // ── 시작 ──────────────────────────────────────────────────────────
 async function init() {
   window.lucide?.createIcons();
   bindReport();
-
-  $('#start-button').addEventListener('click', () => {
-    $('#assessment').classList.remove('hidden');
-    goToArea(0);
+  renderTaxonomyOptions();
+  $('#lead-form').addEventListener('submit', submitLead);
+  // 진단 중에 상담 요청을 누르면 답한 게 사라진다. 결과가 나오기 전에는 문항으로 되돌린다.
+  $('#nav-contact').addEventListener('click', (event) => {
+    if (state.result) return;
+    event.preventDefault();
+    startAssessment();
   });
+
+  $('#start-button').addEventListener('click', startAssessment);
   $('#prev-area').addEventListener('click', () => goToArea(state.areaIndex - 1));
   $('#next-area').addEventListener('click', () => goToArea(state.areaIndex + 1));
   $('#finish').addEventListener('click', calculate);
