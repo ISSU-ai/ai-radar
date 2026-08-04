@@ -7,7 +7,7 @@ if (window.self !== window.top) {
 const state = {
   user: null,
   deals: [],
-  refs: { stages: [], tracks: [], fqaItems: [], packages: [], solutions: [] },
+  refs: { stages: [], tracks: [], fqaItems: [], readinessAreas: [], readinessItems: [], packages: [], solutions: [] },
   deal: null,
   reco: null,
   activeStage: 0,
@@ -31,12 +31,6 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const asArray = (value) => (Array.isArray(value) ? value : []);
 const sourceNames = { portal: '포탈 유입', manual: '직접 생성', sheet: '시트 회수' };
 const DEAL_SIM_TYPE_LABEL = { seat: '좌석 라이선스', once: '일회성', mrr: '운영 MRR' };
-const fqaCategoryLabels = Object.freeze({
-  A: '보안·데이터',
-  B: '연동·기술',
-  C: '운영·관리',
-  D: '업무·성과'
-});
 const fqaScoreLabels = Object.freeze(['', '매우 미흡', '미흡', '보통', '양호', '준비됨']);
 
 function hasFqaScore(scores, no) {
@@ -536,8 +530,21 @@ function renderStageRail() {
   </button>`).join('');
 }
 
+/**
+ * 모든 단계가 같은 다운로드 버튼을 갖는다.
+ *
+ * 단계마다 다르게 두면 영업이 "여기는 되고 저기는 안 되네" 를 매번 확인해야 한다.
+ * 버튼은 같고 내용만 그 단계 것이 나온다.
+ */
+const STAGE_REPORT_ACTIONS = '<div class="stage-report">'
+  + '<button class="secondary-button" type="button" data-report="pdf" title="인쇄 화면으로 열기"><i data-lucide="printer"></i> PDF</button>'
+  + '<button class="secondary-button" type="button" data-report="docx" title="Word 파일로 내려받기"><i data-lucide="file-text"></i> Word</button>'
+  + '<button class="secondary-button" type="button" data-report="md" title="Markdown 파일로 내려받기"><i data-lucide="file-code-2"></i> Markdown</button>'
+  + '</div>';
+
 function stageHeader(no, title, copy, action = '') {
-  return `<header class="stage-header"><div><p class="eyebrow">STEP ${no}</p><h2>${title}</h2><p>${copy}</p></div>${action}</header>`;
+  return `<header class="stage-header"><div><p class="eyebrow">STEP ${no}</p><h2>${title}</h2><p>${copy}</p></div>`
+    + `<div class="stage-actions">${action}${STAGE_REPORT_ACTIONS}</div></header>`;
 }
 
 const STAGE_RENDERERS = [renderIntake, renderFqa, renderSolutions, renderPackages, renderPitch];
@@ -636,86 +643,218 @@ function renderIntake() {
 }
 
 /**
- * 고객이 /readiness 에서 답한 42문항 결과.
+ * STEP 02 — AI 준비도 42문항.
  *
- * 여기서 다시 계산하지 않는다. 접수 시점에 서버가 낸 값을 그대로 보여준다 —
- * 고객이 결과 화면에서 본 숫자와 영업이 허브에서 보는 숫자가 갈라지면 안 된다.
- * 31 미적용이거나 포탈이 아닌 경로로 들어온 딜에는 값이 없어 통째로 빠진다.
+ * 예전에는 여기가 21문항(FQA)이었다. 21문항은 ISV 전제조건 판정용 게이트라
+ * "이 제품을 지금 살 수 있나" 를 묻고, 42문항은 "회사가 AI 를 얼마나 하고 있나" 를
+ * 묻는다. 영업이 고객과 앉아서 확인하는 것은 후자다. 그래서 화면을 갈아끼웠다.
+ *
+ * 21문항은 사라진 게 아니라 뒤로 갔다. 030 bridge 가 42문항 응답에서 13개를
+ * 자동으로 채우고, 그 값이 그대로 추천 엔진의 전제조건 판정에 들어간다.
+ * bridge 가 못 채우는 나머지는 아래 접이식 블록에서 따로 받는다.
  */
+
+const READINESS_TONE = (score) => (score < 2.5 ? 'low' : score < 3.5 ? 'mid' : 'high');
+
+/** 축별 점수·성숙도. 서버가 낸 값을 그대로 쓴다 — 여기서 다시 계산하면 갈라진다. */
 function renderReadinessPanel() {
   const totals = state.deal.readiness_totals || {};
   const areas = asArray(totals.areas);
-  if (!totals.average || !areas.length) return '';
+  const items = asArray(state.refs.readinessItems);
+  if (!items.length) {
+    return `<div class="empty-state">진단 문항을 불러오지 못했습니다. 029 마이그레이션을 확인하세요.</div>`;
+  }
 
-  const bars = areas.map((area) => {
-    const score = Number(area.score) || 0;
-    const tone = score < 2.5 ? 'low' : score < 3.5 ? 'mid' : 'high';
-    return `<div class="rdp-axis ${tone}">
+  const answered = Object.keys(state.deal.readiness_scores || {}).length;
+  const bars = (areas.length ? areas : asArray(state.refs.readinessAreas).map((a) => ({
+    area: a.id, name: a.name, score: null, answered: 0
+  }))).map((area) => {
+    const score = Number(area.score);
+    const has = Number.isFinite(score);
+    return `<div class="rdp-axis ${has ? READINESS_TONE(score) : 'none'}">
       <span class="rdp-axis-id">${escapeHtml(area.area)}</span>
       <div class="rdp-axis-body">
         <b>${escapeHtml(area.name)}</b>
-        <div class="rdp-track"><i style="width:${(score / 5 * 100).toFixed(1)}%"></i></div>
+        <div class="rdp-track"><i style="width:${has ? (score / 5 * 100).toFixed(1) : 0}%"></i></div>
       </div>
-      <strong>${score.toFixed(2)}</strong>
+      <strong>${has ? score.toFixed(2) : '—'}</strong>
     </div>`;
   }).join('');
 
-  const filled = asArray(totals.fqaFilled).length;
-  const totalItems = state.refs.fqaItems.length || 21;
   const maturity = totals.maturity || {};
+  const hasAverage = Number.isFinite(Number(totals.average));
+  const source = customerAnsweredCount()
+    ? '고객이 포탈에서 직접 답한 결과입니다.'
+    : '아직 고객 응답이 없습니다. 확인한 내용을 아래에서 직접 채워주세요.';
 
   return `<section class="readiness-panel">
     <header>
       <div>
-        <span class="rdp-mark">AI READINESS · 42문항</span>
-        <p>고객이 포탈에서 직접 답한 결과입니다. 아래 21문항 중 <b>${filled}개</b>는 이 응답으로 채워졌고,
-           <b>${Math.max(0, totalItems - filled)}개</b>는 영업이 확인해 채워야 합니다.</p>
+        <span class="rdp-mark">AI READINESS · ${items.length}문항</span>
+        <p>${source} <b>${answered}/${items.length}</b> 응답${bridgeNote()}</p>
       </div>
       <div class="rdp-total">
-        <b>${Number(totals.average).toFixed(2)}</b><span>/ 5.00</span>
-        <small>Level ${escapeHtml(maturity.level ?? '—')} · ${escapeHtml(maturity.name || '')}</small>
+        <b>${hasAverage ? Number(totals.average).toFixed(2) : '—'}</b><span>/ 5.00</span>
+        <small>${hasAverage ? `Level ${escapeHtml(maturity.level ?? '—')} · ${escapeHtml(maturity.name || '')}` : '응답 대기'}</small>
       </div>
     </header>
     <div class="rdp-axes">${bars}</div>
   </section>`;
 }
 
-function renderFqa() {
-  const totals = state.deal.fqa_totals || {};
-  const scoreCards = ['A','B','C','D'].map((category) => {
-    const total = totals[category];
-    const status = total ? (total.ready ? 'pass' : 'fail') : '';
-    return `<div class="score-card ${status}" data-category="${category}"><span>${category} · ${fqaCategoryLabels[category]}</span><strong>${total ? total.score.toFixed(2) : '—'}</strong><small>${total ? `${total.answered}개 응답 · ${total.ready ? '기준 충족' : '보완 필요'}` : '응답 대기'}</small></div>`;
-  }).join('');
-  const trackOptions = state.refs.tracks.map((track) => `<option value="${track.id}" ${state.deal.track === track.id ? 'selected' : ''}>${track.id} · ${escapeHtml(track.name)}</option>`).join('');
-  const scores = state.deal.fqa_scores || {};
-  // 고객 응답에서 넘어온 문항은 표시해 준다. 표시가 없으면 영업이 자기가 넣은
-  // 값인 줄 알고 근거 없이 신뢰하거나, 반대로 지우고 다시 묻는다.
-  const autoFilled = new Set(asArray((state.deal.readiness_totals || {}).fqaFilled).map(Number));
-  const groups = ['A','B','C','D'].map((category) => {
-    const items = state.refs.fqaItems.filter((item) => item.category === category);
-    if (!items.length) return '';
-    const answered = items.filter((item) => hasFqaScore(scores, item.no)).length;
-    const rows = items.map((item) => {
-      const scoreButtons = [1,2,3,4,5].map((score) => `<label class="fqa-score-option" title="${score}점 · ${fqaScoreLabels[score]}">
-        <input type="radio" name="fqa-${item.no}" value="${score}" data-fqa-no="${item.no}" data-fqa-category="${category}" ${Number(scores[item.no]) === score ? 'checked' : ''} ${disabledAttr()}>
-        <span><strong>${score}</strong><small>${fqaScoreLabels[score]}</small></span>
-      </label>`).join('');
-      return `<div class="fqa-row">
-        <div class="fqa-question"><span class="fqa-no">${category}-${String(item.no).padStart(2,'0')}</span><span class="fqa-copy"><b>${escapeHtml(item.name)}${autoFilled.has(Number(item.no)) ? '<span class="fqa-auto" title="고객이 42문항에서 답한 값으로 채워졌습니다">고객 응답</span>' : ''}</b><small>${escapeHtml(item.detail || '')}</small></span></div>
-        <div class="fqa-score-control"><fieldset class="fqa-score-group" aria-label="${escapeHtml(item.name)} 점수 선택">${scoreButtons}</fieldset><button class="fqa-score-clear ${hasFqaScore(scores, item.no) ? '' : 'hidden'}" type="button" data-fqa-clear="${item.no}" data-fqa-category="${category}" ${disabledAttr()}>선택 해제</button></div>
+/** 고객이 직접 답한 문항 수. 032 미적용이면 0 이 되어 문구만 보수적으로 나온다. */
+function customerAnsweredCount() {
+  return Object.keys(state.deal.readiness_customer_scores || {}).length;
+}
+
+function bridgeNote() {
+  const filled = asArray((state.deal.readiness_totals || {}).fqaFilled).length;
+  if (!filled) return '';
+  const total = state.refs.fqaItems.length || 21;
+  return ` · ISV 판정 문항 ${total}개 중 <b>${filled}개</b>가 이 응답으로 자동 채워졌습니다`;
+}
+
+/**
+ * 42문항 입력.
+ *
+ * /readiness 와 같은 루브릭 칩이다. 숫자 라디오로 두면 "모르니까 3점" 이 늘고,
+ * 그 값이 그대로 추천의 근거가 된다. 고객이 답한 값과 영업이 고친 값은 배지로
+ * 구분한다 — 제안 근거가 고객 응답인지 영업 추정인지 구분이 안 되면 못 쓴다.
+ */
+function renderReadinessQuestions() {
+  const areas = asArray(state.refs.readinessAreas);
+  const items = asArray(state.refs.readinessItems);
+  const scores = state.deal.readiness_scores || {};
+  const customer = state.deal.readiness_customer_scores || {};
+
+  return areas.map((area) => {
+    const list = items.filter((item) => item.area === area.id);
+    if (!list.length) return '';
+    const done = list.filter((item) => scores[item.code]).length;
+
+    const rows = list.map((item) => {
+      const chosen = Number(scores[item.code]) || 0;
+      const fromCustomer = Number(customer[item.code]) || 0;
+      const badge = fromCustomer && chosen === fromCustomer ? '<span class="rd-tag customer">고객 응답</span>'
+        : fromCustomer ? `<span class="rd-tag edited" title="고객은 ${fromCustomer}점으로 답했습니다">영업 수정</span>`
+        : '';
+      const chips = asArray(item.rubric).map((text, index) => {
+        const score = index + 1;
+        return `<button class="rd-pick${chosen === score ? ' picked' : ''}" type="button"
+          data-readiness-code="${escapeHtml(item.code)}" data-readiness-score="${score}"
+          aria-pressed="${chosen === score}" ${disabledAttr()}>
+          <b>${score}</b><span>${escapeHtml(text)}</span></button>`;
+      }).join('');
+
+      return `<div class="rd-item${chosen ? ' answered' : ''}" id="rd-${escapeHtml(item.code)}">
+        <div class="rd-item-head">
+          <span class="rd-item-code">${escapeHtml(item.code)}</span>
+          <span class="rd-item-copy"><b>${escapeHtml(item.text)}${badge}</b>${item.detail ? `<small>${escapeHtml(item.detail)}</small>` : ''}</span>
+          <button class="rd-item-clear ${chosen ? '' : 'hidden'}" type="button" data-readiness-clear="${escapeHtml(item.code)}" ${disabledAttr()}>선택 해제</button>
+        </div>
+        <div class="rd-picks">${chips}</div>
       </div>`;
     }).join('');
-    return `<section class="fqa-group" data-category="${category}" aria-labelledby="fqa-group-${category}">
-      <header class="fqa-group-header"><span class="fqa-category-mark">${category}</span><div><h3 id="fqa-group-${category}">${fqaCategoryLabels[category]}</h3><p>${items.length}개 문항을 순서대로 평가하세요.</p></div><strong data-fqa-progress="${category}">${answered} / ${items.length} 응답</strong></header>
-      <div class="fqa-list">${rows}</div>
+
+    return `<section class="rd-group" data-area="${escapeHtml(area.id)}" aria-labelledby="rd-group-${escapeHtml(area.id)}">
+      <header class="rd-group-head">
+        <span class="rd-group-mark">${escapeHtml(area.id)}</span>
+        <div><h3 id="rd-group-${escapeHtml(area.id)}">${escapeHtml(area.name)}</h3><p>${list.length}개 문항. 현재 상태에 가장 가까운 문장을 고르세요.</p></div>
+        <strong data-readiness-progress="${escapeHtml(area.id)}">${done} / ${list.length} 응답</strong>
+      </header>
+      <div class="rd-list">${rows}</div>
     </section>`;
   }).join('');
-  return `${stageHeader('02', 'PoC 검증과 보완 벽', '21개 항목을 1~5점으로 진단합니다. 가중 평균이 기준에 못 미치는 영역은 견적 전 보완 과제로 남습니다.')}
+}
+
+/**
+ * 미흡 영역 — STEP03 으로 넘기는 지점.
+ *
+ * 3점 미만 축과 그 축에서 가장 낮은 문항을 고른 루브릭 문장까지 함께 보여준다.
+ * 숫자만 넘기면 STEP03 에서 "왜 이 ISV 인가" 에 답할 수 없다. 고객이 자기가 고른
+ * 말을 다시 읽게 하는 것이 근거로 가장 강하다.
+ *
+ * 추천 엔진 자체는 21문항 게이트로 돈다(030 bridge 로 채워진 값). 여기서 넘기는
+ * 것은 그 판정의 **근거 언어**다 — 영업이 고객 앞에서 쓸 수 있는 쪽.
+ */
+function renderReadinessGaps() {
+  const totals = state.deal.readiness_totals || {};
+  const weak = asArray(totals.areas).filter((area) => Number(area.score) < 3);
+  if (!Number.isFinite(Number(totals.average))) return '';
+
+  if (!weak.length) {
+    return `<section class="rd-gaps ok">
+      <p><b>6대 영역 모두 3점 이상입니다.</b> 종합 ${Number(totals.average).toFixed(2)}점 · ${escapeHtml(totals.maturity?.name || '')} 단계.
+         보완이 아니라 확산 관점에서 조합을 고르세요.</p>
+      <button type="button" id="handoff-isv" class="button-primary">ISV 조합으로 <i data-lucide="arrow-right"></i></button>
+    </section>`;
+  }
+
+  const byArea = new Map(asArray(totals.priorities).map((p) => [p.area, p]));
+  const blocks = weak.map((area) => {
+    const drivers = asArray(byArea.get(area.area)?.items).slice(0, 3);
+    return `<article class="rd-gap">
+      <header><span class="rd-gap-id">${escapeHtml(area.area)}</span>
+        <b>${escapeHtml(area.name)}</b><strong>${Number(area.score).toFixed(2)}</strong></header>
+      ${drivers.length ? `<ul>${drivers.map((item) => `<li>
+        <span class="rd-gap-code">${escapeHtml(item.code)}</span>
+        <span class="rd-gap-text">${escapeHtml(item.text)}</span>
+        <span class="rd-gap-score">${item.score}점</span>
+        ${item.rubric ? `<small>“${escapeHtml(item.rubric)}”</small>` : ''}
+      </li>`).join('')}</ul>` : ''}
+    </article>`;
+  }).join('');
+
+  return `<section class="rd-gaps">
+    <header class="rd-gaps-head">
+      <div><b>보완이 필요한 ${weak.length}개 영역</b>
+        <p>3점 미만 영역과 그 근거 문항입니다. 이 내용을 STEP 03 에서 ISV·패키지 선정 근거로 씁니다.</p></div>
+      <button type="button" id="handoff-isv" class="button-primary">이 근거로 ISV 추천 보기 <i data-lucide="arrow-right"></i></button>
+    </header>
+    <div class="rd-gap-grid">${blocks}</div>
+  </section>`;
+}
+
+/**
+ * bridge 가 못 채우는 21문항.
+ *
+ * 지우지 않고 접어 둔다. 42문항이 채우는 것은 13개뿐이고, 나머지는 ISV 전제조건
+ * 판정에 그대로 쓰인다. 값이 없으면 엔진이 "모르면 거르지 않는다" 로 통과시켜
+ * 막혔어야 할 후보가 추천에 올라온다 — 조용히 낙관적으로 틀린다.
+ */
+function renderResidualFqa() {
+  const bridged = new Set(asArray((state.deal.readiness_totals || {}).fqaFilled).map(Number));
+  const scores = state.deal.fqa_scores || {};
+  const items = state.refs.fqaItems.filter((item) => !bridged.has(Number(item.no)));
+  if (!items.length) return '';
+
+  const done = items.filter((item) => hasFqaScore(scores, item.no)).length;
+  const rows = items.map((item) => {
+    const buttons = [1, 2, 3, 4, 5].map((score) => `<label class="fqa-score-option" title="${score}점 · ${fqaScoreLabels[score]}">
+      <input type="radio" name="fqa-${item.no}" value="${score}" data-fqa-no="${item.no}" data-fqa-category="${item.category}" ${Number(scores[item.no]) === score ? 'checked' : ''} ${disabledAttr()}>
+      <span><strong>${score}</strong><small>${fqaScoreLabels[score]}</small></span>
+    </label>`).join('');
+    return `<div class="fqa-row">
+      <div class="fqa-question"><span class="fqa-no">${item.category}-${String(item.no).padStart(2, '0')}</span><span class="fqa-copy"><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.detail || '')}</small></span></div>
+      <div class="fqa-score-control"><fieldset class="fqa-score-group" aria-label="${escapeHtml(item.name)} 점수 선택">${buttons}</fieldset><button class="fqa-score-clear ${hasFqaScore(scores, item.no) ? '' : 'hidden'}" type="button" data-fqa-clear="${item.no}" data-fqa-category="${item.category}" ${disabledAttr()}>선택 해제</button></div>
+    </div>`;
+  }).join('');
+
+  return `<details class="residual-fqa"${done < items.length ? ' open' : ''}>
+    <summary>ISV 판정 문항 — 42문항으로 채울 수 없는 ${items.length}개 <b id="residual-progress">${done}/${items.length}</b></summary>
+    <p class="residual-note">42문항과 뜻이 어긋나 자동으로 채우지 않은 항목입니다. 비워 두면 전제조건 판정이 이 항목을 건너뛰어, 막혔어야 할 ISV 가 추천에 올라옵니다.</p>
+    <div class="fqa-list">${rows}</div>
+  </details>`;
+}
+
+function renderFqa() {
+  const trackOptions = state.refs.tracks.map((track) => `<option value="${track.id}" ${state.deal.track === track.id ? 'selected' : ''}>${track.id} · ${escapeHtml(track.name)}</option>`).join('');
+  return `${stageHeader('02', 'AI 준비도 진단', '6대 영역 42문항으로 고객의 현재 수준을 확인합니다. 고객이 포탈에서 답했으면 그 값이 들어와 있고, 아니면 여기서 함께 채웁니다.')}
     ${renderReadinessPanel()}
-    <div class="score-grid">${scoreCards}</div>
     <div class="field" style="margin-bottom:18px"><label for="deal-track">딜 트랙</label><select id="deal-track" ${disabledAttr()}><option value="">트랙 선택</option>${trackOptions}</select></div>
-    <div class="fqa-groups">${groups}</div>`;
+    ${renderReadinessGaps()}
+    <div class="rd-groups">${renderReadinessQuestions()}</div>
+    ${renderResidualFqa()}`;
 }
 
 
@@ -836,6 +975,11 @@ function renderRecommendationPanel() {
     return;
   }
 
+  // STEP02 에서 넘어온 근거. 판정은 21문항 게이트로 돌지만 영업이 고객에게
+  // 말할 때 쓰는 언어는 42문항 쪽이다.
+  const weakAreas = asArray((state.deal.readiness_totals || {}).areas)
+    .filter((area) => Number(area.score) < 3);
+
   // 데이터가 없어서 빠진 것과 안 맞아서 빠진 것은 다르게 읽어야 한다.
   const excluded = reco.excluded || [];
   const noData = excluded.filter((x) => x.excludedBy?.some((r) => /판정 데이터/.test(r)));
@@ -867,6 +1011,10 @@ function renderRecommendationPanel() {
       <button type="button" id="reco-refresh" class="secondary-button">다시 계산</button>
     </div>
     <div class="reco-gaps">미달 영역 · ${escapeHtml(reco.failingCategories.join(' · '))}</div>
+    ${weakAreas.length ? `<div class="reco-from-readiness">
+      <span>STEP 02 근거</span>
+      ${weakAreas.map((area) => `<b>${escapeHtml(area.name)} ${Number(area.score).toFixed(1)}</b>`).join('')}
+    </div>` : ''}
     ${groups || '<div class="reco-empty">조건에 맞는 후보가 없습니다.</div>'}
     ${notFit.length ? `<details class="reco-details"><summary>이 고객에게 맞지 않아 제외 ${notFit.length}건</summary>
       <ul>${notFit.map((x) => `<li>${escapeHtml(x.name)} — ${escapeHtml(x.excludedBy[0])}</li>`).join('')}</ul></details>` : ''}
@@ -910,11 +1058,35 @@ function renderSolutions() {
     ${hiddenCount > 0 ? `<p class="catalog-hidden-note">준비 중인 솔루션 ${hiddenCount}건은 표시하지 않았습니다.</p>` : ''}`;
 }
 
-function updateFqaProgress(category, scores) {
-  const categoryItems = state.refs.fqaItems.filter((item) => item.category === category);
-  const answered = categoryItems.filter((item) => hasFqaScore(scores, item.no)).length;
-  const progress = $(`[data-fqa-progress="${category}"]`);
-  if (progress) progress.textContent = `${answered} / ${categoryItems.length} 응답`;
+/** 잔여 21문항은 접이식 한 덩어리라 요약줄 하나만 갱신하면 된다. */
+function updateFqaProgress(scores) {
+  const bridged = new Set(asArray((state.deal.readiness_totals || {}).fqaFilled).map(Number));
+  const items = state.refs.fqaItems.filter((item) => !bridged.has(Number(item.no)));
+  const answered = items.filter((item) => hasFqaScore(scores, item.no)).length;
+  const progress = $('#residual-progress');
+  if (progress) progress.textContent = `${answered}/${items.length}`;
+}
+
+function paintReadinessItem(code, scores) {
+  const item = state.refs.readinessItems.find((entry) => entry.code === code);
+  const card = $(`#rd-${CSS.escape(code)}`);
+  if (!card || !item) return;
+  const chosen = Number(scores[code]) || 0;
+  card.classList.toggle('answered', Boolean(chosen));
+  $$('[data-readiness-score]', card).forEach((chip) => {
+    const picked = Number(chip.dataset.readinessScore) === chosen;
+    chip.classList.toggle('picked', picked);
+    chip.setAttribute('aria-pressed', String(picked));
+  });
+  $('[data-readiness-clear]', card)?.classList.toggle('hidden', !chosen);
+  updateReadinessProgress(item.area, scores);
+}
+
+function updateReadinessProgress(area, scores) {
+  const list = state.refs.readinessItems.filter((item) => item.area === area);
+  const answered = list.filter((item) => scores[item.code]).length;
+  const progress = $(`[data-readiness-progress="${area}"]`);
+  if (progress) progress.textContent = `${answered} / ${list.length} 응답`;
 }
 
 function renderPackages() {
@@ -1123,7 +1295,9 @@ function buildPitch() {
   const packageMap = new Map(state.refs.packages.map((pkg) => [pkg.id, pkg]));
   const selectedPackages = (asArray(state.deal.packages)).map((item) => packageMap.get(typeof item === 'string' ? item : item.id)).filter(Boolean);
   const track = state.refs.tracks.find((item) => item.id === state.deal.track);
-  const failing = Object.entries(state.deal.fqa_totals || {}).filter(([, value]) => !value.ready).map(([key]) => key);
+  // 42문항 기준으로 바꾼다. A/B/C/D 는 영업 내부 게이트라 고객 앞에서 쓸 말이 아니다.
+  const totals = state.deal.readiness_totals || {};
+  const weak = asArray(totals.areas).filter((area) => Number(area.score) < 3).map((area) => area.name);
   return `${state.deal.customer} 제안 대화 가이드
 
 1. 고객 상황
@@ -1131,7 +1305,7 @@ ${meta.industry ? `${meta.industry} 업종의 ` : ''}${state.deal.customer}는 $
 
 2. 권고 접근
 ${track ? `${track.name}: ${track.why}` : '진단 결과에 맞춰 도입 트랙을 확정합니다.'}
-${failing.length ? `진단에서 ${failing.join(', ')} 영역이 기준 미달이므로, 이 영역을 PoC 선행 과제로 둡니다.` : '현재 입력된 진단 영역은 기준을 충족합니다.'}
+${weak.length ? `AI 준비도 진단에서 ${weak.join(', ')} 영역이 3점 미만이므로, 이 영역을 PoC 선행 과제로 둡니다.` : Number.isFinite(Number(totals.average)) ? `AI 준비도 종합 ${Number(totals.average).toFixed(2)}점(${totals.maturity?.name || ''} 단계)으로 6대 영역 모두 3점 이상입니다.` : '진단을 먼저 완료해 우선 보완 영역을 확정합니다.'}
 
 3. 권고 조합
 ${selectedSolutions.length ? selectedSolutions.map((solution) => `• ${solution.name} — ${solution.jtbd || '핵심 요구 대응'}`).join('\n') : '• ISV 조합을 ③ 단계에서 선택해주세요.'}
@@ -1144,54 +1318,195 @@ ${selectedPackages.length ? selectedPackages.map((pkg) => `• ${pkg.name} (${pk
 }
 
 /**
- * 내려받을 리포트. 화면의 피치를 그대로 담되 진단 점수표와 미응답 문항을 덧붙인다.
- * 고객에게 건네는 문서라 근거가 되는 숫자가 같이 있어야 한다.
+ * 내려받을 리포트.
+ *
+ * 단계마다 내용은 다르지만 **머리말은 같다** — 어느 파일을 열어도 어느 고객의
+ * 어느 단계인지가 첫 화면에 있다. 여러 단계를 뽑아 붙여 놓았을 때 섞이지 않는다.
+ *
+ * 화면에 없는 숫자를 만들지 않는다. 점수는 서버가 낸 값을 그대로 쓴다.
  */
-function buildReportMarkdown() {
+const STAGE_REPORT_TITLES = Object.freeze([
+  '들어온 데이터', 'AI 준비도 진단', 'ISV 조합', '패키지와 딜 사이즈', '세일즈 피치'
+]);
+
+function reportHeader(stageIndex) {
   const meta = state.deal.customer_meta || {};
-  const totals = state.deal.fqa_totals || {};
-  const scores = state.deal.fqa_scores || {};
-
-  const scoreRows = ['A', 'B', 'C', 'D'].map((category) => {
-    const total = totals[category];
-    if (!total) return `| ${category} · ${fqaCategoryLabels[category]} | — | 0개 | 응답 대기 |`;
-    return `| ${category} · ${fqaCategoryLabels[category]} | ${total.score.toFixed(2)} / ${total.threshold} `
-      + `| ${total.answered}개 | ${total.ready ? '기준 충족' : '보완 필요'} |`;
-  }).join('\n');
-
-  const unanswered = state.refs.fqaItems.filter((item) => !hasFqaScore(scores, item.no));
-
-  return `# ${state.deal.customer} — AI 도입 준비도 및 제안 요약
+  return `# ${state.deal.customer} — ${STAGE_REPORT_TITLES[stageIndex] || '딜 요약'}
 
 | | |
 |---|---|
+| 단계 | STEP ${String(stageIndex + 1).padStart(2, '0')} · ${STAGE_REPORT_TITLES[stageIndex] || '—'} |
 | 작성일 | ${new Date().toISOString().slice(0, 10)} |
 | 업종 | ${meta.industry || '—'} |
 | 조직 규모 | ${meta.companySize || '—'} |
 | 도입 대상 | ${meta.targetUsers || '—'} |
+| 딜 트랙 | ${state.deal.track_name || state.deal.track || '미정'} |
+`;
+}
 
-## 진단 결과
+/** STEP01 — 들어온 고객 맥락. 이후 모든 판단의 전제라 그대로 남긴다. */
+function intakeReport() {
+  const meta = state.deal.customer_meta || {};
+  const label = {
+    none: '별도 SWG 없음', zscaler: 'Zscaler', 'other-swg': '타사 SWG',
+    low: '제한적', medium: 'PoC 예산 확보', high: '전사 확장 가능'
+  };
+  return `## 고객 맥락
 
-| 영역 | 점수 / 기준 | 응답 | 판정 |
+| 항목 | 값 |
+|---|---|
+| 고객사 | ${state.deal.customer} |
+| 업종 | ${meta.industry || '—'} |
+| 조직 규모 | ${meta.companySize || '—'} |
+| 도입 대상 | ${meta.targetUsers || '—'} |
+| 현재 보안 환경 | ${label[meta.securityStack] || meta.securityStack || '미정'} |
+| 투자 여력 | ${label[meta.investment] || meta.investment || '미정'} |
+| 유입 경로 | ${sourceNames[state.deal.source] || state.deal.source || '—'} |
+
+## 고객 상황·요청 메모
+
+${meta.notes || state.deal.lead_message || '_아직 입력되지 않았습니다._'}`;
+}
+
+/** STEP02 — 42문항. 축 점수·성숙도·미흡 근거·문항별 응답. */
+function readinessReport() {
+  const totals = state.deal.readiness_totals || {};
+  const scores = state.deal.readiness_scores || {};
+  const customer = state.deal.readiness_customer_scores || {};
+  const items = asArray(state.refs.readinessItems);
+  const areaName = new Map(asArray(state.refs.readinessAreas).map((a) => [a.id, a.name]));
+
+  if (!Number.isFinite(Number(totals.average))) {
+    return '## 진단 결과\n\n_아직 응답이 없습니다. STEP 02 에서 42문항을 채워주세요._';
+  }
+
+  const areaRows = asArray(totals.areas).map((area) => {
+    const score = Number(area.score);
+    if (!Number.isFinite(score)) return `| ${area.area} · ${area.name} | — | 0 / ${area.total ?? '—'} | 응답 대기 |`;
+    return `| ${area.area} · ${area.name} | ${score.toFixed(2)} | ${area.answered} / ${area.total ?? area.answered} | ${score < 3 ? '우선 보완' : '기준 충족'} |`;
+  }).join('\n');
+
+  const gaps = asArray(totals.priorities)
+    .filter((p) => Number(p.score) < 3)
+    .map((p) => `### ${p.area} · ${p.name} — ${Number(p.score).toFixed(2)}점\n\n`
+      + asArray(p.items).map((item) =>
+        `- **${item.code}** ${item.text} — **${item.score}점**${item.rubric ? `\n  - 고른 상태: “${item.rubric}”` : ''}`
+      ).join('\n')).join('\n\n');
+
+  const answerRows = items.map((item) => {
+    const value = Number(scores[item.code]);
+    const answered = Number.isFinite(value) && value > 0;
+    const origin = !answered ? '—'
+      : Number(customer[item.code]) === value ? '고객'
+      : Number(customer[item.code]) ? '영업 수정' : '영업';
+    const rubric = answered ? (asArray(item.rubric)[value - 1] || '') : '미응답';
+    return `| ${item.code} | ${areaName.get(item.area) || item.area} | ${item.text} | ${answered ? `${value}점` : '—'} | ${rubric} | ${origin} |`;
+  }).join('\n');
+
+  const unanswered = items.filter((item) => !scores[item.code]);
+
+  return `## 진단 결과
+
+종합 **${Number(totals.average).toFixed(2)}점** · ${totals.maturity?.name || ''} 단계 (Level ${totals.maturity?.level ?? '—'})
+${totals.maturity?.note ? `\n> ${totals.maturity.note}` : ''}
+
+| 영역 | 점수 | 응답 | 판정 |
 |---|---|---|---|
-${scoreRows}
+${areaRows}
+
+${totals.insight || ''}
 
 ${unanswered.length
-    ? `> 미응답 ${unanswered.length}개 문항이 있습니다: `
-      + unanswered.map((item) => `${item.category}-${String(item.no).padStart(2, '0')}`).join(', ')
-      + ' — 판정은 응답한 문항만으로 계산됩니다.'
+    ? `> 미응답 ${unanswered.length}개: ${unanswered.slice(0, 12).map((i) => i.code).join(', ')}`
+      + (unanswered.length > 12 ? ` 외 ${unanswered.length - 12}개` : '')
+      + ' — 점수는 응답한 문항만으로 계산됩니다.'
     : '모든 문항에 응답이 입력되어 있습니다.'}
 
----
+${gaps ? `## 보완이 필요한 영역\n\n${gaps}` : '## 보완이 필요한 영역\n\n_3점 미만 영역이 없습니다._'}
 
-${buildPitch()}`;
+## 문항별 응답
+
+| 문항 | 영역 | 내용 | 점수 | 선택한 상태 | 출처 |
+|---|---|---|---|---|---|
+${answerRows}`;
+}
+
+/** STEP03 — 확정한 ISV 와 그 근거. 제외 사유도 남긴다. */
+function solutionsReport() {
+  const selected = new Set(asArray(state.deal.isv_combo));
+  const chosen = state.refs.solutions.filter((solution) => selected.has(solution.id));
+  const reco = state.reco;
+
+  const rows = chosen.length
+    ? chosen.map((solution) => `| ${solution.name} | ${solution.category || '—'} | ${solution.jtbd || '—'} |`).join('\n')
+    : '| _아직 선택된 솔루션이 없습니다._ | | |';
+
+  // 화면의 추천 패널과 같은 묶음을 쓴다. 여기서 따로 분류하면 문서와 화면이 갈라진다.
+  const groups = RECO_GROUPS.map(({ key, path, title }) => {
+    const items = (path ? path.reduce((acc, step) => acc?.[step], reco) : reco?.[key]) || [];
+    if (!items.length) return '';
+    return `### ${title}\n\n` + items.map((item) => {
+      const reasons = asArray(item.reasons).slice(0, 3);
+      return `- **${item.name}**${item.enabler ? ` (← ${item.enabler.name} 선행)` : ''}`
+        + `${item.slotName ? ` — ${item.slotName}` : ''}`
+        + (reasons.length ? `\n${reasons.map((r) => `  - ${r}`).join('\n')}` : '');
+    }).join('\n');
+  }).filter(Boolean).join('\n\n');
+
+  const weakAreas = asArray((state.deal.readiness_totals || {}).areas)
+    .filter((area) => Number(area.score) < 3)
+    .map((area) => `${area.name} ${Number(area.score).toFixed(2)}`);
+
+  const excluded = asArray(reco?.excluded).filter((x) => !asArray(x.excludedBy).some((r) => /판정 데이터/.test(r)));
+
+  return `## 확정한 ISV 조합
+
+| 솔루션 | 카테고리 | 해결하는 문제 |
+|---|---|---|
+${rows}
+
+## 판정 근거
+
+${weakAreas.length ? `STEP 02 진단에서 3점 미만 — ${weakAreas.join(' · ')}` : 'STEP 02 진단에서 3점 미만 영역이 없습니다.'}
+${reco?.failingCategories?.length ? `\nISV 게이트 미달 영역 — ${reco.failingCategories.join(' · ')}` : ''}
+${reco?.label ? `\n> ${reco.label}` : ''}
+
+${groups ? `## 추천 후보\n\n${groups}` : ''}
+
+${excluded.length ? `## 이 고객에게 맞지 않아 제외\n\n${excluded.map((x) => `- ${x.name} — ${asArray(x.excludedBy)[0] || '사유 미기재'}`).join('\n')}` : ''}`;
+}
+
+/** STEP04 — 패키지와 가견적. 내부 참고용이라는 표시를 문서에도 남긴다. */
+function packagesReport() {
+  const { rows, total, hasPlaceholder } = computeQuote();
+  if (!rows.length) return '## 패키지와 가견적\n\n_아직 선택된 패키지가 없습니다._';
+
+  const lines = rows.map((row) =>
+    `| ${row.name} | ${row.baseMd} | ${row.adjMd ? `+${row.adjMd}` : '0'} | ${row.totalMd} MD `
+    + `| ${row.placeholder ? '별도협의' : (row.unit ? formatKRW(row.unit) : '미설정')} `
+    + `| ${row.placeholder ? '별도협의' : formatKRW(row.amount)} |`).join('\n');
+
+  return `## 패키지와 가견적
+
+> 내부 참고용입니다. 고객 제시 금액이 아닙니다.
+
+| 패키지 | 기준MD | 조정MD | 합계 | MD 단가 | 금액 |
+|---|---|---|---|---|---|
+${lines}
+
+**합계 (VAT 별도, 확정 단가만) — ${hasPlaceholder && total === 0 ? '별도협의' : formatKRW(total)}**
+
+${hasPlaceholder ? '⚠ MD 단가가 확정되지 않은 패키지는 금액에서 제외되고 별도협의로 표시됩니다.' : ''}`;
+}
+
+function buildStageReport(stageIndex) {
+  const body = [intakeReport, readinessReport, solutionsReport, packagesReport,
+    () => `## 세일즈 피치\n\n${buildPitch()}`][stageIndex];
+  return `${reportHeader(stageIndex)}\n${body ? body() : ''}`;
 }
 
 function renderPitch() {
-  const actions = '<button id="copy-pitch" class="secondary-button" type="button"><i data-lucide="copy"></i> 피치 복사</button>'
-    + '<button class="secondary-button" type="button" data-report="pdf"><i data-lucide="printer"></i> PDF</button>'
-    + '<button class="secondary-button" type="button" data-report="docx"><i data-lucide="file-text"></i> Word</button>'
-    + '<button class="secondary-button" type="button" data-report="md"><i data-lucide="file-code-2"></i> Markdown</button>';
+  const actions = '<button id="copy-pitch" class="secondary-button" type="button"><i data-lucide="copy"></i> 피치 복사</button>';
   return `${stageHeader('05', '세일즈 피치 준비', '앞 단계에서 확정한 고객 맥락·트랙·ISV·패키지를 한 번에 묶은 대화 가이드입니다.', actions)}
     <div id="pitch-content" class="pitch-box">${escapeHtml(buildPitch())}</div>`;
 }
@@ -1206,13 +1521,30 @@ function bindStageEvents() {
     state.deal.customer_meta = meta;
     scheduleSave({ customer_meta: meta });
   }));
+  // 42문항 루브릭 칩. 저장하면 서버가 다시 채점하고 21문항을 다시 채운다 —
+  // 그 결과가 응답으로 돌아와 축 점수와 자동 채움 표시가 갱신된다.
+  $$('[data-readiness-code]').forEach((chip) => chip.addEventListener('click', () => {
+    const scores = { ...(state.deal.readiness_scores || {}) };
+    scores[chip.dataset.readinessCode] = Number(chip.dataset.readinessScore);
+    state.deal.readiness_scores = scores;
+    paintReadinessItem(chip.dataset.readinessCode, scores);
+    scheduleSave({ readiness_scores: scores }, true);
+  }));
+  $$('[data-readiness-clear]').forEach((button) => button.addEventListener('click', () => {
+    const scores = { ...(state.deal.readiness_scores || {}) };
+    delete scores[button.dataset.readinessClear];
+    state.deal.readiness_scores = scores;
+    paintReadinessItem(button.dataset.readinessClear, scores);
+    scheduleSave({ readiness_scores: scores }, true);
+  }));
+
   $$('input[data-fqa-no]').forEach((input) => input.addEventListener('change', () => {
     if (!input.checked) return;
     const scores = { ...(state.deal.fqa_scores || {}) };
     scores[input.dataset.fqaNo] = Number(input.value);
     state.deal.fqa_scores = scores;
     input.closest('.fqa-score-control')?.querySelector('[data-fqa-clear]')?.classList.remove('hidden');
-    updateFqaProgress(input.dataset.fqaCategory, scores);
+    updateFqaProgress(scores);
     scheduleSave({ fqa_scores: scores }, true);
   }));
   $$('[data-fqa-clear]').forEach((button) => button.addEventListener('click', () => {
@@ -1221,9 +1553,16 @@ function bindStageEvents() {
     state.deal.fqa_scores = scores;
     $$('input[data-fqa-no]', button.closest('.fqa-score-control')).forEach((input) => { input.checked = false; });
     button.classList.add('hidden');
-    updateFqaProgress(button.dataset.fqaCategory, scores);
+    updateFqaProgress(scores);
     scheduleSave({ fqa_scores: scores }, true);
   }));
+  // STEP02 → STEP03 인계. 넘어가면서 추천을 다시 계산한다 — 방금 고친 응답이
+  // 반영되지 않은 예전 추천을 보여주면 근거와 결과가 어긋난다.
+  $('#handoff-isv')?.addEventListener('click', async () => {
+    await flushSave();
+    selectStage(2);
+    loadRecommendations();
+  });
   $('#deal-track')?.addEventListener('change', (event) => {
     state.deal.track = event.target.value || null;
     scheduleSave({ track: state.deal.track }, true);
@@ -1264,13 +1603,16 @@ function bindStageEvents() {
     await navigator.clipboard.writeText(buildPitch());
     toast('피치 가이드를 복사했습니다.');
   });
+  // 다섯 단계가 같은 버튼을 쓴다. 지금 보고 있는 단계의 내용이 나온다.
   $$('[data-report]').forEach((button) => button.addEventListener('click', () => {
-    const markdown = buildReportMarkdown();
-    const baseName = `${state.deal.customer || '고객'}_AI도입_제안요약_${new Date().toISOString().slice(0, 10)}`;
+    const stage = state.activeStage;
+    const label = STAGE_REPORT_TITLES[stage] || '딜 요약';
+    const markdown = buildStageReport(stage);
+    const baseName = `${state.deal.customer || '고객'}_STEP${String(stage + 1).padStart(2, '0')}_${label}_${new Date().toISOString().slice(0, 10)}`;
     const kind = button.dataset.report;
     if (kind === 'md') window.IssuReport.markdown(markdown, baseName);
     else if (kind === 'docx') window.IssuReport.docx(markdown, baseName);
-    else window.IssuReport.pdf(`${state.deal.customer} — AI 도입 제안 요약`, markdown);
+    else window.IssuReport.pdf(`${state.deal.customer} — ${label}`, markdown);
   }));
 }
 
@@ -1386,13 +1728,17 @@ function updateDealSummary(updated) {
 }
 
 function renderReadiness() {
-  const totals = state.deal?.fqa_totals || {};
-  const entries = ['A', 'B', 'C', 'D']
-    .filter((category) => totals[category] && Number.isFinite(Number(totals[category].score)))
-    .map((category) => [category, totals[category]]);
-  $('#readiness-card').innerHTML = `<h3>FQA 준비도</h3>${entries.length ? entries.map(([category, value]) => {
+  const totals = state.deal?.readiness_totals || {};
+  const entries = asArray(totals.areas)
+    .filter((area) => Number.isFinite(Number(area.score)))
+    .map((area) => [area.area, area]);
+  const average = Number(totals.average);
+  const heading = Number.isFinite(average)
+    ? `<h3>AI 준비도 <b>${average.toFixed(2)}</b><small>${escapeHtml(totals.maturity?.name || '')}</small></h3>`
+    : '<h3>AI 준비도</h3>';
+  $('#readiness-card').innerHTML = `${heading}${entries.length ? entries.map(([code, value]) => {
     const score = Math.max(0, Math.min(5, Number(value.score)));
-    return `<div class="mini-bar"><span>${category}</span><span class="mini-bar-track"><i style="width:${score / 5 * 100}%"></i></span><span>${score.toFixed(1)}</span></div>`;
+    return `<div class="mini-bar" title="${escapeHtml(value.name)}"><span>${escapeHtml(code)}</span><span class="mini-bar-track"><i style="width:${score / 5 * 100}%"></i></span><span>${score.toFixed(1)}</span></div>`;
   }).join('') : '<p style="color:var(--faint);font-size:10px;line-height:1.6;margin:0">② 단계에서 진단을 시작하면 영역별 준비도가 표시됩니다.</p>'}`;
 }
 

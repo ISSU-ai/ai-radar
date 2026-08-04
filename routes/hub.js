@@ -210,24 +210,28 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
    * 틀린 자동 채움은 빈칸보다 나쁘다. 빈칸은 영업이 보고 채우지만 틀린 값은
    * 그냥 통과한다.
    */
-  const applyReadiness = async (readinessScores) => {
+  /** 030 bridge 로 42문항 응답에서 채울 수 있는 21문항 점수. */
+  const bridgeFqaScores = async (readinessScores) => {
+    const fqaScores = {};
+    if (!(hasColumn && await hasColumn('readiness_fqa_bridge', 'item_code'))) return fqaScores;
+    const bridge = await pool.query(
+      `select b.item_code, i.no
+         from readiness_fqa_bridge b
+         join fqa_items i on i.category = b.fqa_category and i.name = b.fqa_item
+        where i.status = 'active'`
+    );
+    for (const row of bridge.rows) {
+      const value = Number(readinessScores[row.item_code]);
+      if (Number.isInteger(value) && value >= 1 && value <= 5) fqaScores[row.no] = value;
+    }
+    return fqaScores;
+  };
+
+  const applyReadiness = async (readinessScores, options = {}) => {
     const data = await loadReadinessItems();
     if (!data) return null;
-    const totals = scoreReadiness(data.items, data.areas, readinessScores);
-
-    const fqaScores = {};
-    if (hasColumn && await hasColumn('readiness_fqa_bridge', 'item_code')) {
-      const bridge = await pool.query(
-        `select b.item_code, i.no
-           from readiness_fqa_bridge b
-           join fqa_items i on i.category = b.fqa_category and i.name = b.fqa_item
-          where i.status = 'active'`
-      );
-      for (const row of bridge.rows) {
-        const value = Number(readinessScores[row.item_code]);
-        if (Number.isInteger(value) && value >= 1 && value <= 5) fqaScores[row.no] = value;
-      }
-    }
+    const totals = scoreReadiness(data.items, data.areas, readinessScores, options);
+    const fqaScores = await bridgeFqaScores(readinessScores);
     // 어느 21문항이 자동으로 채워졌는지 결과에 실어 둔다. 허브에서 영업이
     // "이건 고객이 답한 값" 과 "내가 채워야 할 값" 을 구분해야 하는데, 나중에
     // bridge 를 다시 조회하면 그 사이 bridge 가 바뀌었을 때 표시가 어긋난다.
@@ -319,6 +323,11 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       if (hasReadinessCols && readiness) {
         dealColumns.push('readiness_scores', 'readiness_totals');
         dealValues.push(lead.readiness_scores, readiness.totals);
+        // 032: 영업이 STEP02 에서 고쳐도 고객이 뭐라고 답했는지는 남는다.
+        if (await hasColumn('deals', 'readiness_customer_scores')) {
+          dealColumns.push('readiness_customer_scores');
+          dealValues.push(lead.readiness_scores);
+        }
       }
       const dealResult = await client.query(
         `insert into deals (${dealColumns.join(', ')}, stage, source)
@@ -619,6 +628,41 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         return res.status(403).json({ error: '담당자만 이 딜을 수정할 수 있습니다.' });
       }
 
+      // 영업이 STEP02 에서 42문항을 고쳤다. 다시 채점하고 21문항을 다시 채운다.
+      // 화면이 계산해 보내게 하면 고객 리포트의 숫자와 갈라진다.
+      if (patch.readiness_scores) {
+        if (!(hasColumn && await hasColumn('deals', 'readiness_scores'))) {
+          return res.status(503).json({ error: '준비도 컬럼이 없습니다. 031 마이그레이션을 확인하세요.' });
+        }
+        const data = await loadReadinessItems();
+        if (!data) return res.status(503).json({ error: '진단 문항을 불러올 수 없습니다.' });
+
+        let totals;
+        try {
+          // 영업은 채워 넣는 중이라 부분 응답이 정상이다. 고객 진단과 다른 점이다.
+          totals = scoreReadiness(data.items, data.areas, patch.readiness_scores, { partial: true });
+        } catch (error) {
+          return sendError(res, error);
+        }
+
+        // bridge 가 채우는 문항과 영업이 직접 넣은 문항을 가른다. 안 가르면
+        // 42문항을 한 번 고칠 때마다 영업이 손으로 넣은 21문항 답이 지워진다.
+        const bridged = await bridgeFqaScores(patch.readiness_scores);
+        const previouslyBridged = new Set(
+          (Array.isArray(current.readiness_totals?.fqaFilled) ? current.readiness_totals.fqaFilled : [])
+            .map(String)
+        );
+        const manual = {};
+        for (const [no, value] of Object.entries(current.fqa_scores || {})) {
+          if (!previouslyBridged.has(String(no))) manual[no] = value;
+        }
+        patch.fqa_scores = { ...bridged, ...manual };
+        patch.readiness_totals = {
+          ...totals,
+          fqaFilled: Object.keys(bridged).map(Number).sort((x, y) => x - y)
+        };
+      }
+
       if (patch.fqa_scores) {
         const items = await loadFqaItems();
         patch.fqa_totals = calculateFqaTotals(items, patch.fqa_scores);
@@ -627,7 +671,8 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       // jsonb columns must receive a JSON string. node-postgres serialises a JS
       // array as a Postgres array literal ({...}), which jsonb rejects with
       // "invalid input syntax for type json" — so stringify these explicitly.
-      const JSONB_DEAL_FIELDS = new Set(['isv_combo', 'packages', 'customer_meta', 'fqa_scores', 'fqa_totals']);
+      const JSONB_DEAL_FIELDS = new Set(['isv_combo', 'packages', 'customer_meta',
+        'fqa_scores', 'fqa_totals', 'readiness_scores', 'readiness_totals']);
       const fields = Object.keys(patch);
       const values = fields.map((field) => (JSONB_DEAL_FIELDS.has(field) ? JSON.stringify(patch[field]) : patch[field]));
       values.push(req.params.id);
@@ -702,8 +747,9 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       const refHiddenFilter = (hasColumn && await hasColumn('solutions', 'is_hidden'))
         ? 'and s.is_hidden = false' : '';
 
-      const [fqaItems, tracks, packages, solutions, settings] = await Promise.all([
+      const [fqaItems, readiness, tracks, packages, solutions, settings] = await Promise.all([
         loadFqaItems(),
+        loadReadinessItems(),
         pool.query('select id, name, why, warn, ask from tracks order by id').then((r) => r.rows),
         pool.query(
           `select p.id, p.name, p.scale, p.period, p.target, p.sort_order,
@@ -727,7 +773,13 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         ).then((r) => r.rows),
         pool.query('select usd_krw from hub_settings where id = true').then((r) => r.rows[0] || { usd_krw: 1400 })
       ]);
-      res.json({ stages: PIPELINE_STAGES, fqaItems, tracks, packages, solutions, settings });
+      res.json({
+        stages: PIPELINE_STAGES, fqaItems, tracks, packages, solutions, settings,
+        // 029 미적용 구간에는 빈 배열로 간다. 허브가 STEP02 를 못 그리는 것보다
+        // 문항 없이 뜨는 편이 낫다 — 나머지 단계는 그대로 돌아간다.
+        readinessAreas: readiness?.areas || [],
+        readinessItems: readiness?.items || []
+      });
     } catch (error) {
       console.error(error);
       sendError(res, error, 500);

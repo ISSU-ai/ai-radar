@@ -49,15 +49,26 @@ test('hub interactions use delegated handlers and isolate pending saves by deal'
   assert.match(js, /eventUpdatedAt\s*<=\s*knownUpdatedAt/);
 });
 
-test('PoC readiness questions are grouped by A-D and use direct score buttons', () => {
-  assert.match(js, /const fqaCategoryLabels = Object\.freeze\([\s\S]*?A:\s*'보안·데이터'[\s\S]*?D:\s*'업무·성과'/);
-  assert.match(js, /class="fqa-group" data-category="\$\{category\}"/);
-  assert.match(js, /type="radio"[^>]+data-fqa-no="\$\{item\.no\}"[^>]+data-fqa-category="\$\{category\}"/);
-  assert.doesNotMatch(js, /<select data-fqa-no=/);
+test('STEP02 는 42문항을 축별로 묶고 루브릭 문장을 고르게 한다', () => {
+  // 숫자 라디오로 두면 "모르니까 3점" 이 늘고, 그 값이 그대로 추천의 근거가 된다.
+  assert.match(js, /class="rd-group" data-area="\$\{escapeHtml\(area\.id\)\}"/);
+  assert.match(js, /data-readiness-code="\$\{escapeHtml\(item\.code\)\}" data-readiness-score="\$\{score\}"/);
+  assert.match(js, /asArray\(item\.rubric\)\.map/, '루브릭 문장이 선택지여야 한다');
+  assert.doesNotMatch(js, /type="radio"[^>]+data-readiness-code/, '42문항이 라디오로 되돌아갔다');
+  assert.match(js, /\$\$\('\[data-readiness-code\]'\)[\s\S]*?addEventListener\('click'/);
+  assert.match(js, /delete scores\[button\.dataset\.readinessClear\]/);
+  assert.match(css, /\.rd-picks\s*\{[^}]*grid-template-columns:\s*repeat\(5/);
+  assert.match(css, /\.rd-pick\.picked/);
+});
+
+test('bridge 가 못 채우는 21문항은 지우지 않고 접어 둔다', () => {
+  // 값이 없으면 엔진이 "모르면 거르지 않는다" 로 통과시켜, 막혔어야 할 후보가
+  // 추천에 올라온다. 조용히 낙관적으로 틀린다.
+  assert.match(js, /function renderResidualFqa/);
+  assert.match(js, /fqaFilled[\s\S]{0,200}filter\(\(item\) => !bridged\.has/);
+  assert.match(js, /type="radio"[^>]+data-fqa-no="\$\{item\.no\}"/, '잔여 문항 입력이 남아야 한다');
   assert.match(js, /\$\$\('input\[data-fqa-no\]'\)[\s\S]*?addEventListener\('change'/);
-  assert.match(js, /data-fqa-clear="\$\{item\.no\}"/);
-  assert.match(js, /delete scores\[button\.dataset\.fqaClear\]/);
-  assert.match(css, /\.fqa-score-group\s*\{[^}]*grid-template-columns:\s*repeat\(5/);
+  assert.match(css, /\.residual-fqa/);
   assert.match(css, /\.fqa-score-option input:checked \+ span/);
 });
 

@@ -432,3 +432,80 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 
 /* 42문항에서 자동으로 채워진 21문항 표시 */
 .fqa-auto { margin-left: 6px; padding: 1px 5px; border: 1px solid rgba(94,146,235,.4); border-radius: 4px; color: var(--blue); font: 700 9px var(--font-mono); vertical-align: 1px; }
+
+/* ── STEP02 42문항 입력 ─────────────────────────────────────── */
+.rdp-axis.none { --tone: #4a5464; }
+.rd-groups { display: grid; gap: 12px; }
+.rd-group { --area-color: var(--blue); overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #111820; }
+.rd-group[data-area="S"] { --area-color: var(--blue); }
+.rd-group[data-area="P"] { --area-color: var(--green); }
+.rd-group[data-area="D"] { --area-color: var(--purple); }
+.rd-group[data-area="T"] { --area-color: var(--gold); }
+.rd-group[data-area="B"] { --area-color: #4dd4c0; }
+.rd-group[data-area="G"] { --area-color: #e08bb8; }
+.rd-group-head { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .018); }
+.rd-group-mark { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--area-color); border-radius: 8px; color: var(--area-color); font: 700 13px var(--font-mono); }
+.rd-group-head h3 { margin: 0; font-size: 15px; }
+.rd-group-head p { margin: 3px 0 0; color: var(--faint); font-size: 12px; }
+.rd-group-head > strong { color: var(--area-color); font: 700 11px var(--font-mono); white-space: nowrap; }
+.rd-list { display: grid; }
+.rd-item { padding: 13px 14px; border-top: 1px solid rgba(255, 255, 255, .04); }
+.rd-item:first-child { border-top: 0; }
+.rd-item.answered { background: rgba(255, 255, 255, .012); }
+.rd-item-head { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; align-items: start; margin-bottom: 10px; }
+.rd-item-code { padding-top: 2px; color: var(--area-color); font: 700 10px var(--font-mono); }
+.rd-item-copy b { display: block; font-size: 13px; font-weight: 600; line-height: 1.5; }
+.rd-item-copy small { display: block; margin-top: 3px; color: var(--faint); font-size: 11px; line-height: 1.55; }
+.rd-tag { margin-left: 7px; padding: 1px 5px; border-radius: 4px; font: 700 9px var(--font-mono); vertical-align: 1px; white-space: nowrap; }
+.rd-tag.customer { border: 1px solid rgba(94, 146, 235, .4); color: var(--blue); }
+.rd-tag.edited { border: 1px solid rgba(224, 178, 90, .45); color: var(--gold); }
+.rd-item-clear { padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; background: none; color: var(--faint); font-size: 10px; cursor: pointer; white-space: nowrap; }
+.rd-item-clear:hover { color: var(--text); border-color: var(--faint); }
+.rd-picks { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.rd-pick { display: grid; gap: 4px; padding: 9px 8px; border: 1px solid var(--line); border-radius: 8px; background: #0e141b; color: var(--faint); text-align: left; cursor: pointer; transition: border-color .12s, background .12s, color .12s; }
+.rd-pick:hover:not(:disabled) { border-color: var(--area-color); color: var(--text); }
+.rd-pick b { color: var(--area-color); font: 700 11px var(--font-mono); }
+.rd-pick span { font-size: 11px; line-height: 1.45; word-break: keep-all; }
+.rd-pick.picked { border-color: var(--area-color); background: color-mix(in srgb, var(--area-color) 14%, #0e141b); color: var(--text); }
+.rd-pick:disabled { cursor: not-allowed; opacity: .55; }
+
+/* bridge 가 못 채우는 21문항 — 지우지 않고 접어 둔다 */
+.residual-fqa { margin-top: 16px; border: 1px solid var(--line); border-radius: 12px; background: #111820; }
+.residual-fqa > summary { padding: 13px 14px; color: var(--gold); font-size: 13px; font-weight: 600; cursor: pointer; }
+.residual-fqa > summary b { margin-left: 6px; font: 700 11px var(--font-mono); }
+.residual-note { margin: 0; padding: 0 14px 12px; color: var(--faint); font-size: 12px; line-height: 1.6; }
+#readiness-card h3 b { margin-left: 6px; font: 700 13px var(--font-mono); }
+#readiness-card h3 small { display: block; margin-top: 2px; color: var(--faint); font-size: 10px; font-weight: 500; }
+@media (max-width: 900px) { .rd-picks { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rd-item-head { grid-template-columns: 28px minmax(0, 1fr); } .rd-item-clear { grid-column: 2; justify-self: start; } }
+
+/* 단계 공통 다운로드 버튼 — 다섯 단계가 같은 자리, 같은 모양 */
+.stage-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.stage-report { display: flex; gap: 6px; padding-left: 12px; border-left: 1px solid var(--line); }
+.stage-actions > .stage-report:first-child { padding-left: 0; border-left: 0; }
+@media (max-width: 780px) { .stage-report { padding-left: 0; border-left: 0; } }
+
+/* 미흡 영역 — STEP03 으로 넘기는 지점 */
+.rd-gaps { margin-bottom: 16px; padding: 16px; border: 1px solid rgba(224, 178, 90, .28); border-radius: 12px; background: linear-gradient(180deg, rgba(224, 178, 90, .07), transparent 65%), #111820; }
+.rd-gaps.ok { border-color: rgba(88, 190, 140, .28); background: linear-gradient(180deg, rgba(88, 190, 140, .07), transparent 65%), #111820; }
+.rd-gaps.ok p { margin: 0 0 12px; color: var(--faint); font-size: 13px; line-height: 1.6; }
+.rd-gaps.ok p b { color: var(--text); }
+.rd-gaps-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; margin-bottom: 14px; }
+.rd-gaps-head b { font-size: 14px; }
+.rd-gaps-head p { margin: 4px 0 0; color: var(--faint); font-size: 12px; line-height: 1.6; }
+.rd-gap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.rd-gap { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #0e141b; }
+.rd-gap > header { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 9px; }
+.rd-gap-id { color: var(--gold); font: 700 11px var(--font-mono); }
+.rd-gap > header b { font-size: 13px; }
+.rd-gap > header strong { color: var(--gold); font: 700 13px var(--font-mono); }
+.rd-gap ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.rd-gap li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 6px; font-size: 11px; line-height: 1.5; }
+.rd-gap-code { color: var(--faint); font: 700 9px var(--font-mono); }
+.rd-gap-score { color: var(--red); font: 700 10px var(--font-mono); }
+.rd-gap li small { grid-column: 2 / -1; color: var(--faint); font-size: 10px; font-style: italic; }
+@media (max-width: 780px) { .rd-gaps-head { grid-template-columns: 1fr; } }
+
+/* STEP03 에 넘어온 STEP02 근거 */
+.reco-from-readiness { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -4px 0 12px; font-size: 11px; }
+.reco-from-readiness span { color: var(--faint); font: 700 9px var(--font-mono); }
+.reco-from-readiness b { padding: 2px 7px; border: 1px solid rgba(224, 178, 90, .35); border-radius: 5px; color: var(--gold); font: 700 10px var(--font-mono); }

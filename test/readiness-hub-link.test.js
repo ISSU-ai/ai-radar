@@ -45,16 +45,20 @@ test('42문항으로 들어온 리드에는 21문항 전량을 요구하지 않�
 // ── 채점과 bridge ────────────────────────────────────────────────
 test('접수 때 채점하고 bridge 로 21문항을 채운다', () => {
   const routes = read('routes/hub.js');
-  const open = routes.indexOf('const applyReadiness');
-  assert.ok(open > 0, 'applyReadiness 가 있어야 한다');
-  const body = routes.slice(open, routes.indexOf('router.get(', open));
 
-  assert.match(body, /scoreReadiness\(/, '서버가 채점해야 한다');
-  assert.match(body, /readiness_fqa_bridge/, '030 bridge 로 21문항을 채워야 한다');
-  assert.match(body, /fqaFilled/, '어느 문항이 자동으로 찼는지 남겨야 한다');
-  assert.match(body, /value >= 1 && value <= 5/, '범위 밖 값을 넣으면 안 된다');
-  assert.match(body, /hasColumn\('readiness_fqa_bridge'/,
+  const bridgeAt = routes.indexOf('const bridgeFqaScores');
+  assert.ok(bridgeAt > 0, 'bridgeFqaScores 가 있어야 한다');
+  const bridge = routes.slice(bridgeAt, routes.indexOf('const applyReadiness'));
+  assert.match(bridge, /readiness_fqa_bridge/, '030 bridge 로 21문항을 채워야 한다');
+  assert.match(bridge, /value >= 1 && value <= 5/, '범위 밖 값을 넣으면 안 된다');
+  assert.match(bridge, /hasColumn\('readiness_fqa_bridge'/,
     '030 미적용 구간에도 접수는 성공해야 한다');
+
+  const open = routes.indexOf('const applyReadiness');
+  const body = routes.slice(open, routes.indexOf('router.get(', open));
+  assert.match(body, /scoreReadiness\(/, '서버가 채점해야 한다');
+  assert.match(body, /bridgeFqaScores\(/);
+  assert.match(body, /fqaFilled/, '어느 문항이 자동으로 찼는지 남겨야 한다');
 });
 
 test('영업이 직접 답한 21문항이 자동 채움을 이긴다', () => {
@@ -70,13 +74,42 @@ test('031 미적용 구간에도 접수가 살아남는다', () => {
     '컬럼이 없으면 준비도만 빼고 딜은 만들어야 한다');
 });
 
-// ── 영업은 고칠 수 없다 ──────────────────────────────────────────
-test('영업이 딜에서 준비도 응답을 고칠 수 없다', () => {
-  // 고객이 답한 값이다. 영업이 고치면 리포트와 딜의 숫자가 갈라진다.
-  assert.throws(
-    () => normaliseDealPatch({ readiness_scores: { S1: 5 }, readiness_totals: { average: 5 } }),
-    /저장할 변경사항이 없습니다/
-  );
+// ── 영업 수정과 고객 원본 ────────────────────────────────────────
+test('영업은 42문항을 고칠 수 있고, 집계는 고칠 수 없다', () => {
+  // STEP02 가 42문항이 되면서 영업도 채운다 — 수동·시트 딜은 응답이 아예 없다.
+  // 다만 집계(readiness_totals)는 서버가 낸다. 화면이 보내게 두면 고객 리포트의
+  // 숫자와 갈라진다.
+  const patch = normaliseDealPatch({
+    readiness_scores: { S1: 5 },
+    readiness_totals: { average: 5 },
+    readiness_customer_scores: { S1: 1 }
+  });
+  assert.deepEqual(patch, { readiness_scores: { S1: 5 } });
+});
+
+test('고객 원본을 따로 남긴다 (032)', () => {
+  // 가르지 않으면 영업이 한 번 고친 순간 고객이 뭐라고 답했는지 되찾을 수 없다.
+  const sql = read('db/migrations/032_deal_readiness_source.sql');
+  assert.match(sql, /add column if not exists readiness_customer_scores jsonb/);
+  assert.match(sql, /where readiness_scores <> '\{\}'::jsonb/, '기존 딜 백필이 있어야 한다');
+  assert.match(sql, /and readiness_customer_scores = '\{\}'::jsonb/, '백필이 멱등이어야 한다');
+  assert.match(read('scripts/apply-migrations.js'), /'032_deal_readiness_source\.sql'/);
+  assert.match(read('routes/hub.js'), /hasColumn\('deals', 'readiness_customer_scores'\)/);
+});
+
+test('영업이 42문항을 고치면 서버가 다시 채점하고 21문항을 다시 채운다', () => {
+  const routes = read('routes/hub.js');
+  const open = routes.indexOf('if (patch.readiness_scores)');
+  assert.ok(open > 0, 'PATCH 가 42문항을 처리하지 않는다');
+  const body = routes.slice(open, routes.indexOf('const JSONB_DEAL_FIELDS', open));
+
+  assert.match(body, /partial: true/, '영업은 채워 넣는 중이라 부분 응답이 정상이다');
+  assert.match(body, /bridgeFqaScores\(patch\.readiness_scores\)/);
+  assert.match(body, /previouslyBridged/,
+    '영업이 손으로 넣은 21문항 답이 42문항 수정 때마다 지워지면 안 된다');
+  assert.match(body, /hasColumn\('deals', 'readiness_scores'\)/);
+  assert.match(routes, /'readiness_scores', 'readiness_totals'\]\)/,
+    'jsonb 직렬화 목록에 빠지면 저장이 깨진다');
 });
 
 // ── 허브 화면 ────────────────────────────────────────────────────
@@ -89,21 +122,25 @@ test('허브가 준비도 결과를 그대로 보여준다 — 다시 계산하�
     '허브가 42문항을 다시 채점하면 안 된다');
 });
 
-test('자동으로 채워진 21문항을 표시한다', () => {
-  // 표시가 없으면 영업이 자기가 넣은 값인 줄 알고 근거 없이 신뢰한다.
+test('고객이 답한 값과 영업이 고친 값을 구분해 보여준다', () => {
+  // 제안 근거가 고객 응답인지 영업 추정인지 구분이 안 되면 고객 앞에서 못 쓴다.
   const hub = read('hub.js');
-  assert.match(hub, /fqaFilled/);
-  assert.match(hub, /fqa-auto/);
-  assert.match(read('hub.css'), /\.fqa-auto/);
-  assert.match(read('hub.css'), /\.readiness-panel/);
+  assert.match(hub, /rd-tag customer/);
+  assert.match(hub, /rd-tag edited/);
+  assert.match(hub, /readiness_customer_scores/);
+  assert.match(read('hub.css'), /\.rd-tag\.customer/);
+  assert.match(read('hub.css'), /\.rd-tag\.edited/);
 });
 
-test('준비도가 없는 딜에서는 패널이 통째로 빠진다', () => {
-  // 수동·시트로 만든 딜에 빈 카드가 뜨면 "왜 0점이지" 를 묻게 된다.
+test('응답이 없어도 STEP02 가 뜬다 — 영업이 채울 화면이다', () => {
+  // 예전 21문항 시절에는 패널을 감췄지만 이제 STEP02 자체가 진단이다.
+  // 감추면 수동·시트 딜에서 진단을 시작할 방법이 없다.
   const hub = read('hub.js');
   const open = hub.indexOf('function renderReadinessPanel');
-  const body = hub.slice(open, hub.indexOf('function renderFqa', open));
-  assert.match(body, /if \(!totals\.average \|\| !areas\.length\) return '';/);
+  const body = hub.slice(open, hub.indexOf('function customerAnsweredCount', open));
+  assert.doesNotMatch(body, /if \(!totals\.average[^\n]*return ''/);
+  assert.match(body, /응답 대기/, '점수가 없으면 대기 상태로 그려야 한다');
+  assert.match(body, /if \(!items\.length\)/, '문항 자체가 없을 때만 안내로 대체한다');
 });
 
 // ── 진단 화면의 상담 폼 ──────────────────────────────────────────
@@ -207,4 +244,95 @@ test('진단 화면에서 랜딩으로 돌아올 수 있다', () => {
   assert.match(html, /<nav><a href="\/">홈<\/a>/, '상단에 홈 링크가 없다');
   assert.match(html, /class="rd-back" href="\/"/, '본문에 홈 링크가 없다');
   assert.match(read('readiness.css'), /\.rd-back/);
+});
+
+// ── 미흡 영역을 ISV 로 넘긴다 ────────────────────────────────────
+test('3점 미만 영역과 근거 문항을 STEP03 으로 넘긴다', () => {
+  // 숫자만 넘기면 STEP03 에서 "왜 이 ISV 인가" 에 답할 수 없다. 고객이 자기가
+  // 고른 말을 다시 읽게 하는 것이 근거로 가장 강하다.
+  const hub = read('hub.js');
+  const open = hub.indexOf('function renderReadinessGaps');
+  assert.ok(open > 0, 'renderReadinessGaps 가 없다');
+  const body = hub.slice(open, hub.indexOf('function renderResidualFqa', open));
+
+  assert.match(body, /Number\(area\.score\) < 3/, '3점 미만을 미흡으로 잡아야 한다');
+  assert.match(body, /totals\.priorities/, '근거 문항이 있어야 한다');
+  assert.match(body, /item\.rubric/, '고른 루브릭 문장이 붙어야 한다');
+  assert.match(body, /id="handoff-isv"/);
+  assert.match(hub, /renderReadinessGaps\(\)/, 'STEP02 에서 실제로 불러야 한다');
+
+  // 넘어가면서 다시 계산한다 — 방금 고친 응답이 빠진 추천을 보여주면 안 된다
+  assert.match(hub, /#handoff-isv'\)\?\.addEventListener[\s\S]{0,220}selectStage\(2\)/);
+  assert.match(hub, /#handoff-isv'\)\?\.addEventListener[\s\S]{0,260}loadRecommendations\(\)/);
+  assert.match(read('hub.css'), /\.rd-gaps/);
+});
+
+test('미흡이 없으면 보완이 아니라 확산으로 말한다', () => {
+  const hub = read('hub.js');
+  const open = hub.indexOf('function renderReadinessGaps');
+  const body = hub.slice(open, hub.indexOf('function renderResidualFqa', open));
+  assert.match(body, /if \(!weak\.length\)/);
+  assert.match(body, /확산 관점/);
+});
+
+test('STEP03 추천 패널이 42문항 근거를 같이 보여준다', () => {
+  // 판정은 21문항 게이트로 돌지만, 영업이 고객에게 말할 때 쓰는 언어는 42문항이다.
+  const hub = read('hub.js');
+  assert.match(hub, /reco-from-readiness/);
+  assert.match(hub, /STEP 02 근거/);
+  assert.match(read('hub.css'), /\.reco-from-readiness/);
+});
+
+// ── 단계별 다운로드 ──────────────────────────────────────────────
+test('다섯 단계가 똑같은 다운로드 버튼을 갖는다', () => {
+  // 단계마다 다르면 영업이 "여기는 되고 저기는 안 되네" 를 매번 확인해야 한다.
+  const hub = read('hub.js');
+  const open = hub.indexOf('const STAGE_REPORT_ACTIONS');
+  assert.ok(open > 0, 'STAGE_REPORT_ACTIONS 가 없다');
+  const block = hub.slice(open, hub.indexOf('function stageHeader', open));
+  for (const kind of ['pdf', 'docx', 'md']) {
+    assert.match(block, new RegExp(`data-report="${kind}"`), `${kind} 버튼이 없다`);
+  }
+  // stageHeader 하나에만 넣어야 다섯 단계가 같아진다
+  assert.match(hub, /function stageHeader[\s\S]{0,400}\$\{STAGE_REPORT_ACTIONS\}/);
+  assert.equal((hub.match(/data-report="pdf"/g) || []).length, 1,
+    '버튼을 단계마다 또 적으면 갈라진다');
+  assert.match(read('hub.css'), /\.stage-report/);
+});
+
+test('내려받는 내용이 지금 보고 있는 단계의 것이다', () => {
+  const hub = read('hub.js');
+  const open = hub.indexOf("$$('[data-report]')");
+  const body = hub.slice(open, hub.indexOf('});', hub.indexOf('IssuReport.pdf', open)));
+  assert.match(body, /const stage = state\.activeStage/);
+  assert.match(body, /buildStageReport\(stage\)/);
+  assert.match(body, /STEP\$\{String\(stage \+ 1\)\.padStart\(2, '0'\)\}/, '파일명에 단계가 들어가야 한다');
+  for (const call of ['IssuReport.markdown', 'IssuReport.docx', 'IssuReport.pdf']) {
+    assert.ok(body.includes(call), `${call} 배선이 없다`);
+  }
+});
+
+test('단계별 리포트가 같은 머리말을 쓴다', () => {
+  // 여러 단계를 뽑아 붙여 놓았을 때 어느 고객의 어느 단계인지가 섞이면 안 된다.
+  const hub = read('hub.js');
+  const open = hub.indexOf('function reportHeader');
+  const body = hub.slice(open, hub.indexOf('function intakeReport', open));
+  assert.match(body, /STAGE_REPORT_TITLES\[stageIndex\]/);
+  assert.match(body, /단계 \| STEP/);
+  assert.match(body, /작성일/);
+
+  const build = hub.slice(hub.indexOf('function buildStageReport'), hub.indexOf('function renderPitch'));
+  assert.match(build, /reportHeader\(stageIndex\)/);
+  for (const fn of ['intakeReport', 'readinessReport', 'solutionsReport', 'packagesReport']) {
+    assert.ok(build.includes(fn), `${fn} 가 buildStageReport 에 없다`);
+  }
+});
+
+test('리포트가 화면에 없는 숫자를 만들지 않는다', () => {
+  const hub = read('hub.js');
+  const open = hub.indexOf('function readinessReport');
+  const body = hub.slice(open, hub.indexOf('function solutionsReport', open));
+  assert.match(body, /state\.deal\.readiness_totals/);
+  assert.ok(!/reduce\([^)]*\+[^)]*\)\s*\/\s*/.test(body), '리포트가 평균을 다시 내고 있다');
+  assert.match(body, /고객|영업 수정/, '문항 출처가 표에 있어야 한다');
 });

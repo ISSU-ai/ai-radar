@@ -50,7 +50,9 @@ let deals = [
 
 app.get('/api/auth/me', (_req, res) => res.json({ user }));
 app.post('/api/auth/logout', (_req, res) => res.json({ message: 'ok' }));
-app.get('/api/hub/reference-data', (_req, res) => res.json(refs));
+app.get('/api/hub/reference-data', (_req, res) => res.json({
+  ...refs, readinessAreas: readiness.areas, readinessItems: readiness.items
+}));
 app.get('/api/hub/public/fqa-items', (_req, res) => res.json(refs.fqaItems.map(({ weight, threshold, ...item }) => item)));
 app.get('/api/hub/public/packages', (_req, res) => res.json(refs.packages.map(({ scale, ...pkg }) => pkg)));
 app.post('/api/hub/public/diagnose', (req, res) => {
@@ -86,6 +88,7 @@ app.post('/api/hub/public/leads', (req, res) => {
     fqa_totals: {}, track: lead.track, track_name: null,
     isv_combo: [], packages: [], stage: 0, source: 'portal',
     readiness_scores: lead.readiness_scores || {},
+    readiness_customer_scores: lead.readiness_scores || {},
     readiness_totals: readinessResult ? readinessResult.totals : {},
     lead_contact: lead.contact, lead_contact_name: lead.contact_name,
     lead_contact_phone: lead.contact_phone, lead_message: lead.message,
@@ -107,7 +110,20 @@ app.get('/api/hub/deals/:id', (req, res) => {
 app.patch('/api/hub/deals/:id', (req, res) => {
   const index = deals.findIndex((item) => item.id === req.params.id);
   if (index < 0) return res.status(404).json({ error: 'not found' });
-  deals[index] = { ...deals[index], ...req.body, updated_at: new Date().toISOString() };
+  const patch = { ...req.body };
+  // 실제 서버와 같이 다시 채점하고 21문항을 다시 채운다. 목업이 그냥 저장만 하면
+  // 축 점수가 안 바뀌어 화면 확인이 거짓말이 된다.
+  if (patch.readiness_scores) {
+    const result = mockApplyReadiness(patch.readiness_scores, { partial: true });
+    const previouslyBridged = new Set((deals[index].readiness_totals?.fqaFilled || []).map(String));
+    const manual = {};
+    for (const [no, value] of Object.entries(deals[index].fqa_scores || {})) {
+      if (!previouslyBridged.has(String(no))) manual[no] = value;
+    }
+    patch.fqa_scores = { ...result.fqaScores, ...manual };
+    patch.readiness_totals = result.totals;
+  }
+  deals[index] = { ...deals[index], ...patch, updated_at: new Date().toISOString() };
   res.json(deals[index]);
 });
 app.post('/api/hub/deals/:id/claim', (req, res) => {
@@ -392,8 +408,8 @@ const readinessBridge = (() => {
 })();
 
 /** 실제 서버의 applyReadiness 와 같은 일. 채점하고 bridge 로 21문항을 채운다. */
-function mockApplyReadiness(scores) {
-  const totals = scoreReadiness(readiness.items, readiness.areas, scores);
+function mockApplyReadiness(scores, options = {}) {
+  const totals = scoreReadiness(readiness.items, readiness.areas, scores, options);
   const fqaScores = {};
   for (const link of readinessBridge) {
     const item = refs.fqaItems.find((i) => i.category === link.fqa_category && i.name === link.fqa_item);
