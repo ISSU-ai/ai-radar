@@ -1842,7 +1842,10 @@ const publicFrontendAssets = Object.freeze({
   '/offering.js': 'offering.js',
   '/report.js': 'report.js',
   // 고객 분류 어휘. 상담 폼과 허브 인테이크가 같은 목록을 써야 값이 안 갈린다.
-  '/taxonomy.js': 'taxonomy.js'
+  '/taxonomy.js': 'taxonomy.js',
+  // AI 준비도 42문항 진단. 비로그인 고객 화면이다.
+  '/readiness.css': 'readiness.css',
+  '/readiness.js': 'readiness.js'
 });
 
 // 사내 자산. app.js/hub.js 에는 내부 영업 로직(딜사이즈 계산, 벤더 추천 매핑,
@@ -1884,6 +1887,7 @@ app.get(['/admin', '/admin.html'], requirePageAuth('/admin', CATALOG_EDITOR_ROLE
 app.get(['/admin/usage', '/admin-usage.html'], requirePageAuth('/admin/usage', 'admin'), sendFrontendFile('admin-usage.html'));
 app.get(['/hub', '/hub.html'], requirePageAuth('/hub'), sendFrontendFile('hub.html'));
 app.get(['/offering', '/offering.html'], sendFrontendFile('offering.html'));
+app.get(['/readiness', '/readiness.html'], sendFrontendFile('readiness.html'));
 app.get(['/about', '/about.html'], requirePageAuth('/about'), sendFrontendFile('about.html'));
 
 // 크롤러 정책. 사내 경로는 로그인 게이트 뒤에 있지만 URL 자체가 색인되는 것도 막는다.

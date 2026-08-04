@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 준비도 진단 | ISSU</title>
+  <meta name="description" content="6대 영역 42문항으로 우리 조직의 AI 준비 수준을 진단합니다.">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+  <link rel="stylesheet" href="/offering.css">
+  <link rel="stylesheet" href="/readiness.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <header class="site-head">
+    <a class="offering-brand" href="/"><span>ISSU</span><small>ENTERPRISE AI</small></a>
+    <nav><a href="#intro">진단 안내</a><a href="#assessment">진단 수행</a><a class="nav-cta" href="/#contact">상담 요청</a></nav>
+  </header>
+
+  <main class="readiness-main">
+    <!-- ── 안내 ────────────────────────────────────────────── -->
+    <section id="intro" class="rd-intro section-wrap">
+      <p class="kicker">AI READINESS ASSESSMENT</p>
+      <h1>지금 바로 AI 준비도를<br>진단해보세요</h1>
+      <p class="rd-lead">6대 영역 42문항입니다. 각 문항에서 <b>현재 우리 조직을 가장 잘 설명하는 문장</b>을 고르시면 됩니다.</p>
+
+      <div class="rd-guide">
+        <div><i data-lucide="users"></i><div><b>응답 대상</b><span>AI·디지털 전략 임원, IT 부서장, 데이터·AI 팀 실무자</span></div></div>
+        <div><i data-lucide="target"></i><div><b>응답 기준</b><span>현재 <b>실제 운영 중인 수준</b> 기준 (계획·목표 제외)</span></div></div>
+        <div><i data-lucide="mouse-pointer-click"></i><div><b>선택 방식</b><span>각 문항은 미선택 상태로 시작합니다. 반드시 직접 선택해주세요</span></div></div>
+      </div>
+
+      <h2 class="rd-sub">6대 영역</h2>
+      <div id="area-intro" class="rd-area-grid"><div class="loading">불러오는 중입니다.</div></div>
+
+      <h2 class="rd-sub">AI 성숙도 5단계</h2>
+      <div id="maturity-intro" class="rd-maturity-grid"></div>
+
+      <div class="rd-start"><button id="start-button" class="button primary" type="button">진단 시작 <i data-lucide="arrow-right"></i></button></div>
+    </section>
+
+    <!-- ── 진단 수행 ─────────────────────────────────────────── -->
+    <section id="assessment" class="rd-assessment section-wrap hidden">
+      <div class="rd-progress-bar">
+        <div id="area-tabs" class="rd-area-tabs" role="tablist" aria-label="진단 영역"></div>
+        <div class="rd-progress">
+          <span><b id="answered-count">0</b> / <span id="total-count">42</span> 문항 응답</span>
+          <div class="progress-track"><i id="progress-value"></i></div>
+        </div>
+      </div>
+
+      <div id="area-head" class="rd-area-head"></div>
+      <div id="questions" class="rd-questions"><div class="loading">진단 문항을 불러오는 중입니다.</div></div>
+
+      <div class="rd-nav">
+        <button id="prev-area" class="button secondary" type="button"><i data-lucide="arrow-left"></i> 이전 영역</button>
+        <button id="next-area" class="button primary" type="button">다음 영역 <i data-lucide="arrow-right"></i></button>
+        <button id="finish" class="button primary hidden" type="button">결과 확인 <i data-lucide="sparkles"></i></button>
+      </div>
+    </section>
+
+    <!-- ── 결과 ─────────────────────────────────────────────── -->
+    <section id="result" class="rd-result section-wrap hidden">
+      <div class="rd-result-head">
+        <div><p class="kicker">YOUR AI READINESS</p><h2>진단 결과</h2></div>
+        <div class="rd-total"><b id="total-score">—</b><span>/ 5.00</span><small id="maturity-label"></small></div>
+      </div>
+
+      <div class="rd-result-grid">
+        <div class="rd-radar-wrap"><canvas id="radar" width="320" height="320" aria-label="6대 영역 준비도 레이더차트"></canvas></div>
+        <div id="area-scores" class="rd-area-scores"></div>
+      </div>
+
+      <!-- 2단계에서 오퍼링 순위로 교체된다 -->
+      <h3 class="rd-sub">우선 개선 영역</h3>
+      <div id="priorities" class="rd-priorities"></div>
+
+      <h3 class="rd-sub">종합 소견</h3>
+      <p id="insight" class="rd-insight"></p>
+
+      <div class="report-actions">
+        <span class="report-actions-label">진단 리포트 내려받기</span>
+        <button class="button secondary" type="button" data-report="pdf"><i data-lucide="printer"></i> PDF</button>
+        <button class="button secondary" type="button" data-report="docx"><i data-lucide="file-text"></i> Word</button>
+        <button class="button secondary" type="button" data-report="md"><i data-lucide="file-code-2"></i> Markdown</button>
+        <button class="button secondary" type="button" data-report="csv"><i data-lucide="table"></i> CSV</button>
+      </div>
+
+      <details class="rd-detail">
+        <summary>문항별 상세 응답 <span id="detail-count"></span></summary>
+        <div id="detail-tables"></div>
+      </details>
+
+      <div class="result-note"><i data-lucide="info"></i><p>이 결과는 자가 진단 기반의 참고용입니다. 실제 실행 범위는 데이터·보안·업무 환경을 함께 검토해 확정합니다.</p></div>
+
+      <div class="rd-cta">
+        <p>결과를 실행 계획으로 바꿔보시겠어요?</p>
+        <a class="button primary" href="/#contact">상담 요청하기 <i data-lucide="arrow-right"></i></a>
+      </div>
+    </section>
+  </main>
+
+  <div id="unanswered-banner" class="rd-banner" role="alert"></div>
+
+  <footer><div class="offering-brand"><span>ISSU</span><small>ENTERPRISE AI</small></div><p>Enterprise AI, built for how your business actually works.</p><small>© 2026 ISSU. All rights reserved.</small></footer>
+
+  <script src="/taxonomy.js" defer></script>
+  <script src="/report.js" defer></script>
+  <script src="/readiness.js" defer></script>
+</body>
+</html>

@@ -347,6 +347,35 @@ app.put('/api/admin/solutions/:id', (req, res) => {
   res.json({ message: '저장되었습니다(목업).', slug: mockSolutions[index].slug });
 });
 
+// ── AI 준비도 42문항 (029) ────────────────────────────────
+// 목업이 실제와 어긋나면 화면 확인이 거짓말이 된다. 029 시드를 직접 파싱해 쓴다.
+const { scoreReadiness } = require('../lib/readiness-scoring');
+const readiness = (() => {
+  const sql = require('fs').readFileSync(
+    path.join(__dirname, '..', 'db', 'migrations', '029_readiness_items.sql'), 'utf8');
+  const areas = [...sql.matchAll(/\('([SPDTBG])', '([^']+)', (\d+)\)/g)]
+    .map((m) => ({ id: m[1], name: m[2], sort_order: Number(m[3]) }));
+  const items = [...sql.matchAll(
+    /\('([SPDTBG]\d+)', '([SPDTBG])', (\d+), '(exec|it|staff|all)',\s*\n\s*'((?:[^']|'')*)',\s*\n\s*'((?:[^']|'')*)',\s*\n\s*'(\[[^']*\])'::jsonb\)/g
+  )].map((m) => ({
+    code: m[1], area: m[2], seq: Number(m[3]), respondent: m[4],
+    text: m[5].replace(/''/g, "'"), detail: m[6].replace(/''/g, "'"),
+    rubric: JSON.parse(m[7]), target: 4
+  }));
+  return { areas, items };
+})();
+
+app.get('/api/hub/public/readiness-items', (_req, res) => res.json(readiness));
+app.post('/api/hub/public/readiness', (req, res) => {
+  try {
+    res.json(scoreReadiness(readiness.items, readiness.areas, req.body?.scores));
+  } catch (error) {
+    res.status(400).json({ error: error.message, unanswered: error.unanswered });
+  }
+});
+app.get(['/readiness', '/readiness.html'], (_req, res) =>
+  res.sendFile(path.join(__dirname, '..', 'readiness.html')));
+
 app.get('/admin', (_req, res) => res.sendFile(path.join(__dirname, '..', 'admin.html')));
 
 app.use(express.static(path.join(__dirname, '..')));

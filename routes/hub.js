@@ -18,6 +18,7 @@ const PRIVACY_NOTICE = Object.freeze({
 });
 
 const { recommend } = require('../lib/recommendation-engine');
+const { scoreReadiness } = require('../lib/readiness-scoring');
 
 function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColumn }) {
   // 009 는 수동 적용이라 컬럼이 아직 없을 수 있다. 없으면 "미확정(true)"으로 본다 —
@@ -185,6 +186,48 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     } catch (error) {
       console.error('Public packages failed:', error.message);
       sendPublicUnavailable(res, '오퍼링 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+    }
+  });
+
+  // ── AI 준비도 42문항 (029) ──────────────────────────────────
+  // 기존 21문항(/public/fqa-items)과 다른 층이다. 이쪽은 고객이 답하는 회사 수준
+  // 진단이고, 저쪽은 영업이 ISV 판정에 쓰는 게이트다. 섞지 않는다.
+  const loadReadinessItems = async () => {
+    if (!(hasColumn && await hasColumn('readiness_items', 'code'))) return null;
+    const [areas, items] = await Promise.all([
+      pool.query('select id, name, sort_order from readiness_areas order by sort_order'),
+      pool.query(`select code, area, seq, respondent, text, detail, rubric, target
+                    from readiness_items where status = 'active' order by area, seq`)
+    ]);
+    return { areas: areas.rows, items: items.rows };
+  };
+
+  router.get('/public/readiness-items', async (_req, res) => {
+    try {
+      const data = await loadReadinessItems();
+      if (!data) {
+        return sendPublicUnavailable(res, '준비도 진단 문항이 아직 준비되지 않았습니다.');
+      }
+      res.json(data);
+    } catch (error) {
+      console.error('Readiness items failed:', error.message);
+      sendPublicUnavailable(res, '준비도 진단 문항을 불러오지 못했습니다.');
+    }
+  });
+
+  // 점수 계산. 저장하지 않는다 — 상담 요청은 별도 경로다.
+  router.post('/public/readiness', async (req, res) => {
+    try {
+      const data = await loadReadinessItems();
+      if (!data) {
+        return sendPublicUnavailable(res, '준비도 진단 문항이 아직 준비되지 않았습니다.');
+      }
+      const result = scoreReadiness(data.items, data.areas, req.body?.scores);
+      res.json(result);
+    } catch (error) {
+      if (error?.expected) return sendError(res, error);
+      console.error('Readiness scoring failed:', error.message);
+      sendPublicUnavailable(res, '준비도 결과를 계산하지 못했습니다.');
     }
   });
 

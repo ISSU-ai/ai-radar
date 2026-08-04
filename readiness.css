@@ -1,0 +1,131 @@
+/* AI 준비도 42문항 진단. offering.css 의 토큰(색·버튼)을 그대로 쓴다. */
+
+.readiness-main { padding-top: 76px; }
+.rd-intro, .rd-assessment, .rd-result { max-width: 1040px; }
+.rd-lead { max-width: 620px; color: #526173; font-size: 16px; line-height: 1.7; }
+.rd-sub { margin: 42px 0 14px; font-size: 18px; font-weight: 800; }
+
+/* 안내 */
+.rd-guide { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); margin-top: 26px; }
+.rd-guide > div { display: flex; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfe; }
+.rd-guide svg { flex: none; width: 18px; color: var(--blue); }
+.rd-guide b { display: block; margin-bottom: 3px; font-size: 13px; }
+.rd-guide span { color: #66748a; font-size: 13px; line-height: 1.6; }
+
+.rd-area-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.rd-area-card { padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.rd-area-card b { display: block; color: var(--blue); font-size: 20px; font-weight: 900; }
+.rd-area-card strong { display: block; margin: 4px 0 2px; font-size: 14px; }
+.rd-area-card span { color: #8b98a9; font-size: 12px; }
+
+.rd-maturity-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.rd-maturity-card { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.rd-level { display: inline-block; padding: 2px 8px; border-radius: 20px; background: rgba(35,103,232,.1); color: var(--blue); font-size: 11px; font-weight: 800; }
+.rd-maturity-card strong { display: block; margin: 8px 0 2px; font-size: 15px; }
+.rd-maturity-card small { color: #8b98a9; font-size: 12px; }
+.rd-maturity-card p { margin: 6px 0 0; color: #66748a; font-size: 12px; line-height: 1.5; }
+.rd-start { margin-top: 34px; }
+
+/* 진행 */
+.rd-progress-bar { position: sticky; top: 62px; z-index: 20; padding: 14px 0; background: rgba(255,255,255,.94); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.rd-area-tabs { display: grid; gap: 6px; grid-template-columns: repeat(6, 1fr); }
+.rd-tab { display: flex; flex-direction: column; gap: 1px; padding: 8px 6px; border: 1px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer; text-align: left; transition: .15s; }
+.rd-tab b { color: var(--blue); font-size: 13px; font-weight: 900; }
+.rd-tab span { overflow: hidden; color: #526173; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.rd-tab small { color: #9aa7b8; font-size: 10.5px; }
+.rd-tab:hover { border-color: #b7cae7; }
+.rd-tab.active { border-color: var(--blue); background: #f5f9ff; }
+.rd-tab.done b::after { content: ' ✓'; color: #15a35b; }
+.rd-progress { display: flex; align-items: center; gap: 12px; margin-top: 10px; color: #66748a; font-size: 12.5px; }
+.rd-progress .progress-track { flex: 1; height: 5px; border-radius: 4px; background: #eaeff6; }
+.rd-progress .progress-track i { display: block; height: 5px; border-radius: 4px; background: var(--blue); transition: width .25s; }
+
+.rd-area-head { display: flex; align-items: center; gap: 14px; margin: 28px 0 18px; }
+.rd-area-mark { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 11px; background: rgba(35,103,232,.1); color: var(--blue); font-size: 18px; font-weight: 900; }
+.rd-area-head h2 { margin: 0; font-size: 20px; }
+.rd-area-head p { margin: 2px 0 0; color: #7a8698; font-size: 13px; }
+
+/* 문항 */
+.rd-questions { display: grid; gap: 14px; }
+.rd-question { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fff; transition: .18s; }
+.rd-question.answered { border-color: #cfe0f7; background: #fcfdff; }
+.rd-question.unanswered { border-color: #e5484d; box-shadow: 0 0 0 3px rgba(229,72,77,.1); }
+.rd-question header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.rd-code { padding: 2px 7px; border-radius: 5px; background: #eef2f8; color: #5b6b80; font-size: 11px; font-weight: 800; }
+.rd-badge { padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+.rb-exec { background: rgba(124,58,237,.12); color: #7c3aed; }
+.rb-it { background: rgba(35,103,232,.12); color: #2367e8; }
+.rb-staff { background: rgba(21,163,91,.12); color: #15a35b; }
+.rb-all { background: rgba(120,130,150,.14); color: #64748b; }
+.rd-question h3 { margin: 0 0 6px; font-size: 15px; font-weight: 700; line-height: 1.6; }
+.rd-detail-text { margin: 0 0 12px; color: #7a8698; font-size: 12.5px; line-height: 1.6; }
+
+/* 루브릭 칩 — 이게 선택지다. 숫자가 아니라 문장을 고른다. */
+.rd-chips { display: grid; gap: 7px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.rd-chip { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; cursor: pointer; text-align: left; transition: .14s; }
+.rd-chip b { color: #8b98a9; font-size: 11px; font-weight: 800; }
+.rd-chip span { color: #3f4d60; font-size: 12.5px; line-height: 1.5; }
+.rd-chip:hover { border-color: #b7cae7; background: #f8fbff; }
+.rd-chip.picked { border-color: var(--blue); background: #eef5ff; box-shadow: inset 0 0 0 1px var(--blue); }
+.rd-chip.picked b { color: var(--blue); }
+.rd-chip.picked span { color: #16233a; font-weight: 600; }
+
+.rd-nav { display: flex; gap: 10px; justify-content: flex-end; margin-top: 26px; }
+
+/* 결과 */
+.rd-result-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.rd-total { text-align: right; }
+.rd-total b { font-size: 42px; font-weight: 900; line-height: 1; }
+.rd-total span { color: #9aa7b8; font-size: 16px; }
+.rd-total small { display: block; margin-top: 6px; color: #526173; font-size: 12.5px; }
+.rd-result-grid { display: grid; gap: 24px; grid-template-columns: 340px 1fr; align-items: center; margin-top: 26px; }
+.rd-radar-wrap { display: grid; place-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 14px; }
+.rd-area-scores { display: grid; gap: 9px; }
+.rd-score-row { display: grid; gap: 10px; grid-template-columns: 22px 118px 1fr 48px; align-items: center; font-size: 13px; }
+.rd-score-row b { color: var(--blue); font-weight: 900; }
+.rd-score-row span { color: #526173; }
+.rd-score-row strong { text-align: right; font-variant-numeric: tabular-nums; }
+.rd-bar { height: 7px; border-radius: 4px; background: #eef2f8; }
+.rd-bar i { display: block; height: 7px; border-radius: 4px; background: var(--blue); }
+.rd-score-row.low .rd-bar i { background: #e5484d; }
+.rd-score-row.mid .rd-bar i { background: #f5a524; }
+.rd-score-row.high .rd-bar i { background: #15a35b; }
+
+.rd-priorities { display: grid; gap: 12px; }
+.rd-priority { padding: 16px; border: 1px solid var(--line); border-radius: 13px; }
+.rd-priority header { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+.rd-rank { padding: 2px 9px; border-radius: 20px; background: rgba(229,72,77,.11); color: #e5484d; font-size: 11px; font-weight: 800; }
+.rd-priority header b { font-size: 15px; }
+.rd-priority header small { color: #9aa7b8; font-size: 12px; }
+.rd-priority ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.rd-priority li { display: grid; gap: 3px; grid-template-columns: 44px 1fr; align-items: start; font-size: 13px; }
+.rd-priority li span:nth-child(2) { color: #3f4d60; line-height: 1.5; }
+.rd-priority li em { grid-column: 2; color: #7a8698; font-size: 12px; font-style: normal; }
+.rd-insight { padding: 16px; border-left: 3px solid var(--blue); background: #f7faff; color: #3f4d60; font-size: 13.5px; line-height: 1.75; }
+
+.rd-detail { margin-top: 26px; }
+.rd-detail summary { cursor: pointer; font-size: 14px; font-weight: 700; }
+.rd-detail h4 { margin: 20px 0 8px; font-size: 14px; }
+.rd-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.rd-table th, .rd-table td { padding: 8px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+.rd-table th { background: #f5f8fc; font-weight: 700; }
+.rd-pill-cell { text-align: center; }
+.rd-pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 800; }
+.rd-pill.s1, .rd-pill.s2 { background: rgba(229,72,77,.12); color: #e5484d; }
+.rd-pill.s3 { background: rgba(245,165,36,.14); color: #b8760a; }
+.rd-pill.s4, .rd-pill.s5 { background: rgba(21,163,91,.12); color: #15a35b; }
+
+.rd-cta { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-top: 34px; padding: 22px 26px; border-radius: 16px; background: #16233a; color: #fff; }
+.rd-cta p { margin: 0; font-size: 16px; font-weight: 700; }
+
+/* 미응답 배너 */
+.rd-banner { position: fixed; left: 50%; bottom: -100px; z-index: 60; display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 12px; background: #16233a; color: #fff; font-size: 13.5px; box-shadow: 0 18px 40px rgba(0,0,0,.24); transform: translateX(-50%); transition: bottom .3s ease; }
+.rd-banner.show { bottom: 26px; }
+.rd-banner button { border: 0; background: transparent; color: #9aa7b8; cursor: pointer; font-size: 14px; }
+
+@media (max-width: 900px) {
+  .rd-result-grid { grid-template-columns: 1fr; }
+  .rd-area-tabs { grid-template-columns: repeat(3, 1fr); }
+  .rd-score-row { grid-template-columns: 20px 1fr 60px; }
+  .rd-score-row .rd-bar { grid-column: 1 / -1; }
+}
