@@ -35,7 +35,7 @@ const OUTPUT = path.join(MIGRATIONS_DIR, '_combined_apply.sql');
 // 021 은 넣지 않는다. 신규 2종은 026 이 직접 is_hidden = true 로 세운다.
 // 021 을 다시 돌리면 keep 목록 기준으로 전체를 덮어써서 어드민에서 손으로 켜 둔
 // 것까지 되돌아간다.
-const DEFAULT_ORDER = ['028'];   // 024~027 은 적용 완료 (2026-08-04)
+const DEFAULT_ORDER = ['029', '030'];   // 024~028 은 적용 완료 (2026-08-04)
 
 function resolveFiles(prefixes) {
   const all = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql') && !f.startsWith('_'));
