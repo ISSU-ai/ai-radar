@@ -34,8 +34,17 @@ const refs = {
 };
 
 let deals = [
-  { id: 'd1', customer: '한빛금융', customer_meta: { industry: '금융', targetUsers: '전사 1,200명', securityStack: 'zscaler' }, fqa_scores: { 1: 4, 2: 3, 3: 4, 4: 3, 5: 4 }, fqa_totals: { A: { score: 3.5, ready: true, answered: 2 }, B: { score: 4, ready: true, answered: 1 }, C: { score: 3, ready: true, answered: 1 }, D: { score: 4, ready: true, answered: 1 } }, track: 'T-C', track_name: 'Zscaler 보유형', isv_combo: ['s1', 's2'], packages: [{ id: 'POC', md: 28 }], stage: 2, source: 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() },
-  { id: 'd2', customer: '온누리제조', customer_meta: { industry: '제조' }, fqa_scores: {}, fqa_totals: {}, track: 'T-A', track_name: '인프라 동반형', isv_combo: [], packages: [], stage: 0, source: 'portal', owner_id: null, owner_name: null, updated_at: new Date(Date.now() - 3600000).toISOString() },
+  { id: 'd1', customer: '한빛금융', customer_meta: { industry: 'Finance', companySize: '1,000명 초과', targetUsers: '전사 1,200명', securityStack: 'zscaler' }, fqa_scores: { 1: 4, 2: 3, 3: 4, 4: 3, 5: 4 }, fqa_totals: { A: { score: 3.5, ready: true, answered: 2 }, B: { score: 4, ready: true, answered: 1 }, C: { score: 3, ready: true, answered: 1 }, D: { score: 4, ready: true, answered: 1 } }, track: 'T-C', track_name: 'Zscaler 보유형', isv_combo: ['s1', 's2'], packages: [{ id: 'POC', md: 28 }], stage: 2, source: 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() },
+  // 포탈로 들어온 딜. 027 이후 담당자 이름·전화번호가 leads 에 남고 허브는 읽기 전용으로
+  // 보여준다. 업종·규모는 taxonomy.js 어휘(SFDC 코드 · 진단기준 구간)로 저장된다.
+  { id: 'd2', customer: '온누리제조',
+    customer_meta: { industry: 'Manufacturing', companySize: '501~1,000명', securityStack: 'none' },
+    fqa_scores: {}, fqa_totals: {}, track: 'T-A', track_name: '인프라 동반형',
+    isv_combo: [], packages: [], stage: 0, source: 'portal',
+    lead_contact: 'park@onnuri.co.kr', lead_contact_name: '박담당',
+    lead_contact_phone: '031-987-6543 (내선 12)',
+    lead_message: '전사 문서 검색부터 검토 중입니다.',
+    owner_id: null, owner_name: null, updated_at: new Date(Date.now() - 3600000).toISOString() },
   { id: 'd3', customer: '다온커머스', customer_meta: { industry: '유통' }, fqa_scores: {}, fqa_totals: {}, track: 'T-B', track_name: '경량 도입형', isv_combo: ['s1'], packages: [{ id: 'DISCOVERY', md: 8 }], stage: 4, source: 'sheet', owner_id: user.id, owner_name: user.name, updated_at: new Date(Date.now() - 86400000).toISOString() }
 ];
 
