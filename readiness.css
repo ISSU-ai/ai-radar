@@ -144,3 +144,9 @@
 .rd-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 18px; color: #56617a; font-size: 13px; font-weight: 600; text-decoration: none; }
 .rd-back:hover { color: #2563eb; }
 .rd-back i { width: 15px; height: 15px; }
+
+/* 접수 후 랜딩으로 — 읽을 시간을 주고 보낸다 */
+.lead-redirect { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, .12); color: #a8b6cc; font-size: 13px; }
+.lead-redirect b { color: #fff; }
+.lead-redirect button { padding: 5px 12px; border: 1px solid rgba(255, 255, 255, .22); border-radius: 7px; background: none; color: #cdd8e8; font-size: 12px; cursor: pointer; }
+.lead-redirect button:hover { border-color: rgba(255, 255, 255, .45); color: #fff; }

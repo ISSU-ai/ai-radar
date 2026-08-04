@@ -359,3 +359,22 @@ test('허브 화면에 21문항 문구가 없다', () => {
     assert.ok(!strings.includes(dead), `화면에 "${dead}" 가 남아 있다`);
   }
 });
+
+test('접수 후 랜딩으로 돌려보내되 머무를 수 있다', () => {
+  // 접수까지 끝나면 이 화면에서 할 일이 없다. 다만 바로 넘기면 접수 여부를 못 보고
+  // 다시 넣는다 — 읽을 시간을 주고, 리포트를 더 볼 사람은 남을 수 있어야 한다.
+  const js = read('readiness.js');
+  const open = js.indexOf('function startHomeCountdown');
+  assert.ok(open > 0, 'startHomeCountdown 이 없다');
+  const body = js.slice(open, js.indexOf('// ── 시작', open));
+
+  assert.match(body, /window\.location\.href = '\/'/);
+  assert.match(body, /clearInterval\(timer\)/, '취소하면 타이머가 멈춰야 한다');
+  assert.match(body, /stay-here/);
+  assert.match(js, /lead-success'\)\.classList\.remove\('hidden'\)[\s\S]{0,400}startHomeCountdown\(\)/,
+    '접수 성공 뒤에만 걸려야 한다');
+  const calculateBody = js.slice(js.indexOf('async function calculate'), js.indexOf('function renderResult'));
+  assert.ok(!/startHomeCountdown|location\.href/.test(calculateBody),
+    '결과 확인 직후에 걸면 고객이 자기 점수를 못 본다');
+  assert.match(read('readiness.html'), /id="lead-redirect"/);
+});

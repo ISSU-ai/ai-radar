@@ -445,7 +445,12 @@ async function submitLead(event) {
     });
     formEl.classList.add('hidden');
     $('#lead-success').classList.remove('hidden');
+    $('#lead-success').scrollIntoView({ behavior: 'smooth', block: 'center' });
     window.lucide?.createIcons();
+
+    // 접수까지 끝나면 이 화면에서 더 할 일이 없다. 접수됐다는 것을 읽을 만큼만
+    // 두고 랜딩으로 돌려보낸다. 바로 넘기면 접수 여부를 못 보고 다시 넣는다.
+    startHomeCountdown();
   } catch (err) {
     error.textContent = err.message;
     button.disabled = false;
@@ -456,6 +461,30 @@ async function submitLead(event) {
 function startAssessment() {
   $('#assessment').classList.remove('hidden');
   goToArea(0);
+}
+
+/** 접수 완료를 읽을 시간을 주고 랜딩으로 보낸다. 남고 싶으면 취소할 수 있다. */
+function startHomeCountdown(seconds = 4) {
+  const note = $('#lead-redirect');
+  if (!note) { window.location.href = '/'; return; }
+
+  let left = seconds;
+  const label = () => {
+    note.innerHTML = `<span><b>${left}초</b> 후 처음 화면으로 돌아갑니다.</span>
+      <button type="button" id="stay-here">여기 있을게요</button>`;
+    $('#stay-here').addEventListener('click', () => {
+      clearInterval(timer);
+      note.innerHTML = '<span>이 화면에 머무릅니다. 리포트는 위에서 내려받을 수 있습니다.</span>';
+    });
+  };
+  label();
+  note.classList.remove('hidden');
+
+  const timer = setInterval(() => {
+    left -= 1;
+    if (left <= 0) { clearInterval(timer); window.location.href = '/'; return; }
+    label();
+  }, 1000);
 }
 
 // ── 시작 ──────────────────────────────────────────────────────────

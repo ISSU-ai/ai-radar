@@ -637,15 +637,16 @@ function renderIntake() {
 }
 
 /**
- * STEP 02 — AI 준비도 42문항.
+ * STEP 02 — AI 준비도 진단.
  *
- * 예전에는 여기가 21문항(FQA)이었다. 21문항은 ISV 전제조건 판정용 게이트라
- * "이 제품을 지금 살 수 있나" 를 묻고, 42문항은 "회사가 AI 를 얼마나 하고 있나" 를
- * 묻는다. 영업이 고객과 앉아서 확인하는 것은 후자다. 그래서 화면을 갈아끼웠다.
+ * 고객이 답하는 진단은 6대 영역 42문항 하나뿐이다. 포탈로 들어온 딜에는 응답이
+ * 들어와 있고, 수동·시트 딜은 영업이 여기서 채운다.
  *
- * 21문항은 사라진 게 아니라 뒤로 갔다. 030 bridge 가 42문항 응답에서 13개를
- * 자동으로 채우고, 그 값이 그대로 추천 엔진의 전제조건 판정에 들어간다.
- * bridge 가 못 채우는 나머지는 아래 접이식 블록에서 따로 받는다.
+ * 응답은 서버가 채점한다(`PATCH /deals/:id`). 화면에서 다시 계산하면 고객이
+ * 리포트에서 본 숫자와 영업이 보는 숫자가 갈라진다.
+ *
+ * ISV 전제조건 판정에 필요한 값은 서버가 응답에서 끌어낸다 — 화면에서 따로 묻지
+ * 않는다. 끌어낼 수 없는 것만 STEP 03 에서 후보별로 확인한다.
  */
 
 const READINESS_TONE = (score) => (score < 2.5 ? 'low' : score < 3.5 ? 'mid' : 'high');
@@ -760,8 +761,8 @@ function renderReadinessQuestions() {
  * 숫자만 넘기면 STEP03 에서 "왜 이 ISV 인가" 에 답할 수 없다. 고객이 자기가 고른
  * 말을 다시 읽게 하는 것이 근거로 가장 강하다.
  *
- * 추천 엔진 자체는 21문항 게이트로 돈다(030 bridge 로 채워진 값). 여기서 넘기는
- * 것은 그 판정의 **근거 언어**다 — 영업이 고객 앞에서 쓸 수 있는 쪽.
+ * 여기서 넘기는 것은 판정의 **근거 언어**다. 영업이 고객 앞에서 "D 축이 2.1 이고
+ * D2 를 1점으로 답하셨다" 라고 말할 수 있어야 제안이 선다.
  */
 function renderReadinessGaps() {
   const totals = state.deal.readiness_totals || {};
@@ -823,7 +824,7 @@ const RECO_GROUPS = [
   { key: 'bundles', title: '선행 조건이 필요', tone: 'bundle' },
   { path: ['proposal', 'operate'], title: '③ 정착·운영', tone: 'ok' },
   { path: ['proposal', 'unclassified'], title: '역할 미지정 패키지', tone: 'warn' },
-  { key: 'needsConfirmation', title: '확인 필요 — 42문항으로 판정되지 않는 전제', tone: 'warn' }
+  { key: 'needsConfirmation', title: '확인 필요 — 진단으로 판정되지 않는 전제', tone: 'warn' }
 ];
 
 async function loadRecommendations() {
@@ -893,7 +894,7 @@ function recoCardMarkup(item, tone) {
     .map((r) => `<li>${escapeHtml(r)}</li>`).join('');
   const flags = (item.redFlags || []).slice(0, 2).map((f) =>
     `<li>${escapeHtml(f.signal)} → ${escapeHtml((f.alternatives || []).map((a) => a.label).join(', '))}</li>`).join('');
-  // 42문항으로 자동 판정이 안 되는 전제만 여기 온다. 확인 체크는 후보별로 남는다 —
+  // 진단 응답으로 자동 판정이 안 되는 전제만 여기 온다. 확인은 후보별로 남는다 —
   // 같은 전제라도 솔루션마다 요구 수준이 다르고, 한 번 확인한 것이 다른 후보까지
   // 통과시키면 그게 조용히 틀리는 자리다.
   const pending = (item.prerequisites?.pendingManual || []).map((p) => `<li>
@@ -935,8 +936,8 @@ function renderRecommendationPanel() {
     return;
   }
 
-  // STEP02 에서 넘어온 근거. 판정은 21문항 게이트로 돌지만 영업이 고객에게
-  // 말할 때 쓰는 언어는 42문항 쪽이다.
+  // STEP02 에서 넘어온 근거. 후보를 고른 계산과 별개로, 고객에게 말할 때 쓰는
+  // 언어는 이쪽이다.
   const weakAreas = asArray((state.deal.readiness_totals || {}).areas)
     .filter((area) => Number(area.score) < 3);
 
@@ -1291,7 +1292,7 @@ ${selectedPackages.length ? selectedPackages.map((pkg) => `• ${pkg.name} (${pk
  * 화면에 없는 숫자를 만들지 않는다. 점수는 서버가 낸 값을 그대로 쓴다.
  */
 const STAGE_REPORT_TITLES = Object.freeze([
-  '들어온 데이터', 'AI 준비도 진단', 'ISV 조합', '패키지와 딜 사이즈', '세일즈 피치'
+  '들어온 데이터', 'AI 준비도 진단', 'ISV 조합 추천', '패키지와 딜 사이즈', '세일즈 피치'
 ]);
 
 function reportHeader(stageIndex) {
@@ -1486,8 +1487,8 @@ function bindStageEvents() {
     state.deal.customer_meta = meta;
     scheduleSave({ customer_meta: meta });
   }));
-  // 42문항 루브릭 칩. 저장하면 서버가 다시 채점하고 21문항을 다시 채운다 —
-  // 그 결과가 응답으로 돌아와 축 점수와 자동 채움 표시가 갱신된다.
+  // 루브릭 칩. 저장하면 서버가 다시 채점하고 그 결과가 응답으로 돌아와
+  // 축 점수와 성숙도가 갱신된다.
   $$('[data-readiness-code]').forEach((chip) => chip.addEventListener('click', () => {
     const scores = { ...(state.deal.readiness_scores || {}) };
     scores[chip.dataset.readinessCode] = Number(chip.dataset.readinessScore);

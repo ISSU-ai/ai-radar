@@ -8,7 +8,7 @@ app.use(express.json());
 
 const user = { id: '00000000-0000-0000-0000-000000000001', name: '김영업', email: 'sales@issu.ai', role: 'admin' };
 const refs = {
-  stages: ['들어온 데이터', 'AI 준비도 진단', 'ISV 조합', '딜 사이즈', '피치 준비'],
+  stages: ['들어온 데이터', 'AI 준비도 진단', 'ISV 조합 추천', '딜 사이즈', '피치 준비'],
   tracks: [
     { id: 'T-A', name: '인프라 동반형', why: '보안·AI 기반을 함께 설계합니다.', warn: '인프라 범위를 먼저 확정하세요.' },
     { id: 'T-B', name: '경량 도입형', why: '빠르게 가치를 검증합니다.', warn: '성공 기준을 수치로 합의하세요.' },
