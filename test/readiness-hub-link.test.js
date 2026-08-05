@@ -378,3 +378,48 @@ test('접수 후 랜딩으로 돌려보내되 머무를 수 있다', () => {
     '결과 확인 직후에 걸면 고객이 자기 점수를 못 본다');
   assert.match(read('readiness.html'), /id="lead-redirect"/);
 });
+
+// ── 034 · 고객 진입 시나리오 ─────────────────────────────────────
+test('034 — 트랙이 진입 시나리오 3유형으로 바뀐다', () => {
+  const sql = read('db/migrations/034_entry_scenarios.sql');
+  for (const [id, name] of [['E-1', '빠른 도입형'], ['E-2', '개발 생산성형'], ['E-3', '서비스 개발형']]) {
+    assert.match(sql, new RegExp(`'${id}', '${name}'`), `${id} ${name} 이 없다`);
+  }
+  assert.match(sql, /delete from tracks where id in \('T-A', 'T-B', 'T-C', 'T-D'\)/);
+});
+
+test('034 — 딜을 옮긴 뒤에 옛 트랙을 지운다', () => {
+  // deals.track 이 tracks(id) 를 참조한다. 순서가 바뀌면 FK 위반으로 통째로 롤백된다.
+  const sql = read('db/migrations/034_entry_scenarios.sql');
+  const insertAt = sql.indexOf('insert into tracks');
+  const updateAt = sql.indexOf('update deals set track');
+  const deleteAt = sql.indexOf('delete from tracks');
+  assert.ok(insertAt < updateAt && updateAt < deleteAt,
+    `순서가 틀렸다: insert ${insertAt} → update ${updateAt} → delete ${deleteAt}`);
+  assert.match(sql, /where track in \('T-A', 'T-B', 'T-C', 'T-D'\)/, '이관 대상이 명시돼야 한다');
+});
+
+test('034 — 판정 문구의 T-D 참조를 정리한다', () => {
+  // 019 의 red_flag 가 "T-D 트랙" 을 가리킨다. 화면에 그대로 나가는 문장이다.
+  const sql = read('db/migrations/034_entry_scenarios.sql');
+  assert.match(sql, /update solutions set red_flags = replace/);
+  assert.match(sql, /T-D 트랙/);
+});
+
+test('034 — 추천 필터가 트랙 대신 보안 환경을 직접 본다', () => {
+  const engine = read('lib/recommendation-engine.js');
+  const at = engine.indexOf("candidate.slot === 'security-gateway'");
+  assert.ok(at > 0);
+  const body = engine.slice(engine.lastIndexOf('const swg', at) - 400, at + 200);
+  assert.match(body, /meta\.securityStack/);
+  assert.ok(!/deal\.track/.test(body), '아직 트랙을 보고 있다');
+  // 트랙이 판정에 다시 물리면 영업이 손으로 바꿔 보안 환경과 어긋난다
+  assert.ok(!/deal\.track === '/.test(engine), '엔진이 특정 트랙 id 에 물려 있다');
+});
+
+test('034 — 화면·목업에 옛 트랙이 남지 않았다', () => {
+  for (const file of ['hub.js', 'hub.css', 'scripts/mock-ui-server.js']) {
+    const body = read(file).replace(/^\s*\/\/.*$/gm, '');
+    assert.ok(!/T-[ABCD]\b/.test(body), `${file} 에 옛 트랙이 남아 있다`);
+  }
+});

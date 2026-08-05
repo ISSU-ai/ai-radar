@@ -85,10 +85,10 @@ input::placeholder, textarea::placeholder { color: #768596; opacity: 1; }
 .deal-card-customer strong { overflow: hidden; color: var(--ink); font-size: 16px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
 .new-tag { flex: 0 0 auto; padding: 2px 5px; color: #8fc1ff; border: 1px solid rgba(76, 154, 255, .25); border-radius: 5px; background: rgba(76, 154, 255, .1); font: 700 8px var(--font-mono); }
 .track-badge { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; min-height: 23px; padding: 0 7px; color: var(--t-d); border: 1px solid var(--line2); border-radius: 6px; background: rgba(139, 149, 162, .08); font: 700 9px var(--font-mono); }
-.track-badge[data-track="T-A"] { color: var(--t-a); border-color: rgba(224, 106, 126, .3); background: rgba(224, 106, 126, .08); }
-.track-badge[data-track="T-B"] { color: var(--t-b); border-color: rgba(79, 180, 119, .3); background: rgba(79, 180, 119, .08); }
-.track-badge[data-track="T-C"] { color: var(--t-c); border-color: rgba(212, 164, 56, .34); background: rgba(212, 164, 56, .08); }
-.track-badge[data-track="T-D"] { color: var(--t-d); }
+/* 고객 진입 시나리오 3유형 (034) */
+.track-badge[data-track="E-1"] { color: var(--t-b); border-color: rgba(79, 180, 119, .3); background: rgba(79, 180, 119, .08); }
+.track-badge[data-track="E-2"] { color: var(--t-c); border-color: rgba(212, 164, 56, .34); background: rgba(212, 164, 56, .08); }
+.track-badge[data-track="E-3"] { color: var(--t-a); border-color: rgba(224, 106, 126, .3); background: rgba(224, 106, 126, .08); }
 .deal-card-sub { overflow: hidden; color: var(--faint); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .deal-stage-summary { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .stage-dots { display: flex; flex: 0 0 auto; gap: 4px; }

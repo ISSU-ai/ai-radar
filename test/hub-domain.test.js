@@ -30,11 +30,23 @@ test('calculateFqaTotals ignores unanswered and out-of-range values', () => {
   assert.deepEqual(totals, {});
 });
 
-test('inferTrack keeps internal classification deterministic', () => {
-  assert.equal(inferTrack({ securityStack: 'zscaler' }), 'T-C');
-  assert.equal(inferTrack({ securityStack: 'other-swg' }), 'T-D');
-  assert.equal(inferTrack({ securityStack: 'none', needsInfrastructure: true, investment: 'high' }), 'T-A');
-  assert.equal(inferTrack({ securityStack: 'none', investment: 'low' }), 'T-B');
+test('진입 시나리오는 구매 동기로 갈린다 — 보안 환경이 아니다', () => {
+  // 034. 보안 환경이 같아도 사는 이유가 다르다. 보안 환경은 customer_meta 에 남아
+  // 추천 필터가 직접 본다.
+  assert.equal(inferTrack({ securityStack: 'zscaler' }), 'E-1', '보안 환경으로 갈리면 안 된다');
+  assert.equal(inferTrack({ securityStack: 'other-swg' }), 'E-1');
+  assert.equal(inferTrack({}, {}), 'E-1', '응답이 없으면 기본값');
+
+  // B3·T1 이 높으면 API 로 서비스를 만들어 본 조직이다
+  assert.equal(inferTrack({}, { B3: 4 }), 'E-3');
+  assert.equal(inferTrack({}, { T1: 5 }), 'E-3');
+  assert.equal(inferTrack({}, { B3: 3, T1: 3 }), 'E-1', '3점은 아직 아니다');
+
+  // E-2 는 추론하지 않는다 — 42문항에 개발조직 유무를 묻는 문항이 없다
+  const inferred = new Set([
+    inferTrack({}, {}), inferTrack({}, { B3: 5 }), inferTrack({ securityStack: 'none' }, { T1: 1 })
+  ]);
+  assert.ok(!inferred.has('E-2'), '없는 근거로 E-2 를 만들면 엉뚱한 제안이 나간다');
 });
 
 test('validateLead normalises public input and blocks missing contact', () => {
@@ -58,7 +70,7 @@ test('validateLead normalises public input and blocks missing contact', () => {
     fqa_scores: { 1: 4 },
     // 031 로 42문항 응답도 리드에 실린다. 안 보내면 빈 객체로 지나간다.
     readiness_scores: {},
-    track: 'T-C',
+    track: 'E-1',
     consent: true
   });
 

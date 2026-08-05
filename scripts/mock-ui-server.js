@@ -9,10 +9,11 @@ app.use(express.json());
 const user = { id: '00000000-0000-0000-0000-000000000001', name: '김영업', email: 'sales@issu.ai', role: 'admin' };
 const refs = {
   stages: ['들어온 데이터', 'AI 준비도 진단', 'ISV 조합 추천', '딜 사이즈', '피치 준비'],
+  // 기획안 §7 고객 진입 시나리오 (034). 보안 환경이 아니라 구매 동기로 갈린다.
   tracks: [
-    { id: 'T-A', name: '인프라 동반형', why: '보안·AI 기반을 함께 설계합니다.', warn: '인프라 범위를 먼저 확정하세요.' },
-    { id: 'T-B', name: '경량 도입형', why: '빠르게 가치를 검증합니다.', warn: '성공 기준을 수치로 합의하세요.' },
-    { id: 'T-C', name: 'Zscaler 보유형', why: '기존 환경과 연결합니다.', warn: '테넌트 정책을 확인하세요.' }
+    { id: 'E-1', name: '빠른 도입형', why: '기존 업무환경을 활용해 단기간 내 생산성 효과를 확인하는 딜입니다. Business 시트 + 환경 설정 + 사용자 교육으로 시작합니다.', warn: '02 OpenAI Ready 의 표준 구축은 무상입니다. 심화 교육·맞춤 연계·PoC 는 별도 산정이므로 범위를 먼저 고정하세요.' },
+    { id: 'E-2', name: '개발 생산성형', why: '개발조직 KPI 를 기준으로 코드·테스트 자동화의 Codex 효과를 검증하는 딜입니다.', warn: 'Codex 는 Workspace Credit 종량제입니다. 개발자별 월 한도를 먼저 정하지 않으면 비용이 튑니다.' },
+    { id: 'E-3', name: '서비스 개발형', why: 'API 기반 고객·사내 서비스를 PoC 후 상용화하고 유지 관리하는 딜입니다.', warn: 'API 사용량은 변동성이 큽니다. 상용 전환 전에 사용량·비용 한도와 운영 이관 주체를 확정하세요.' }
   ],
   fqaItems: [
     { category: 'A', no: 1, name: '데이터 분류와 민감도 기준', detail: 'AI에 투입 가능한 데이터가 정의되어 있나요?', weight: 5, threshold: 3.5 },
@@ -38,18 +39,18 @@ const refs = {
 };
 
 let deals = [
-  { id: 'd1', customer: '한빛금융', customer_meta: { industry: 'Finance', companySize: '1,000명 초과', targetUsers: '전사 1,200명', securityStack: 'zscaler' }, fqa_scores: { 1: 4, 2: 3, 3: 4, 4: 3, 5: 4 }, fqa_totals: { A: { score: 3.5, ready: true, answered: 2 }, B: { score: 4, ready: true, answered: 1 }, C: { score: 3, ready: true, answered: 1 }, D: { score: 4, ready: true, answered: 1 } }, track: 'T-C', track_name: 'Zscaler 보유형', isv_combo: ['s1', 's2'], packages: [{ id: 'POC', md: 28 }], stage: 2, source: 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() },
+  { id: 'd1', customer: '한빛금융', customer_meta: { industry: 'Finance', companySize: '1,000명 초과', targetUsers: '전사 1,200명', securityStack: 'zscaler' }, fqa_scores: { 1: 4, 2: 3, 3: 4, 4: 3, 5: 4 }, fqa_totals: { A: { score: 3.5, ready: true, answered: 2 }, B: { score: 4, ready: true, answered: 1 }, C: { score: 3, ready: true, answered: 1 }, D: { score: 4, ready: true, answered: 1 } }, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1', 's2'], packages: [{ id: 'POC', md: 28 }], stage: 2, source: 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() },
   // 포탈로 들어온 딜. 027 이후 담당자 이름·전화번호가 leads 에 남고 허브는 읽기 전용으로
   // 보여준다. 업종·규모는 taxonomy.js 어휘(SFDC 코드 · 진단기준 구간)로 저장된다.
   { id: 'd2', customer: '온누리제조',
     customer_meta: { industry: 'Manufacturing', companySize: '501~1,000명', securityStack: 'none' },
-    fqa_scores: {}, fqa_totals: {}, track: 'T-A', track_name: '인프라 동반형',
+    fqa_scores: {}, fqa_totals: {}, track: 'E-3', track_name: '서비스 개발형',
     isv_combo: [], packages: [], stage: 0, source: 'portal',
     lead_contact: 'park@onnuri.co.kr', lead_contact_name: '박담당',
     lead_contact_phone: '031-987-6543 (내선 12)',
     lead_message: '전사 문서 검색부터 검토 중입니다.',
     owner_id: null, owner_name: null, updated_at: new Date(Date.now() - 3600000).toISOString() },
-  { id: 'd3', customer: '다온커머스', customer_meta: { industry: '유통' }, fqa_scores: {}, fqa_totals: {}, track: 'T-B', track_name: '경량 도입형', isv_combo: ['s1'], packages: [{ id: 'DISCOVERY', md: 8 }], stage: 4, source: 'sheet', owner_id: user.id, owner_name: user.name, updated_at: new Date(Date.now() - 86400000).toISOString() }
+  { id: 'd3', customer: '다온커머스', customer_meta: { industry: '유통' }, fqa_scores: {}, fqa_totals: {}, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1'], packages: [{ id: 'DISCOVERY', md: 8 }], stage: 4, source: 'sheet', owner_id: user.id, owner_name: user.name, updated_at: new Date(Date.now() - 86400000).toISOString() }
 ];
 
 app.get('/api/auth/me', (_req, res) => res.json({ user }));

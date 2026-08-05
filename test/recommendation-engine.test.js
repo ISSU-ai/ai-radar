@@ -90,7 +90,7 @@ test('판정 데이터가 비면 제외 사유를 그렇게 밝힌다', () => {
   assert.match(out.excluded[0].excludedBy[0], /판정 데이터\(fqa_coverage\) 미입력/);
 });
 
-test('운영중단·미발행·T-D 게이트웨이 중복을 거른다', () => {
+test('운영중단·미발행·게이트웨이 중복을 거른다', () => {
   const base = { slot: 'llm-platform', status: 'published', fqa_coverage: [{ category: 'A', strength: 3 }] };
   const out = run({
     solutions: [
@@ -100,11 +100,18 @@ test('운영중단·미발행·T-D 게이트웨이 중복을 거른다', () => {
   });
   assert.equal(out.eligible.length, 0);
 
-  const td = recommend({
-    deal: { ...lowSecurityDeal, track: 'T-D' }, slots, itemCountByCategory: ITEM_COUNTS,
+  // 034 로 트랙이 구매 동기가 되면서 판정 근거를 customer_meta.securityStack 으로
+  // 옮겼다. 트랙은 영업이 손으로 바꿀 수 있어 보안 환경과 어긋날 수 있었다.
+  const swgDeal = (securityStack) => recommend({
+    deal: { ...lowSecurityDeal, track: 'E-1', customer_meta: { ...lowSecurityDeal.customer_meta, securityStack } },
+    slots, itemCountByCategory: ITEM_COUNTS, itemScores: ITEM_SCORES,
     solutions: [{ ...base, slug: 'swg', name: 'SWG', slot: 'security-gateway' }]
   });
-  assert.match(td.excluded[0].excludedBy[0], /타사 SWG 운영 중\(T-D\)/);
+  assert.match(swgDeal('other-swg').excluded[0].excludedBy[0], /타사 SWG 운영 중/);
+
+  // Zscaler 보유 고객은 예전에도 안 걸렸다. 범위를 넓히지 않는다.
+  assert.equal(swgDeal('zscaler').excluded.length, 0, 'Zscaler 고객까지 걸면 판정이 바뀐다');
+  assert.equal(swgDeal('none').excluded.length, 0);
 });
 
 test('fqa 전제가 미달이면 적합에서 빠진다', () => {
