@@ -1258,7 +1258,7 @@ app.patch('/api/admin/packages/:id', authenticateToken, adminOnly, async (req, r
 app.get('/api/admin/settings', authenticateToken, adminOnly, async (_req, res) => {
   try {
     const result = await pool.query('select usd_krw from hub_settings where id = true');
-    res.json(result.rows[0] || { usd_krw: 1400 });
+    res.json(result.rows[0] || { usd_krw: 1500 });
   } catch (err) {
     console.error('Admin settings failed:', err.message);
     res.status(500).json({ error: '설정을 불러오지 못했습니다.' });

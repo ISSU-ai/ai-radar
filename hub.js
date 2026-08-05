@@ -7,7 +7,7 @@ if (window.self !== window.top) {
 const state = {
   user: null,
   deals: [],
-  refs: { stages: [], tracks: [], readinessAreas: [], readinessItems: [], packages: [], solutions: [] },
+  refs: { stages: [], tracks: [], readinessAreas: [], readinessItems: [], isvBundles: [], packages: [], solutions: [] },
   deal: null,
   reco: null,
   activeStage: 0,
@@ -1009,6 +1009,82 @@ function renderRecommendationPanel() {
   }));
 }
 
+/**
+ * 기획안 §6 ISV 확장 패키지.
+ *
+ * 추천 엔진의 결과(reco-panel)와 다른 층이다. 저쪽은 우리 카탈로그에서 후보를
+ * 고르고, 이쪽은 **기획안이 정해 둔 묶음**을 진단 결과에 비춰 본다. 영업이 고객에게
+ * "기획안의 어느 패키지에 해당하는가" 를 말할 수 있어야 한다.
+ *
+ * 신호가 없는 번들(AI Developer·Private AI)은 적용 기준 문장만 보여준다.
+ * 42문항으로 판정할 수 없는 것을 판정한 척하지 않는다.
+ */
+function renderIsvBundles() {
+  const bundles = asArray(state.refs.isvBundles);
+  if (!bundles.length) return '';
+
+  // 서버가 낸 문항별 응답을 그대로 읽는다. 여기서 다시 채점하지 않는다.
+  const answers = new Map(asArray((state.deal.readiness_totals || {}).answers)
+    .map((answer) => [answer.code, answer]));
+
+  const scored = bundles.map((bundle) => {
+    const hits = asArray(bundle.readiness_signal).map((signal) => {
+      const answer = answers.get(signal.code);
+      if (!answer) return null;
+      const low = Number(answer.score) < 3;
+      return (signal.when === 'high' ? !low : low) ? answer : null;
+    }).filter(Boolean);
+    return { bundle, hits };
+  }).sort((a, b) => b.hits.length - a.hits.length || a.bundle.sort_order - b.bundle.sort_order);
+
+  const selected = new Set(asArray(state.deal.isv_combo));
+  const byId = new Map(state.refs.solutions.map((solution) => [solution.slug, solution]));
+
+  const cards = scored.map(({ bundle, hits }) => {
+    const members = asArray(bundle.members);
+    const core = members.filter((m) => !m.is_option);
+    const options = members.filter((m) => m.is_option);
+    const chip = (m) => {
+      const solution = byId.get(m.slug);
+      // 카탈로그에 보이는 것만 추가할 수 있다. 숨김 솔루션은 이름만 보여준다.
+      if (!solution) return `<span class="bundle-member muted">${escapeHtml(m.name)}</span>`;
+      const picked = selected.has(solution.id);
+      // data-reco-add 를 쓰지 않는다. 저 배선은 추천 패널이 그려질 때만 걸려서,
+      // 추천이 실패하거나 미달 영역이 없으면 이 버튼이 죽는다.
+      return `<button type="button" class="bundle-member${picked ? ' picked' : ''}"
+        data-bundle-add="${escapeHtml(solution.id)}" ${isOwner() ? '' : 'disabled'}
+        title="${picked ? '조합에서 빼기' : '조합에 추가'}">${escapeHtml(m.name)}</button>`;
+    };
+
+    return `<article class="bundle-card${hits.length ? ' matched' : ''}">
+      <header>
+        <b>${escapeHtml(bundle.name)}</b>
+        ${hits.length ? `<span class="bundle-badge">진단 신호 ${hits.length}건 일치</span>` : ''}
+      </header>
+      <p class="bundle-value">${escapeHtml(bundle.value_prop)}</p>
+      <div class="bundle-members">${core.map(chip).join('')}</div>
+      ${options.length ? `<div class="bundle-members option"><small>환경별 옵션</small>${options.map(chip).join('')}</div>` : ''}
+      ${hits.length
+        ? `<ul class="bundle-hits">${hits.map((hit) => `<li>
+            <span class="bundle-hit-code">${escapeHtml(hit.code)}</span>
+            <span>${escapeHtml(hit.text)}</span>
+            <b>${hit.score}점</b>
+            ${hit.rubric ? `<small>“${escapeHtml(hit.rubric)}”</small>` : ''}
+          </li>`).join('')}</ul>`
+        : (bundle.applies_when || bundle.entry_combo)
+          ? `<p class="bundle-basis">${escapeHtml(bundle.applies_when || bundle.entry_combo)}</p>` : ''}
+    </article>`;
+  }).join('');
+
+  return `<section class="bundle-panel">
+    <header class="bundle-panel-head">
+      <div><b>기획안 ISV 확장 패키지</b>
+        <p>진단 신호가 맞는 패키지를 위에 둡니다. 구성 제품을 눌러 조합에 넣을 수 있습니다.</p></div>
+    </header>
+    <div class="bundle-grid">${cards}</div>
+  </section>`;
+}
+
 function renderSolutions() {
   const selected = new Set(asArray(state.deal.isv_combo));
   const query = state.catalogQuery.toLowerCase();
@@ -1028,6 +1104,7 @@ function renderSolutions() {
   </label>`).join('');
   return `${stageHeader('03', 'ISV 조합 추천', 'AI Radar의 내부 카탈로그를 딜과 연결합니다. 급·포컬·기술 제약은 내부에서만 보입니다.')}
     <div id="reco-panel" class="reco-panel"></div>
+    ${renderIsvBundles()}
     <div class="catalog-toolbar"><div class="search-wrap"><i data-lucide="search"></i><input id="catalog-search" type="search" value="${escapeHtml(state.catalogQuery)}" placeholder="솔루션·카테고리 검색"></div><a class="secondary-button" href="/radar" target="_blank" rel="noopener" title="AI Radar를 새 창으로 열기"><i data-lucide="external-link"></i> AI Radar</a></div>
     <div class="selection-grid">${cards || '<div class="empty-state">검색 결과가 없습니다.</div>'}</div>
     ${hiddenCount > 0 ? `<p class="catalog-hidden-note">준비 중인 솔루션 ${hiddenCount}건은 표시하지 않았습니다.</p>` : ''}`;
@@ -1145,7 +1222,7 @@ function pickTier(tiers, seats) {
 
 function computeDealSim() {
   const seats = getDealSeats();
-  const fx = Number(state.refs.settings?.usd_krw) || 1400;
+  const fx = Number(state.refs.settings?.usd_krw) || 1500;
   const selected = new Set(asArray(state.deal?.isv_combo));
   // Every ISV selected in STEP 03 (isv_combo) becomes a quote-list row here —
   // priced ones contribute to the totals, unpriced ones show "단가 미설정".
@@ -1515,6 +1592,16 @@ function bindStageEvents() {
     state.deal.track = event.target.value || null;
     scheduleSave({ track: state.deal.track }, true);
   });
+  // 번들 구성 제품 → 조합. 추천 카드의 「조합에 추가」와 같은 결과를 낸다.
+  $$('[data-bundle-add]').forEach((button) => button.addEventListener('click', () => {
+    const selected = new Set(asArray(state.deal.isv_combo));
+    const id = button.dataset.bundleAdd;
+    selected.has(id) ? selected.delete(id) : selected.add(id);
+    state.deal.isv_combo = [...selected];
+    scheduleSave({ isv_combo: state.deal.isv_combo }, true);
+    saveAdoptionSnapshot();
+    renderStage();
+  }));
   $('#catalog-search')?.addEventListener('input', (event) => {
     state.catalogQuery = event.target.value;
     renderStage();

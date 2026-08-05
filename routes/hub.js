@@ -729,6 +729,35 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     }
   });
 
+  /**
+   * 기획안 §6 ISV 확장 패키지.
+   *
+   * 멤버 이름을 여기서 붙여 내려보낸다. 화면이 slug 로 다시 조회하면 숨김 솔루션
+   * (palo-alto 등)이 안 잡혀 구성이 반쪽으로 보인다.
+   *
+   * 033 미적용 구간에는 빈 배열로 간다 — 번들이 안 보이는 것이 STEP03 이 통째로
+   * 깨지는 것보다 낫다.
+   */
+  const loadIsvBundles = async () => {
+    if (!(hasColumn && await hasColumn('isv_bundles', 'readiness_signal'))) return [];
+    const result = await pool.query(
+      `select b.id, b.name, b.value_prop, b.entry_combo, b.applies_when,
+              b.is_priority, b.readiness_signal, b.sort_order,
+              coalesce(json_agg(json_build_object(
+                'slug', m.solution_slug,
+                'name', coalesce(s.name, m.solution_slug),
+                'is_option', m.is_option,
+                'is_hidden', coalesce(s.is_hidden, false)
+              ) order by m.is_option, m.sort_order)
+                filter (where m.solution_slug is not null), '[]') as members
+         from isv_bundles b
+         left join isv_bundle_members m on m.bundle_id = b.id
+         left join solutions s on s.slug = m.solution_slug
+        group by b.id order by b.sort_order`
+    );
+    return result.rows;
+  };
+
   router.get('/reference-data', async (_req, res) => {
     try {
       // `p.*` 를 쓰면 packages 에 나중에 추가되는 컬럼(원가성 필드 등)이 자동으로
@@ -747,9 +776,10 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       const refHiddenFilter = (hasColumn && await hasColumn('solutions', 'is_hidden'))
         ? 'and s.is_hidden = false' : '';
 
-      const [fqaItems, readiness, tracks, packages, solutions, settings] = await Promise.all([
+      const [fqaItems, readiness, isvBundles, tracks, packages, solutions, settings] = await Promise.all([
         loadFqaItems(),
         loadReadinessItems(),
+        loadIsvBundles(),
         pool.query('select id, name, why, warn, ask from tracks order by id').then((r) => r.rows),
         pool.query(
           `select p.id, p.name, p.scale, p.period, p.target, p.sort_order,
@@ -778,7 +808,8 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         // 029 미적용 구간에는 빈 배열로 간다. 허브가 STEP02 를 못 그리는 것보다
         // 문항 없이 뜨는 편이 낫다 — 나머지 단계는 그대로 돌아간다.
         readinessAreas: readiness?.areas || [],
-        readinessItems: readiness?.items || []
+        readinessItems: readiness?.items || [],
+        isvBundles
       });
     } catch (error) {
       console.error(error);

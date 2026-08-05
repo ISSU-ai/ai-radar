@@ -465,3 +465,30 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 .prereq-check input:disabled { cursor: not-allowed; opacity: .5; }
 .prereq-check span { line-height: 1.5; }
 .prereq-check input:checked + span { color: var(--faint); text-decoration: line-through; }
+
+/* ── 기획안 ISV 확장 패키지 (기획안 §6) ─────────────────────── */
+.bundle-panel { margin-bottom: 16px; border: 1px solid var(--line); border-radius: 12px; background: #111820; }
+.bundle-panel-head { padding: 13px 14px; border-bottom: 1px solid var(--line); }
+.bundle-panel-head b { font-size: 14px; }
+.bundle-panel-head p { margin: 4px 0 0; color: var(--faint); font-size: 12px; line-height: 1.6; }
+.bundle-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; padding: 12px 14px; }
+.bundle-card { padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: #0e141b; }
+.bundle-card.matched { border-color: rgba(224, 178, 90, .38); background: linear-gradient(180deg, rgba(224, 178, 90, .06), transparent 60%), #0e141b; }
+.bundle-card > header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.bundle-card > header b { font-size: 14px; }
+.bundle-badge { padding: 2px 7px; border: 1px solid rgba(224, 178, 90, .4); border-radius: 5px; color: var(--gold); font: 700 9px var(--font-mono); }
+.bundle-value { margin: 0 0 10px; color: var(--faint); font-size: 12px; line-height: 1.6; }
+.bundle-members { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.bundle-members.option { margin-top: 7px; padding-top: 7px; border-top: 1px dashed rgba(255, 255, 255, .07); }
+.bundle-members.option > small { color: var(--faint); font: 700 9px var(--font-mono); }
+.bundle-member { padding: 4px 9px; border: 1px solid var(--line2); border-radius: 6px; background: var(--surface2); color: var(--dim); font-size: 11px; cursor: pointer; transition: border-color .12s, color .12s, background .12s; }
+.bundle-member:hover:not(:disabled):not(.muted) { border-color: var(--blue); color: var(--text); }
+.bundle-member.picked { border-color: var(--green); background: rgba(88, 190, 140, .12); color: var(--text); }
+.bundle-member:disabled { cursor: not-allowed; opacity: .55; }
+.bundle-member.muted { border-style: dashed; cursor: default; opacity: .6; }
+.bundle-hits { display: grid; gap: 7px; margin: 11px 0 0; padding: 10px 0 0; border-top: 1px solid rgba(255, 255, 255, .06); list-style: none; }
+.bundle-hits li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 6px; font-size: 11px; line-height: 1.5; }
+.bundle-hit-code { color: var(--gold); font: 700 9px var(--font-mono); }
+.bundle-hits b { color: var(--red); font: 700 10px var(--font-mono); }
+.bundle-hits small { grid-column: 2 / -1; color: var(--faint); font-size: 10px; font-style: italic; }
+.bundle-basis { margin: 11px 0 0; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, .06); color: var(--faint); font-size: 11px; line-height: 1.55; }

@@ -806,7 +806,7 @@
         </p>
         <div style="display:flex; align-items:center; gap:10px; padding:12px; margin-bottom:16px; border:1px solid var(--card-border); border-radius:9px; background:var(--surface-muted);">
           <div style="flex:1;"><strong style="display:block;color:var(--text-primary);font-size:.84rem;">전역 환율 · USD → KRW</strong><small style="color:var(--text-secondary);">딜 사이즈 시뮬레이터에서 USD 단가를 환산할 때 사용</small></div>
-          <input id="setting-usd-krw" type="number" min="1" step="10" class="form-control" style="width:120px;padding-left:10px;" value="1400">
+          <input id="setting-usd-krw" type="number" min="1" step="10" class="form-control" style="width:120px;padding-left:10px;" value="1500">
           <button type="button" id="setting-usd-krw-save" class="btn-save">환율 저장</button>
         </div>
         <div id="packages-list">
@@ -1418,7 +1418,7 @@
       try {
         const res = await fetch('/api/admin/settings');
         const data = await res.json();
-        if (res.ok) document.getElementById('setting-usd-krw').value = Number(data.usd_krw) || 1400;
+        if (res.ok) document.getElementById('setting-usd-krw').value = Number(data.usd_krw) || 1500;
       } catch (_e) { /* keep default */ }
       const btn = document.getElementById('setting-usd-krw-save');
       if (btn && !btn.dataset.bound) { btn.dataset.bound = '1'; btn.addEventListener('click', saveSettings); }
@@ -1429,7 +1429,7 @@
         const res = await fetch('/api/admin/settings', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ usd_krw: Number(document.getElementById('setting-usd-krw').value) || 1400 })
+          body: JSON.stringify({ usd_krw: Number(document.getElementById('setting-usd-krw').value) || 1500 })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || '환율 저장 실패');

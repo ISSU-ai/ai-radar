@@ -26,10 +26,14 @@ const refs = {
     { id: 'POC', name: 'Enterprise AI PoC', scale: 'M', period: '4~6주', target: '핵심 업무 기술·가치 검증', items: [{ label: '평가 리포트' }] },
     { id: 'OPERATE', name: 'Managed AI Operations', scale: 'O', period: '상시', target: '품질·비용 운영 체계', items: [{ label: '월간 운영 리포트' }] }
   ],
+  // slug 가 있어야 ISV 확장 패키지의 구성 제품이 카탈로그와 이어진다.
+  // 번들 멤버로 쓰이는 것을 몇 종 섞어 둔다 — 없으면 「조합에 추가」 경로를 못 본다.
   solutions: [
-    { id: 's1', name: 'OpenAI Enterprise', category: 'Enterprise AI', jtbd: '전사 지식업무 생산성과 안전한 AI 활용', grade: 3, scale: 'L', focal_name: '박포컬', status_op: 'active' },
-    { id: 's2', name: 'LiteLLM', category: 'LLM Gateway', jtbd: '멀티 모델 라우팅과 비용 통제', grade: 2, scale: 'M', focal_name: '이기술', tech_note: '고객 인증 체계 사전 확인', status_op: 'active' },
-    { id: 's3', name: 'AI Guard', category: 'Security', jtbd: 'Enterprise AI 보안 통제', grade: 1, scale: 'S', focal_name: null, status_op: 'paused' }
+    { id: 's1', slug: 'openai-enterprise', name: 'OpenAI Enterprise', category: 'Enterprise AI', jtbd: '전사 지식업무 생산성과 안전한 AI 활용', grade: 3, scale: 'L', focal_name: '박포컬', status_op: 'active' },
+    { id: 's2', slug: 'litellm', name: 'LiteLLM', category: 'LLM Gateway', jtbd: '멀티 모델 라우팅과 비용 통제', grade: 2, scale: 'M', focal_name: '이기술', tech_note: '고객 인증 체계 사전 확인', status_op: 'active' },
+    { id: 's3', slug: 'portal26', name: 'Portal26', category: 'AI Governance', jtbd: 'Shadow AI·사용 현황 가시화와 통제', grade: 2, scale: 'M', focal_name: null, status_op: 'active' },
+    { id: 's4', slug: 'trend-micro', name: 'Trend Micro', category: 'AI Security', jtbd: 'AI 애플리케이션·Agent 보안', grade: 2, scale: 'M', focal_name: null, status_op: 'active' },
+    { id: 's5', slug: 'slack', name: 'Slack', category: 'Collaboration', jtbd: '협업 흐름에서 AI 활용', grade: 1, scale: 'M', focal_name: null, status_op: 'active' }
   ]
 };
 
@@ -50,8 +54,84 @@ let deals = [
 
 app.get('/api/auth/me', (_req, res) => res.json({ user }));
 app.post('/api/auth/logout', (_req, res) => res.json({ message: 'ok' }));
+/**
+ * 기획안 §6 ISV 확장 패키지. 019(번들·멤버)와 033(개명·분리·신호)을 직접 읽는다.
+ * 베껴 두면 실제와 어긋나 화면 확인이 거짓말이 된다 — 030 파싱과 같은 이유.
+ */
+const isvBundles = (() => {
+  const read = (f) => require('fs').readFileSync(
+    path.join(__dirname, '..', 'db', 'migrations', f), 'utf8');
+  const base = read('019_isv_offering_alignment.sql');
+  const realign = read('033_isv_bundle_realign.sql');
+
+  const bundles = new Map();
+  const push = (id, fields) => bundles.set(id, { ...(bundles.get(id) || { id, members: [] }), ...fields });
+
+  // 019 의 insert — id, 이름, 가치제안, sort_order
+  const insertBlock = base.slice(base.indexOf('insert into isv_bundles'));
+  for (const m of insertBlock.matchAll(/\('(\w+)', '([^']+)',\s*\n\s*'((?:[^']|'')*)',\s*\n\s*(true|false),\s*(?:'((?:[^']|'')*)'|null), (\d+)\)/g)) {
+    push(m[1], { name: m[2], value_prop: m[3].replace(/''/g, "'"), sort_order: Number(m[6]) });
+  }
+  // 019 의 멤버
+  const memberBlock = base.slice(base.indexOf('insert into isv_bundle_members'));
+  for (const m of memberBlock.matchAll(/\('(\w+)',\s*'([a-z0-9-]+)',\s*(\d+)\)/g)) {
+    const b = bundles.get(m[1]); if (b) b.members.push({ slug: m[2], sort_order: Number(m[3]), is_option: false });
+  }
+  // 026 이 더한 멤버
+  const extra = read('026_bundle_products.sql');
+  for (const m of extra.slice(extra.indexOf('insert into isv_bundle_members')).matchAll(/\('(\w+)',\s*'([a-z0-9-]+)',\s*(\d+)\)/g)) {
+    const b = bundles.get(m[1]); if (b) b.members.push({ slug: m[2], sort_order: Number(m[3]), is_option: false });
+  }
+
+  // 033 — 신규 번들
+  for (const m of realign.matchAll(/\('(AI_SECURITY)', '([^']+)',\s*\n\s*'((?:[^']|'')*)'\s*\n?\s*\|\| '((?:[^']|'')*)',\s*\n?\s*(true|false), '([^']*)', (\d+)\)/g)) {
+    push(m[1], { name: m[2], value_prop: (m[3] + m[4]).replace(/''/g, "'"), sort_order: Number(m[7]), members: [] });
+  }
+  // 025 의 적용 기준. 033 이 안 건드린 번들도 문장을 갖게 한다.
+  const triggers = read('025_isv_bundle_triggers.sql');
+  for (const m of triggers.matchAll(/update isv_bundles set([\s\S]*?)where id = '(\w+)'/g)) {
+    const applies = m[1].match(/applies_when = '((?:[^']|'')*)'/);
+    const b2 = bundles.get(m[2]);
+    if (b2 && applies) b2.applies_when = applies[1].replace(/''/g, "'");
+  }
+
+  // 033 — 개명·신호·순서
+  for (const m of realign.matchAll(/update isv_bundles set([\s\S]*?)where id = '(\w+)'/g)) {
+    const body = m[1], id = m[2];
+    const b = bundles.get(id) || { id, members: [] };
+    const name = body.match(/name = '([^']+)'/);
+    const applies = body.match(/applies_when = '((?:[^']|'')*)'/);
+    const signal = body.match(/readiness_signal = '(\[[\s\S]*?\])'::jsonb/);
+    const order = body.match(/sort_order = (\d+)/);
+    if (name) b.name = name[1];
+    if (applies) b.applies_when = applies[1].replace(/''/g, "'");
+    if (signal) b.readiness_signal = JSON.parse(signal[1]);
+    if (order) b.sort_order = Number(order[1]);
+    bundles.set(id, b);
+  }
+  // 033 — AI_TRUST 멤버 정리 + AI_SECURITY 멤버
+  const gov = bundles.get('AI_TRUST');
+  if (gov) gov.members = gov.members.filter((x) => x.slug === 'portal26');
+  const sec = bundles.get('AI_SECURITY');
+  if (sec) {
+    const block = realign.slice(realign.indexOf("('AI_SECURITY', 'trend-micro'"));
+    sec.members = [...block.matchAll(/\('AI_SECURITY', '([a-z0-9-]+)',\s*(\d+), (true|false)\)/g)]
+      .map((m) => ({ slug: m[1], sort_order: Number(m[2]), is_option: m[3] === 'true' }));
+  }
+
+  const names = new Map(refs.solutions.map((s2) => [s2.slug, s2.name]));
+  return [...bundles.values()]
+    .map((b) => ({
+      ...b, readiness_signal: b.readiness_signal || [],
+      members: b.members
+        .sort((x, y) => (x.is_option ? 1 : 0) - (y.is_option ? 1 : 0) || x.sort_order - y.sort_order)
+        .map((m) => ({ ...m, name: names.get(m.slug) || m.slug }))
+    }))
+    .sort((a, b) => a.sort_order - b.sort_order);
+})();
+
 app.get('/api/hub/reference-data', (_req, res) => res.json({
-  ...refs, readinessAreas: readiness.areas, readinessItems: readiness.items
+  ...refs, readinessAreas: readiness.areas, readinessItems: readiness.items, isvBundles
 }));
 app.get('/api/hub/public/fqa-items', (_req, res) => res.json(refs.fqaItems.map(({ weight, threshold, ...item }) => item)));
 app.get('/api/hub/public/packages', (_req, res) => res.json(refs.packages.map(({ scale, ...pkg }) => pkg)));

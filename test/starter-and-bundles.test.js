@@ -150,3 +150,129 @@ test('026 — 리전 조사 결과가 실제 문자열을 갈아낀다', () => {
   assert.match(products, /교차 리전 추론|cross-region inference/);
   assert.match(products, /2026-08-03/, '조사 시점을 남겨야 한다');
 });
+
+// ── 033 · 기획안 §6 구조 ─────────────────────────────────────────
+// 이 파일의 read() 는 db/migrations 기준이다. 루트 파일은 따로 읽는다.
+const readRoot = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+
+test('033 — ISV 확장 패키지가 기획안 §6 5종 구조가 된다', () => {
+  const sql = read('033_isv_bundle_realign.sql');
+
+  // AI Workspace → AI Productivity (id 는 유지 — 바꾸면 멤버 FK 가 깨진다)
+  assert.match(sql, /name = 'AI Productivity'[\s\S]{0,900}where id = 'AI_WORKSPACE'/);
+  assert.ok(!/'AI_PRODUCTIVITY'/.test(sql), 'id 를 바꾸면 025 시드와 멤버 FK 가 깨진다');
+
+  // AI Trust → AI Governance (Portal26 만) + AI Security 신규
+  assert.match(sql, /name = 'AI Governance'[\s\S]{0,900}where id = 'AI_TRUST'/);
+  assert.match(sql, /delete from isv_bundle_members\s*\n\s*where bundle_id = 'AI_TRUST' and solution_slug <> 'portal26'/);
+  assert.match(sql, /insert into isv_bundles[\s\S]{0,400}'AI_SECURITY', 'AI Security'/);
+
+  for (const [slug, option] of [['trend-micro', 'false'], ['check-point', 'false'],
+    ['zscaler', 'true'], ['palo-alto', 'true']]) {
+    assert.match(sql, new RegExp(`\\('AI_SECURITY', '${slug}',\\s*\\d+, ${option}\\)`),
+      `AI Security 구성에 ${slug}(옵션 ${option})가 없다`);
+  }
+});
+
+test('033 — 진단 신호가 실재하는 42문항을 가리킨다', () => {
+  // 문자열이라 한 글자만 달라도 조용히 안 붙는다. 030 에서 겪었다.
+  const sql = read('033_isv_bundle_realign.sql');
+  const items = new Set([...read('029_readiness_items.sql')
+    .matchAll(/\('([SPDTBG]\d+)', '[SPDTBG]'/g)].map((m) => m[1]));
+  assert.equal(items.size, 42);
+
+  const codes = [...sql.matchAll(/"code":"([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(codes.length >= 10, `신호가 너무 적다: ${codes.length}`);
+  for (const code of codes) {
+    assert.ok(items.has(code), `029 에 없는 문항을 가리킨다: ${code}`);
+  }
+});
+
+test('033 — 판정할 수 없는 번들은 신호를 비운다', () => {
+  // 42문항에 개발조직 유무·데이터 반출 가부를 묻는 문항이 없다.
+  // 억지로 걸면 엉뚱한 고객에게 붙는다.
+  const sql = read('033_isv_bundle_realign.sql');
+  for (const id of ['AI_DEVELOPER', 'PRIVATE_AI']) {
+    const at = sql.indexOf(`where id = '${id}'`);
+    const block = sql.slice(sql.lastIndexOf('update isv_bundles set', at), at);
+    assert.match(block, /readiness_signal = '\[\]'::jsonb/, `${id} 에 억지 신호가 붙었다`);
+  }
+});
+
+test('033 — 21문항 fqa_signal 위에 새 기능을 얹지 않는다', () => {
+  // 21문항은 판정 기준이 Appendix A 로 바뀔 때 함께 지운다.
+  const sql = read('033_isv_bundle_realign.sql');
+  assert.ok(!/fqa_signal =/.test(sql), '033 이 fqa_signal 을 건드린다');
+  const hub = readRoot('hub.js');
+  const open = hub.indexOf('function renderIsvBundles');
+  const body = hub.slice(open, hub.indexOf('function renderSolutions', open));
+  assert.ok(!/fqa_signal/.test(body), '화면이 21문항 신호를 읽는다');
+  assert.match(body, /readiness_signal/);
+});
+
+test('033 — Palo Alto 는 숨김·판정 데이터 없이 들어간다', () => {
+  const sql = read('033_isv_bundle_realign.sql');
+  assert.match(sql, /update solutions set is_hidden = true where slug = 'palo-alto'/);
+  assert.match(sql, /본문 미완성/, '미완성이라는 사실을 본문에 적어야 한다');
+  assert.ok(!/fqa_coverage\s*=/.test(sql),
+    '판정 데이터를 넣으면 근거 없이 영업 화면에 뜬다');
+  assert.match(sql, /판정 데이터는 넣지 않는다/, '왜 안 넣는지 시드에 남겨야 한다');
+});
+
+// ── 화면 ─────────────────────────────────────────────────────────
+test('STEP03 이 번들을 진단 신호 순으로 보여준다', () => {
+  const hub = readRoot('hub.js');
+  const open = hub.indexOf('function renderIsvBundles');
+  const body = hub.slice(open, hub.indexOf('function renderSolutions', open));
+
+  // 서버가 낸 문항별 응답만 읽는다 — 여기서 다시 채점하지 않는다
+  assert.match(body, /readiness_totals \|\| \{\}\)\.answers/);
+  assert.ok(!/scoreReadiness|reduce\([^)]*\+/.test(body), '화면이 다시 채점한다');
+
+  assert.match(body, /b\.hits\.length - a\.hits\.length/, '일치 개수 순으로 정렬해야 한다');
+  assert.match(body, /bundle-hit-code/, '맞은 문항을 보여줘야 한다');
+  assert.match(body, /hit\.rubric/, '고른 루브릭 문장이 붙어야 한다');
+  assert.match(body, /is_option/, '환경별 옵션을 구분해야 한다');
+  assert.match(hub, /renderIsvBundles\(\)/, 'STEP03 에서 실제로 불러야 한다');
+  assert.match(readRoot('hub.css'), /\.bundle-card\.matched/);
+});
+
+test('번들 추가 배선이 추천 패널과 독립이다', () => {
+  // data-reco-add 는 추천 패널이 그려질 때만 걸린다. 추천이 실패하거나 미달 영역이
+  // 없으면 번들 버튼이 죽는다.
+  const hub = readRoot('hub.js');
+  assert.match(hub, /data-bundle-add=/);
+  const wiring = hub.slice(hub.indexOf("$$('[data-bundle-add]')"));
+  assert.match(wiring.slice(0, 600), /scheduleSave\(\{ isv_combo/,
+    '번들 버튼이 조합을 저장하지 않는다');
+  // 주석에 이유를 적어 뒀으므로 코드만 본다
+  const open = hub.indexOf('function renderIsvBundles');
+  const body = hub.slice(open, hub.indexOf('function renderSolutions', open))
+    .replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(!/data-reco-add/.test(body), '번들이 추천 패널 배선에 얹혀 있다');
+});
+
+test('033 — 환율이 네 곳 모두 1,500 이다', () => {
+  // DB 값과 fallback 이 어긋나면 설정이 없는 환경에서 옛 환율로 견적이 나온다.
+  assert.match(read('033_isv_bundle_realign.sql'),
+    /insert into hub_settings \(id, usd_krw\) values \(true, 1500\)/);
+  for (const [file, pattern] of [
+    ['hub.js', /usd_krw\) \|\| 1500/],
+    ['server.js', /usd_krw: 1500/],
+    ['admin.html', /Number\(data\.usd_krw\) \|\| 1500/],
+    ['db/migrations/008_tiered_pricing.sql', /usd_krw integer not null default 1500/]
+  ]) {
+    assert.match(readRoot(file), pattern, `${file} 의 환율이 1500 이 아니다`);
+  }
+});
+
+test('목업이 번들 시드를 직접 읽는다', () => {
+  // 베껴 두면 실제와 어긋나 화면 확인이 거짓말이 된다.
+  const mock = readRoot('scripts/mock-ui-server.js');
+  for (const f of ['019_isv_offering_alignment.sql', '025_isv_bundle_triggers.sql',
+    '026_bundle_products.sql', '033_isv_bundle_realign.sql']) {
+    assert.ok(mock.includes(f), `목업이 ${f} 를 안 읽는다`);
+  }
+  assert.match(mock, /isvBundles/);
+  assert.match(mock, /slug: 'portal26'/, '번들 멤버가 카탈로그와 이어지는지 볼 수 없다');
+});
