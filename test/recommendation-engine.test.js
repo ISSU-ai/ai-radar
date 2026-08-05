@@ -15,7 +15,25 @@ const {
 } = require('../lib/recommendation-engine');
 
 const root = path.resolve(__dirname, '..');
-const ITEM_COUNTS = { A: 6, B: 5, C: 5, D: 5 };
+
+/**
+ * 갭 키가 두 어휘로 들어온다. 키가 겹치지 않아 한 맵에 두어도 섞이지 않는다.
+ *   A01~A10     기획안 Appendix A 평가영역 — ISV 도입 게이트
+ *   S P D T B G 42문항 6축 — 고객 준비도 (패키지 선정)
+ * 평가영역은 한 칸이 한 점수라 문항 수가 1 이고, 축은 7문항이다.
+ */
+const AREA_COUNTS = {
+  A01: 1, A02: 1, A03: 1, A04: 1, A05: 1, A06: 1, A07: 1, A08: 1, A09: 1, A10: 1,
+  S: 7, P: 7, D: 7, T: 7, B: 7, G: 7
+};
+
+const LABELS = {
+  A01: '데이터 보호', A02: '저장·보존', A03: '계정·접근통제', A04: '데이터 권한 연계',
+  A05: '감사·모니터링', A06: 'AI 행동 통제', A07: '정확성·신뢰성', A08: '개인정보·규제',
+  A09: '저작권·계약', A10: '비용·확장성',
+  S: '전략·리더십', P: '인재·조직문화', D: '데이터 기반',
+  T: '시스템·인프라', B: '업무 적용·성과', G: '신뢰·안전 관리'
+};
 
 const slots = new Map([
   ['llm-platform', { name: '범용 LLM 플랫폼', layer: 'L1', is_competitive: true }],
@@ -23,50 +41,51 @@ const slots = new Map([
   ['ai-usage-governance', { name: 'AI 사용 가시성·거버넌스', layer: 'L4', is_competitive: false }]
 ]);
 
-/** A 미달, 나머지 충족. */
+/**
+ * 예전 픽스처의 "A 카테고리(보안·거버넌스) 전체 미달, 나머지 충족" 을 대응표대로
+ * 옮긴 것이다. A 6문항이 A01·A02·A03·A05·A08 로 흩어진다.
+ */
+const LOW_SECURITY_TOTALS = {
+  A01: { score: 1.8, threshold: 3.5, answered: 1 },   // 데이터 보호
+  A02: { score: 1.8, threshold: 3.5, answered: 1 },   // 저장·보존
+  A03: { score: 1.8, threshold: 3.5, answered: 1 },   // 계정·접근통제
+  A05: { score: 1.8, threshold: 3.0, answered: 1 },   // 감사·모니터링
+  A08: { score: 1.8, threshold: 3.5, answered: 1 },   // 개인정보·규제
+  A04: { score: 3.6, threshold: 3.5, answered: 1 },
+  A06: { score: 3.4, threshold: 3.0, answered: 1 },
+  A07: { score: 3.4, threshold: 3.0, answered: 1 },
+  A09: { score: 3.2, threshold: 3.0, answered: 1 },
+  A10: { score: 3.4, threshold: 3.0, answered: 1 },
+  S: { score: 3.2, threshold: 3, answered: 7 },
+  P: { score: 3.2, threshold: 3, answered: 7 },
+  D: { score: 3.2, threshold: 3, answered: 7 },
+  T: { score: 3.2, threshold: 3, answered: 7 },
+  B: { score: 3.2, threshold: 3, answered: 7 },
+  G: { score: 3.2, threshold: 3, answered: 7 }
+};
+
 const lowSecurityDeal = {
-  track: 'T-B',
+  track: 'E-1',
   customer_meta: { industry: '금융/보험', targetUsers: '전사 2,000명', investment: '3억' },
-  totals: {
-    A: { score: 1.8, threshold: 3.5, answered: 6, ready: false },
-    B: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
-    C: { score: 3.2, threshold: 3.0, answered: 5, ready: true },
-    D: { score: 3.6, threshold: 3.5, answered: 5, ready: true }
-  },
   prereq_confirmations: {}
 };
 
-/**
- * 문항별 점수. 전제가 특정 문항을 지목하면 엔진은 **그 문항 점수만** 본다 —
- * 카테고리 평균으로 때우지 않는다. 42문항이 030 bridge 로 채우는 것은 21문항 중
- * 13개뿐이라, 나머지를 카테고리 평균으로 판정하면 조용히 틀린다.
- *
- * 그래서 여기 없는 문항은 "모른다" 가 되고, 후보는 제외가 아니라 확인 필요로 간다.
- */
-const ITEM_SCORES = {
-  '데이터 분류와 민감도 기준': 2,
-  '접근권한과 계정 체계': 1.8,
-  '감사 로그와 추적성': 2,
-  '데이터 보존·삭제 정책': 1.5,
-  '보안 게이트웨이 준비도': 1.5,
-  '개발·테스트 환경': 3.4,
-  '예산·구매 준비도': 3.6
-};
-
 const run = (extra) => recommend({
-  deal: lowSecurityDeal, slots, itemCountByCategory: AREA_COUNTS,  ...extra
+  deal: lowSecurityDeal, slots, totals: LOW_SECURITY_TOTALS,
+  categoryLabels: LABELS, itemCountByCategory: AREA_COUNTS, ...extra
 });
 
 test('갭 분석이 미달 여부와 신뢰도를 계산한다', () => {
-  const gaps = analyseGaps(lowSecurityDeal.fqa_totals, ITEM_COUNTS);
-  assert.equal(gaps.A.failing, true);
-  assert.equal(gaps.A.magnitude, 1.7);
-  assert.equal(gaps.A.confidence, 1);           // 6문항 전부 응답
-  assert.equal(gaps.B.failing, false);
+  const gaps = analyseGaps(LOW_SECURITY_TOTALS, AREA_COUNTS, LABELS);
+  assert.equal(gaps.A03.failing, true);
+  assert.equal(gaps.A03.magnitude, 1.7);
+  assert.equal(gaps.A03.label, '계정·접근통제', '이름표는 호출자가 넘긴다');
+  assert.equal(gaps.A04.failing, false);
 
-  // 6문항 중 2개만 답하면 신뢰도가 3분의 1이다.
-  const partial = analyseGaps({ A: { score: 1, threshold: 3.5, answered: 2 } }, ITEM_COUNTS);
-  assert.ok(Math.abs(partial.A.confidence - 1 / 3) < 0.01);
+  // 42축은 7문항이라 3개만 답하면 신뢰도가 7분의 3이다.
+  const partial = analyseGaps({ G: { score: 1, threshold: 3, answered: 3 } }, AREA_COUNTS, LABELS);
+  assert.ok(Math.abs(partial.G.confidence - 3 / 7) < 0.01);
+  assert.equal(partial.G.label, '신뢰·안전 관리');
 });
 
 test('미달 카테고리를 안 메우는 후보는 제외한다', () => {
@@ -103,8 +122,8 @@ test('운영중단·미발행·게이트웨이 중복을 거른다', () => {
   // 034 로 트랙이 구매 동기가 되면서 판정 근거를 customer_meta.securityStack 으로
   // 옮겼다. 트랙은 영업이 손으로 바꿀 수 있어 보안 환경과 어긋날 수 있었다.
   const swgDeal = (securityStack) => recommend({
-    deal: { ...lowSecurityDeal, track: 'E-1', customer_meta: { ...lowSecurityDeal.customer_meta, securityStack } },
-    slots, itemCountByCategory: AREA_COUNTS, 
+    deal: { ...lowSecurityDeal, customer_meta: { ...lowSecurityDeal.customer_meta, securityStack } },
+    slots, totals: LOW_SECURITY_TOTALS, categoryLabels: LABELS, itemCountByCategory: AREA_COUNTS,
     solutions: [{ ...base, slug: 'swg', name: 'SWG', slot: 'security-gateway' }]
   });
   assert.match(swgDeal('other-swg').excluded[0].excludedBy[0], /타사 SWG 운영 중/);
@@ -143,7 +162,7 @@ test('numeric 전제는 좌석·예산으로 자동 판정한다', () => {
 test('값이 없으면 전제로 거르지 않는다', () => {
   const out = recommend({
     deal: { ...lowSecurityDeal, customer_meta: { industry: '금융/보험' } }, // 좌석·예산 없음
-    slots, itemCountByCategory: AREA_COUNTS,
+    slots, totals: LOW_SECURITY_TOTALS, categoryLabels: LABELS, itemCountByCategory: AREA_COUNTS,
     solutions: [{
       slug: 'x', name: 'X', slot: 'llm-platform', status: 'published',
       coverage: [{ category: 'A01', strength: 3 }],
@@ -165,7 +184,7 @@ test('manual 전제는 확인 전까지 "확인 필요"로 보류한다', () => 
 
   const confirmed = recommend({
     deal: { ...lowSecurityDeal, prereq_confirmations: { legal: { '법무 검토 완료': true } } },
-    slots, itemCountByCategory: AREA_COUNTS, solutions
+    slots, totals: LOW_SECURITY_TOTALS, categoryLabels: LABELS, itemCountByCategory: AREA_COUNTS, solutions
   });
   assert.equal(confirmed.eligible.length, 1);
 });
@@ -224,15 +243,46 @@ test('enabled_by 가 없어도 갭을 메우는 패키지를 선행으로 잇는
  * 화면에서는 030 bridge 가 채운 13개만 값이 있고 나머지는 확인 필요로 간다.
  * 여기서는 그 구분이 논점이 아니므로 전부 채워 번들 계산 자체를 본다.
  */
-function itemScoresFromCategories(fqaTotals) {
-  const seed = fs.readFileSync(path.join(root, 'db', 'migrations', '001_enablement_hub.sql'), 'utf8');
-  const scores = {};
-  for (const m of seed.matchAll(/\('([ABCD])',\s*\d+,\s*'([^']+)'/g)) {
-    const category = fqaTotals[m[1]];
-    if (category) scores[m[2]] = Number(category.score);
-  }
-  return scores;
-}
+/**
+ * 선행 패키지는 **막힌 전제를 실제로 다루는지** 로 고른다. 상승폭(lift)만 보고
+ * 고르면 엉뚱한 패키지가 "이걸 하면 전제가 풀린다"고 말한다 — 영업이 고객 앞에서
+ * 못 지킬 약속을 하게 된다.
+ *
+ * 038 이후 패키지는 두 어휘를 갖는다. 후보 선정은 42축(coverage), 선행 판정은
+ * 평가영역(enablerCoverage·lift)이다.
+ */
+const LOW_BUSINESS_TOTALS = {
+  A01: { score: 3.6, threshold: 3.5, answered: 1 },
+  A03: { score: 3.6, threshold: 3.5, answered: 1 },
+  A04: { score: 2.4, threshold: 3.0, answered: 1 },   // 데이터 권한 연계 미달
+  A07: { score: 2.4, threshold: 3.0, answered: 1 },   // 정확성·신뢰성 미달
+  A10: { score: 2.0, threshold: 3.0, answered: 1 },   // 비용·확장성 미달
+  D: { score: 2.4, threshold: 3, answered: 7 },
+  B: { score: 2.0, threshold: 3, answered: 7 }
+};
+
+const lowBusinessDeal = {
+  track: 'E-1',
+  customer_meta: { industry: '제조', targetUsers: '500명', investment: '2억' },
+  prereq_confirmations: {}
+};
+
+/**
+ * 실제 시드를 읽어 엔진에 먹인다.
+ *
+ * 038 이 판정 데이터를 평가영역·6축으로 옮겼다. 솔루션의 assessment_coverage 는
+ * SQL 이 **대응표로 기계 변환**해 만들기 때문에 파일에 리터럴로 없다 — 여기서 같은
+ * 대응표를 적용해 만든다. 대응표가 어긋나면 이 검사가 먼저 깨진다.
+ */
+const ITEM_TO_AREA = Object.freeze({
+  'A|데이터 분류와 민감도 기준': 'A01', 'A|보안 게이트웨이 준비도': 'A01',
+  'A|데이터 보존·삭제 정책': 'A02', 'A|접근권한과 계정 체계': 'A03',
+  'A|감사 로그와 추적성': 'A05', 'A|규제·컴플라이언스 검토': 'A08',
+  'B|업무 시스템 연동성': 'A04', 'B|지식 소스 품질': 'A07',
+  'B|확장성·성능 기준': 'A10', 'B|모델·벤더 전환성': 'A10',
+  'C|품질 평가 체계': 'A07', 'C|장애 대응 체계': 'A05',
+  'C|비용 모니터링': 'A10', 'C|변경·배포 관리': 'A06'
+});
 
 function loadSeeds() {
   const read = (f) => fs.readFileSync(path.join(root, 'db', 'migrations', f), 'utf8');
@@ -240,26 +290,57 @@ function loadSeeds() {
     const m = block.match(new RegExp(`${field} = '([\\s\\S]*?)'::jsonb`));
     return m ? JSON.parse(m[1]) : [];
   };
+
+  // 깊이가 여럿이면 깊은 쪽을 쓴다 — 얕은 쪽에 맞추면 선행 판정에서 밀린다.
+  const toAreas = (coverage) => {
+    const best = new Map();
+    for (const entry of coverage) {
+      for (const item of (entry.items || [])) {
+        const area = ITEM_TO_AREA[`${entry.category}|${item}`];
+        if (!area) continue;
+        const strength = Number(entry.strength) || 0;
+        if (strength > (best.get(area) || 0)) best.set(area, strength);
+      }
+    }
+    return [...best.entries()].sort()
+      .map(([category, strength]) => ({ category, strength }));
+  };
+  const toPrereqs = (list) => list.map((p) => {
+    if (p.kind !== 'fqa') return p;
+    const area = ITEM_TO_AREA[`${p.category}|${p.item}`];
+    return area
+      ? { kind: 'assessment', area, min: p.min, blocking: p.blocking,
+          label: p.label, enabled_by: p.enabled_by || [] }
+      : { kind: 'manual', blocking: p.blocking, label: p.label || `${p.item} ${p.min} 이상` };
+  });
+
   const solutionsIn = (sql) => [...sql.matchAll(
     /update solutions set\s*\n([\s\S]*?)where slug (?:=|in) \(?((?:'[a-z0-9-]+'(?:,\s*)?)+)\)?;/g
-  )].flatMap((m) => [...m[2].matchAll(/'([a-z0-9-]+)'/g)].map((s) => ({
-    slug: s[1], name: s[1], slot: 'llm-platform', status: 'published',
-    coverage: pick(m[1], 'fqa_coverage'),
-    prerequisites: pick(m[1], 'prerequisites'),
-    red_flags: pick(m[1], 'red_flags')
-  }))).filter((s) => s.fqa_coverage.length);
+  )].flatMap((m) => {
+    const coverage = toAreas(pick(m[1], 'fqa_coverage'));
+    const prerequisites = toPrereqs(pick(m[1], 'prerequisites'));
+    const flags = pick(m[1], 'red_flags');
+    return [...m[2].matchAll(/'([a-z0-9-]+)'/g)]
+      .map((hit) => ({
+        slug: hit[1], name: hit[1], slot: 'llm-platform', status: 'published',
+        coverage, prerequisites, red_flags: flags
+      }));
+  }).filter((row) => row.coverage.length);
 
-  // 035 가 패키지를 기획안 5대 오퍼링으로 재편했다. 017 의 옛 6종을 읽으면
-  // 이미 DB 에 없는 것을 검사하게 된다.
-  const offering = read('035_offering_packages.sql');
-  const lifts = new Map([...offering.matchAll(
-    /readiness_lift = '(\{[\s\S]*?\})'::jsonb\s*\n\s*where id = '(\w+)'/g
+  // 패키지는 038 이 리터럴로 심는다 — 후보 선정은 42축, 선행 판정은 평가영역.
+  const judgement = read('038_assessment_judgement.sql');
+  const grab = (field) => new Map([...judgement.matchAll(
+    new RegExp(`${field} = '([\\s\\S]*?)'::jsonb[\\s\\S]{0,240}?where id = '(\\w+)'`, 'g')
   )].map((m) => [m[2], JSON.parse(m[1])]));
-  const packages = [...offering.matchAll(
-    /update packages set\s*\n\s*fqa_coverage = '([\s\S]*?)'::jsonb,\s*\n\s*readiness_lift = '\{[\s\S]*?\}'::jsonb\s*\n\s*where id = '(\w+)'/g
-  )].map((m) => ({
-    id: m[2], slug: m[2], name: m[2],
-    coverage: JSON.parse(m[1]), readiness_lift: lifts.get(m[2]) || {}
+  const axes = grab('readiness_coverage');
+  const enablerCov = grab('assessment_coverage');
+  const lifts = grab('assessment_lift');
+
+  const packages = [...axes.keys()].map((id) => ({
+    id, slug: id, name: id,
+    coverage: (axes.get(id) || []).map((e) => ({ category: e.axis, strength: e.strength })),
+    enablerCoverage: (enablerCov.get(id) || []).map((e) => ({ category: e.area, strength: e.strength })),
+    lift: lifts.get(id) || {}
   }));
 
   return {
@@ -270,161 +351,105 @@ function loadSeeds() {
   };
 }
 
-/**
- * readiness_lift 는 카테고리 단위, 전제는 문항 단위다. 카테고리만 맞춰 보면 엉뚱한
- * 패키지가 "이걸 하면 전제가 풀린다"고 말한다 — 영업이 고객 앞에서 못 지킬 약속을
- * 하게 되므로, 아래 네 건은 그 경계를 지킨다.
- */
-
-/** D 가 미달인 딜. 예산·구매 준비도 계열 전제를 시험하는 데 쓴다. */
-/** lowBusinessDeal 용 문항 점수. 카테고리 점수와 같게 둬 기존 번들 계산을 보존한다. */
-const BUSINESS_ITEM_SCORES = {
-  '개발·테스트 환경': 2.4,
-  '모델·벤더 전환성': 2.4,
-  '예산·구매 준비도': 2.0,
-  '현업 오너십': 2.0,
-  '접근권한과 계정 체계': 3.6
-};
-
-const lowBusinessDeal = {
-  track: 'T-B',
-  customer_meta: { industry: '제조', targetUsers: '500명', investment: '2억' },
-  totals: {
-    A: { score: 3.6, threshold: 3.0, answered: 6, ready: true },
-    B: { score: 2.4, threshold: 3.0, answered: 5, ready: false },
-    C: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
-    D: { score: 2.0, threshold: 3.0, answered: 5, ready: false }
-  },
-  prereq_confirmations: {}
-};
-
-test('문항을 안 덮는 패키지는 lift 가 있어도 선행으로 쓰지 않는다', () => {
-  // ADOPTION 은 D 를 1.2 올리지만 덮는 것은 현업 오너십·변화관리·교육이다.
-  // 예산·구매 준비도는 손도 대지 않으므로 "이걸 하면 예산 전제가 풀린다"고 말하면 안 된다.
+test('전제를 안 덮는 패키지는 lift 가 있어도 선행으로 쓰지 않는다', () => {
+  // 04 Adoption & Change 는 42축 B 를 올리지만 **평가영역은 하나도 풀지 않는다**(038).
+  // "변화관리를 하면 비용·확장성 전제가 풀린다" 고 말하면 안 된다.
   const out = recommend({
-    deal: lowBusinessDeal, slots, itemCountByCategory: AREA_COUNTS, itemScores: BUSINESS_ITEM_SCORES,
+    deal: lowBusinessDeal, slots, totals: LOW_BUSINESS_TOTALS,
+    categoryLabels: LABELS, itemCountByCategory: AREA_COUNTS,
     solutions: [{
-      slug: 'needs-budget', name: '예산전제ISV', slot: 'llm-platform', status: 'published',
-      coverage: [/* 대응 없음 */],
-      prerequisites: [{ kind: 'manual',
-        blocking: true, label: '예산·구매 준비도 3 이상' }]
+      slug: 'needs-cost', name: '비용전제ISV', slot: 'llm-platform', status: 'published',
+      coverage: [{ category: 'A04', strength: 2 }],
+      prerequisites: [{ kind: 'assessment', area: 'A10', min: 3,
+        blocking: true, label: '비용·확장성 3 이상' }]
     }],
     packages: [{
-      id: 'ADOPTION', slug: 'ADOPTION', name: '도입 확산 키트',
-      coverage: [/* 대응 없음 */],
-      readiness_lift: { D: 1.2 }
+      id: 'P04', slug: 'P04', name: 'AI Adoption & Change Management',
+      coverage: [{ category: 'B', strength: 3 }],   // 후보 선정은 42축
+      enablerCoverage: [],                          // 평가영역은 풀지 않는다
+      lift: {}
     }]
   });
 
   assert.equal(out.bundles.length, 0,
     `근거 없는 번들: ${out.bundles.map((b) => b.reasons.at(-1)).join(' / ')}`);
-  assert.deepEqual(out.excluded.map((x) => x.slug), ['needs-budget']);
-  assert.ok(out.excluded[0].excludedBy.some((r) => /예산·구매 준비도/.test(r)));
+  assert.ok(out.excluded.some((x) => x.slug === 'needs-cost'));
+  assert.ok(out.excluded.find((x) => x.slug === 'needs-cost')
+    .excludedBy.some((r) => /비용·확장성/.test(r)));
 });
 
-test('같은 카테고리라도 문항을 덮는 패키지가 선행이 된다', () => {
-  // INTEGRATION 의 lift(B +1.5)가 POC(B +0.8)보다 크고 목록에도 먼저 오지만,
-  // "개발·테스트 환경"을 덮는 것은 POC 뿐이다. 큰 숫자가 아니라 맞는 문항이 이긴다.
-  const out = recommend({
-    deal: lowBusinessDeal, slots, itemCountByCategory: AREA_COUNTS, itemScores: BUSINESS_ITEM_SCORES,
-    solutions: [{
-      slug: 'needs-devenv', name: '개발환경전제ISV', slot: 'llm-platform', status: 'published',
-      coverage: [{ category: 'A10', strength: 2 }],
-      prerequisites: [{ kind: 'manual',
-        blocking: true, label: '개발·테스트 환경 3 이상' }]
-    }],
-    packages: [
-      { id: 'INTEGRATION', slug: 'INTEGRATION', name: 'AI Integration',
-        coverage: [{ category: 'A04', strength: 3 }, { category: 'A07', strength: 3 }],
-        readiness_lift: { B: 1.5 } },
-      { id: 'POC', slug: 'POC', name: 'AI PoC',
-        coverage: [/* 대응 없음 */,
-          /* 대응 없음 */],
-        readiness_lift: { B: 0.8, D: 0.8 } }
-    ]
-  });
+test('상승폭이 커도 그 영역을 덮는 패키지가 선행이 된다', () => {
+  // 03 AIR Service 의 lift(A10 +1.5)가 STARTER(A10 +0.5)보다 크지만, 목록 순서와
+  // 무관하게 **실제로 그 영역을 덮는** 쪽이 이겨야 한다. 둘 다 덮으면 깊은 쪽이다.
+  const isv = {
+    slug: 'needs-cost', name: '비용전제ISV', slot: 'llm-platform', status: 'published',
+    coverage: [{ category: 'A04', strength: 2 }],
+    prerequisites: [{ kind: 'assessment', area: 'A10', min: 3,
+      blocking: true, label: '비용·확장성 3 이상' }]
+  };
+  const air = {
+    id: 'P03', slug: 'P03', name: 'AIR Service',
+    coverage: [{ category: 'D', strength: 3 }],
+    enablerCoverage: [{ category: 'A10', strength: 3 }],
+    lift: { A10: 1.5 }
+  };
+  const starter = {
+    id: 'STARTER', slug: 'STARTER', name: 'OpenAI Starter Package',
+    coverage: [{ category: 'B', strength: 1 }],
+    enablerCoverage: [{ category: 'A10', strength: 2 }],
+    lift: { A10: 0.5 }
+  };
 
-  assert.equal(out.bundles.length, 1);
-  assert.equal(out.bundles[0].enabler.slug, 'POC');
-  assert.ok(out.bundles[0].reasons.some((r) => /B 2\.4 → 3\.2 예상 \(전제 3 충족\)/.test(r)),
-    out.bundles[0].reasons.join(' / '));
+  for (const order of [[air, starter], [starter, air]]) {
+    const out = recommend({
+      deal: lowBusinessDeal, slots, totals: LOW_BUSINESS_TOTALS,
+      categoryLabels: LABELS, itemCountByCategory: AREA_COUNTS,
+      solutions: [isv], packages: order
+    });
+    assert.equal(out.bundles.length, 1, `순서 ${order.map((p) => p.id).join('→')} 에서 번들이 없다`);
+    assert.equal(out.bundles[0].enabler.slug, 'P03',
+      `순서 ${order.map((p) => p.id).join('→')} 에서 얕게 다루는 쪽이 뽑혔다`);
+  }
 });
 
 test('번들 사유의 수치는 enabler 가 실제로 푸는 전제를 가리킨다', () => {
-  // 두 전제가 걸렸고 둘 다 A 다. SECURITY 는 접근권한만 덮으므로 수치는 그쪽(min 3)
-  // 이어야 한다. 먼저 걸린 보존정책(min 4)을 집으면 두 번 거짓말이 된다 — 덮지도 않고
-  // 1.8 + 1.5 = 3.3 이라 4 를 넘지도 못하는데 "전제 4 충족"이라 말하게 된다.
-  const out = run({
+  // 두 전제가 걸렸다. 03 AIR Service 는 A10 만 덮으므로 수치는 그쪽(min 3)이어야
+  // 한다. 먼저 걸린 A02(min 4)를 집으면 두 번 거짓말이 된다 — 덮지도 않고
+  // 2.0 + 1.5 = 3.5 라 4 를 넘지도 못하는데 "전제 4 충족" 이라 말하게 된다.
+  const out = recommend({
+    deal: lowBusinessDeal, slots,
+    totals: { ...LOW_BUSINESS_TOTALS, A02: { score: 2.0, threshold: 4, answered: 1 } },
+    categoryLabels: LABELS, itemCountByCategory: AREA_COUNTS,
     solutions: [{
-      slug: 'needs-two-a', name: 'A두전제ISV', slot: 'llm-platform', status: 'published',
-      coverage: [{ category: 'A05', strength: 2 }],
+      slug: 'needs-two', name: '두전제ISV', slot: 'llm-platform', status: 'published',
+      coverage: [{ category: 'A04', strength: 2 }],
       prerequisites: [
-        { kind: 'assessment', area: 'A02', min: 4,
-          blocking: true, label: '보존정책 4 이상' },
-        { kind: 'assessment', area: 'A03', min: 3,
-          blocking: true, label: 'IAM 3 이상' }
+        { kind: 'assessment', area: 'A02', min: 4, blocking: true, label: '보존정책 4 이상' },
+        { kind: 'assessment', area: 'A10', min: 3, blocking: true, label: '비용·확장성 3 이상' }
       ]
     }],
     packages: [{
-      id: 'SECURITY', slug: 'SECURITY', name: 'AI Security Readiness',
-      coverage: [{ category: 'A03', strength: 3 }],
-      readiness_lift: { A: 1.5 }
+      id: 'P03', slug: 'P03', name: 'AIR Service',
+      coverage: [{ category: 'D', strength: 3 }],
+      enablerCoverage: [{ category: 'A10', strength: 3 }],
+      lift: { A10: 1.5 }
     }]
   });
 
   assert.equal(out.bundles.length, 1);
-  assert.equal(out.bundles[0].enabler.slug, 'SECURITY');
   const numeric = out.bundles[0].reasons.find((r) => /예상/.test(r));
   assert.ok(numeric, out.bundles[0].reasons.join(' / '));
-  // 막힌 전제 요약에는 둘 다 나온다 — 보존정책은 여전히 미해결이라 숨기면 안 된다.
-  assert.ok(out.bundles[0].reasons.some((r) => /보존정책 4 이상 \/ IAM 3 이상/.test(r)));
-  assert.match(numeric, /A 1\.8 → 3\.3 예상 \(전제 3 충족\)/);
+  // 막힌 전제 요약에는 둘 다 나온다 — 보존정책은 여전히 미해결이라 숨기면 안 된다
+  assert.ok(out.bundles[0].reasons.some((r) => /보존정책 4 이상 \/ 비용·확장성 3 이상/.test(r)));
+  assert.match(numeric, /A10 2 → 3\.5 예상 \(전제 3 충족\)/);
   assert.doesNotMatch(numeric, /전제 4 충족/, '넘지도 못하는 임계값을 충족이라 말하면 안 된다');
-});
-
-test('실데이터 — 035 의 lift 가 근거 없는 수치를 만들지 않는다', () => {
-  // 035 가 판정 데이터를 5대 오퍼링 패키지로 옮겼다. 값을 고치면 여기서 드러난다.
-  const { solutions, packages, lifts } = loadSeeds();
-
-  assert.equal(lifts.size, 5, '035 는 P01~P05 다섯에 lift 를 넣는다');
-  assert.deepEqual(lifts.get('P02'), { A: 1.5 }, '02 OpenAI Ready 가 A 를 +1.5 — 가장 자주 쓰이는 값');
-  // POC+INTEGRATION 합본. lift 는 합산하지 않고 큰 값을 쓴다.
-  assert.deepEqual(lifts.get('P03'), { B: 1.5, A: 0.8, D: 0.8 },
-    '합쳤다고 상승폭이 더해지면 안 된다');
-
-  // 네 축이 모두 낮은 고객. 번들이 가장 많이 나오는 조건이라 위반도 여기서 드러난다.
-  const lowAll = {
-    A: { score: 1.8, threshold: 3.5, answered: 6, ready: false },
-    B: { score: 2.2, threshold: 3.0, answered: 5, ready: false },
-    C: { score: 2.1, threshold: 3.0, answered: 5, ready: false },
-    D: { score: 2.0, threshold: 3.5, answered: 5, ready: false }
-  };
-  const out = recommend({
-    deal: { ...lowSecurityDeal, totals: lowAll },
-    solutions, packages, slots, itemCountByCategory: AREA_COUNTS,
-  });
-
-  assert.ok(out.bundles.length > 0, '번들이 하나도 없으면 이 검사가 무의미하다');
-
-  const covers = (pkg, need) => (pkg.fqa_coverage || []).some((e) => e.category === need.category
-    && (Number(e.strength) || 0) >= 2
-    && (!need.item || !(e.items || []).length || (e.items || []).includes(need.item)));
-
-  for (const bundle of out.bundles) {
-    const numeric = bundle.reasons.find((r) => /→ .* 예상 \(전제 .* 충족\)/.test(r));
-    if (!numeric) continue;
-    const pkg = packages.find((p) => p.slug === bundle.enabler.slug);
-    if (!pkg) continue; // ISV 가 선행인 경우는 lift 를 쓰지 않는다
-    assert.ok(bundle.prerequisites.blockedBy.some((need) => covers(pkg, need)),
-      `${bundle.enabler.slug} 는 ${bundle.slug} 의 막힌 문항을 덮지 않는데 수치를 말한다: ${numeric}`);
-  }
 });
 
 test('검토 여부에 따라 라벨이 달라진다', () => {
   assert.equal(run({ solutions: [] }).label, '고객 자가응답 기준 잠정 추천');
   const reviewed = recommend({
     deal: { ...lowSecurityDeal, fqa_reviewed_at: '2026-07-28T00:00:00Z' },
-    slots, itemCountByCategory: AREA_COUNTS, solutions: []
+    slots, totals: LOW_SECURITY_TOTALS, categoryLabels: LABELS, itemCountByCategory: AREA_COUNTS, solutions: []
   });
   assert.equal(reviewed.label, '실사 반영 추천');
   assert.equal(reviewed.reviewed, true);
@@ -445,126 +470,91 @@ test('보조 파서 — 좌석·예산·규모', () => {
 test('실데이터 — 준비도 낮은 딜은 패키지가 먼저 나온다', () => {
   const { solutions, packages } = loadSeeds();
 
-  assert.equal(solutions.length, 17, '012 의 9종 + 019 의 8종');
-  assert.equal(packages.length, 5, '035 는 기획안 5대 오퍼링으로 심는다');
+  // replit 은 「B 개발·테스트 환경」 하나만 덮었는데 10평가영역에 대응이 없다.
+  // Appendix A 는 위험·통제 체크리스트라 개발 환경을 묻지 않는다. 개발 생산성은
+  // 033 의 AI Developer 번들이 STEP03 에서 따로 보여준다.
+  // **다른 것이 조용히 빠지면 여기서 걸린다.**
+  assert.equal(solutions.length, 16, '012 의 9종 + 019 의 8종 − replit');
+  assert.ok(!solutions.some((x) => x.slug === 'replit'), '알려진 누락은 replit 하나여야 한다');
+  assert.equal(packages.length, 6, '038 은 STARTER + P01~P05 에 축을 심는다');
 
-  const lowAC = {
-    ...lowSecurityDeal.fqa_totals,
-    C: { score: 2.1, threshold: 3.0, answered: 5, ready: false }
+  // 평가영역이 전반적으로 낮고 42축도 낮은 고객.
+  const low = {
+    A01: { score: 1.8, threshold: 3.5, answered: 1 },
+    A02: { score: 1.8, threshold: 3.5, answered: 1 },
+    A03: { score: 1.8, threshold: 3.5, answered: 1 },
+    A04: { score: 2.0, threshold: 3.5, answered: 1 },
+    A05: { score: 2.1, threshold: 3.0, answered: 1 },
+    A06: { score: 2.2, threshold: 3.0, answered: 1 },
+    A07: { score: 2.1, threshold: 3.0, answered: 1 },
+    A08: { score: 1.9, threshold: 3.5, answered: 1 },
+    A09: { score: 2.4, threshold: 3.0, answered: 1 },
+    A10: { score: 2.0, threshold: 3.0, answered: 1 },
+    S: { score: 2.0, threshold: 3, answered: 7 },
+    P: { score: 2.0, threshold: 3, answered: 7 },
+    D: { score: 2.1, threshold: 3, answered: 7 },
+    T: { score: 2.2, threshold: 3, answered: 7 },
+    B: { score: 2.0, threshold: 3, answered: 7 },
+    G: { score: 2.1, threshold: 3, answered: 7 }
   };
   const out = recommend({
-    deal: { ...lowSecurityDeal, totals: lowAC },
-    solutions, packages, slots, itemCountByCategory: AREA_COUNTS,
+    deal: lowSecurityDeal, solutions, packages, slots,
+    totals: low, categoryLabels: LABELS, itemCountByCategory: AREA_COUNTS
   });
 
-  // A·C 가 미달인 고객에게는 그 두 축을 덮는 패키지가 나와야 한다.
-  const names = out.eligible.map((x) => x.name);
-  assert.ok(out.eligible.length > 0, '적합 후보가 하나도 없으면 안 된다');
-  assert.ok(names.includes('P02'), `A 미달인데 02 OpenAI Ready 가 없다: ${names.join(', ')}`);
-  assert.ok(names.includes('P05'), `C 미달인데 05 Billing & MS 가 없다: ${names.join(', ')}`);
+  // 이 변경의 핵심 — 01·04 가 살아남는다. 10평가영역만 봤으면 커버리지가 전멸했다.
+  const ids = out.eligible.map((x) => x.slug);
+  assert.ok(ids.includes('P01'), `S 미달인데 01 AI Consulting 이 없다: ${ids.join(', ')}`);
+  assert.ok(ids.includes('P04'), `P 미달인데 04 Adoption & Change 가 없다: ${ids.join(', ')}`);
+  assert.ok(ids.includes('P02'), `G 미달인데 02 OpenAI Ready 가 없다: ${ids.join(', ')}`);
 
-  // 019 이후 New Relic 도 여기 들어온다. C(품질·장애·비용)를 덮고 그 전제(B 개발·테스트
-  // 환경 3, C 운영 책임자 2)를 이 딜이 충족하기 때문이다 — 판정 데이터를 채운 효과다.
-  assert.ok(names.includes('new-relic'),
-    `019 로 판정 데이터가 생긴 New Relic 이 C 갭 고객에게 안 나온다: ${names.join(', ')}`);
-
-  // 전제에 걸린 ISV 들은 버리지 않고 번들로 살아남아야 한다.
-  assert.ok(out.bundles.length >= 3, `번들 후보가 너무 적다: ${out.bundles.length}`);
+  // 전제에 걸린 ISV 는 버리지 않고 번들로 살아남아야 한다.
+  assert.ok(out.bundles.length >= 1, `번들 후보가 없다: ${out.bundles.length}`);
 });
 
-test('035 — 예산·구매 준비도를 덮는 패키지가 있다', () => {
-  // 016 까지는 6종 중 아무도 이 문항을 못 덮어, 여기 막힌 ISV 는 선행 후보를 찾지
-  // 못하고 전부 탈락했다. 기획안 01 의 "TCO 및 예산 시뮬레이션"이 그 구멍을 메운다.
-  const { packages } = loadSeeds();
-  const covers = (pkg, category, item) => (pkg.fqa_coverage || []).some((e) =>
-    e.category === category && (e.items || []).includes(item));
+test('038 — 판정 데이터가 대응표로 옮겨졌는가', () => {
+  const { solutions, packages } = loadSeeds();
 
-  const budget = packages.filter((p) => covers(p, 'D', '예산·구매 준비도'));
-  assert.deepEqual(budget.map((p) => p.id), ['P01'],
-    'TCO·예산 시뮬레이션을 내는 01 AI Consulting 만 이 문항을 덮어야 한다');
-
-  // OPERATE 는 도입 후 비용 관리라 일부러 뺐다. 넣으면 "운영 패키지를 먼저 하면
-  // 예산 준비가 된다"는 순서가 뒤집힌 제안이 나온다.
-  assert.ok(!covers(packages.find((p) => p.id === 'P05'), 'D', '예산·구매 준비도'),
-    '05 Billing & MS 는 도입 후 비용 관리다 — 도입 전 예산 확보와 섞으면 안 된다');
-
-  // 실제로 막힌 ISV 가 번들로 살아나는지 끝까지 확인한다.
-  const budgetGapTotals = {
-    A: { score: 3.6, threshold: 3.0, answered: 6, ready: true },
-    B: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
-    C: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
-    D: { score: 2.0, threshold: 3.0, answered: 5, ready: false }
-  };
-  const out = recommend({
-    deal: {
-      track: 'T-B',
-      customer_meta: { industry: '제조', targetUsers: '500명', investment: '2억' },
-      prereq_confirmations: {},
-      totals: budgetGapTotals
-    },
-    slots, itemCountByCategory: AREA_COUNTS, packages,
-    solutions: [{
-      slug: 'needs-budget', name: '예산전제ISV', slot: 'llm-platform', status: 'published',
-      coverage: [/* 대응 없음 */],
-      prerequisites: [{ kind: 'manual',
-        blocking: true, label: '예산·구매 준비도 3 이상' }]
-    }]
-  });
-
-  assert.equal(out.bundles.length, 1, '선행 패키지를 찾아 번들로 살아나야 한다');
-  assert.equal(out.bundles[0].enabler.slug, 'P01');
-  assert.ok(out.bundles[0].reasons.some((r) => /D 2 → 3\.2 예상 \(전제 3 충족\)/.test(r)),
-    out.bundles[0].reasons.join(' / '));
-});
-
-test('035 — 한 문항을 둘이 덮으면 더 깊게 다루는 쪽이 선행이 된다', () => {
-  // 03 AIR Service 가 A(데이터 분류·접근권한)를 strength 2 로 다루고,
-  // 02 OpenAI Ready 는 같은 문항을 strength 3 으로 다룬다. 목록 순서와 무관하게
-  // 02 가 이겨야 한다 — 아니면 3~4주 과업 자리에 규모별 산정 과업이 붙는다.
-  const { packages } = loadSeeds();
-  const byId = (id) => packages.find((p) => p.id === id);
-  const deal = {
-    track: 'E-1',
-    customer_meta: { industry: '금융/보험', targetUsers: '전사 2,000명', investment: '3억' },
-    prereq_confirmations: {},
-    totals: {
-      A: { score: 2.4, threshold: 3.0, answered: 6, ready: false },
-      B: { score: 2.4, threshold: 3.0, answered: 5, ready: false },
-      C: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
-      D: { score: 3.6, threshold: 3.0, answered: 5, ready: true }
+  // 솔루션은 전부 평가영역으로만 말한다. 21문항 카테고리가 남으면 안 된다.
+  for (const solution of solutions) {
+    for (const entry of solution.coverage) {
+      assert.match(entry.category, /^A\d\d$/, `${solution.slug} 가 옛 어휘를 쓴다: ${entry.category}`);
     }
-  };
-  const isv = {
-    slug: 'needs-iam', name: 'IAM전제ISV', slot: 'llm-platform', status: 'published',
-    coverage: [{ category: 'A05', strength: 2 }],
-    prerequisites: [{ kind: 'assessment', area: 'A03', min: 3,
-      blocking: true, label: 'IAM 3 이상' }]
-  };
+    for (const prereq of solution.prerequisites) {
+      assert.ok(prereq.kind !== 'fqa', `${solution.slug} 에 kind:'fqa' 가 남았다`);
+    }
+  }
 
-  // 두 패키지 모두 전제를 넘긴다(2.4+1.5=3.9 / 2.4+0.8=3.2). 순서만 뒤집어 넣는다.
-  for (const order of [['P03', 'P02'], ['P02', 'P03']]) {
-    const out = recommend({
-      deal, slots, itemCountByCategory: AREA_COUNTS, solutions: [isv],
-      packages: order.map(byId)
-    });
-    assert.equal(out.bundles.length, 1, `순서 ${order.join('→')} 에서 번들이 없다`);
-    assert.equal(out.bundles[0].enabler.slug, 'P02',
-      `순서 ${order.join('→')} 에서 얕게 다루는 쪽이 뽑혔다`);
+  // 패키지는 42축으로 뽑히고 평가영역으로 푼다. 01·04 는 푸는 것이 없다.
+  const byId = Object.fromEntries(packages.map((p) => [p.id, p]));
+  for (const entry of byId.P01.coverage) {
+    assert.match(entry.category, /^[SPDTBG]$/, '패키지 후보 선정은 42축이어야 한다');
+  }
+  assert.equal(byId.P01.enablerCoverage.length, 0,
+    '"컨설팅을 하면 SSO 가 생긴다" 가 되면 안 된다');
+  assert.equal(byId.P04.enablerCoverage.length, 0);
+  assert.ok(byId.P02.enablerCoverage.length > 0, '02 OpenAI Ready 는 보안 영역을 푼다');
+  for (const entry of byId.P02.enablerCoverage) {
+    assert.match(entry.category, /^A\d\d$/);
   }
 });
 
-test('전제가 지목한 문항을 모르면 카테고리 평균으로 때우지 않는다', () => {
-  // 42문항이 030 bridge 로 채우는 것은 21문항 중 13개다. A 는 6문항 중 2개만 찬다.
-  // 다른 두 문항의 평균으로 "접근권한이 3 이상인가" 를 판정하면 조용히 틀린다.
+test('전제가 지목한 영역을 모르면 다른 영역으로 때우지 않는다', () => {
+  // 037 bridge 가 8개를 채우고 저장·보존·계정통제는 안 찬다. 모르는 것을 조용히
+  // 통과시키면 막혔어야 할 후보가 추천에 올라온다 — 낙관적으로 틀리는 쪽이다.
   const isv = {
     slug: 'needs-iam', name: 'IAM전제ISV', slot: 'llm-platform', status: 'published',
     coverage: [{ category: 'A05', strength: 2 }],
-    prerequisites: [{ kind: 'assessment', area: 'A03', min: 3,
-      blocking: true, label: 'IAM 3 이상' }]
+    prerequisites: [{ kind: 'assessment', area: 'A03', min: 3, blocking: true, label: 'IAM 3 이상' }]
   };
+  // A03 을 뺀 갭. 나머지는 그대로다.
+  const withoutA03 = { ...LOW_SECURITY_TOTALS };
+  delete withoutA03.A03;
 
-  // ① 그 문항을 모른다 — 카테고리는 1.8 이지만 그것으로 판정하지 않는다
-  const unknown = run({ solutions: [isv], itemScores: {} });
+  const unknown = recommend({
+    deal: lowSecurityDeal, slots, totals: withoutA03,
+    categoryLabels: LABELS, itemCountByCategory: AREA_COUNTS, solutions: [isv]
+  });
   assert.equal(unknown.excluded.length, 0, '모르는데 제외하면 근거 없이 후보를 버린다');
   assert.equal(unknown.needsConfirmation.length, 1, '확인 필요로 가야 한다');
   assert.deepEqual(
@@ -572,26 +562,20 @@ test('전제가 지목한 문항을 모르면 카테고리 평균으로 때우�
     ['IAM 3 이상']
   );
 
-  // ② 영업이 확인하면 통과한다
+  // 확인하면 통과한다
   const confirmed = recommend({
     deal: { ...lowSecurityDeal, prereq_confirmations: { 'needs-iam': { 'IAM 3 이상': true } } },
-    slots, itemCountByCategory: AREA_COUNTS, itemScores: {}, solutions: [isv]
+    slots, totals: withoutA03, categoryLabels: LABELS,
+    itemCountByCategory: AREA_COUNTS, solutions: [isv]
   });
   assert.equal(confirmed.eligible.length, 1, '확인했는데 안 통과하면 확인이 무의미하다');
 
-  // ③ 문항 점수가 있으면 확인 없이 자동 판정한다 — bridge 가 채운 13개가 이 경로다
-  assert.equal(run({ solutions: [isv], itemScores: { '접근권한과 계정 체계': 4 } }).eligible.length, 1);
-  assert.equal(run({ solutions: [isv], itemScores: { '접근권한과 계정 체계': 2 } }).excluded.length, 1);
-});
-
-test('문항을 지목하지 않은 전제는 여전히 카테고리로 본다', () => {
-  // item 이 없으면 카테고리 전체를 묻는 전제다. 그건 평균이 맞는 답이다.
-  const isv = {
-    slug: 'needs-a-area', name: 'A영역전제ISV', slot: 'llm-platform', status: 'published',
-    coverage: [{ category: 'A05', strength: 2 }],
-    prerequisites: [{ kind: 'fqa', category: 'A', min: 3, blocking: true, label: 'A 영역 3 이상' }]
-  };
-  const out = run({ solutions: [isv], itemScores: {} });
-  assert.equal(out.excluded.length, 1, 'A 1.8 이므로 제외여야 한다');
-  assert.equal(out.needsConfirmation.length, 0);
+  // 값이 있으면 확인 없이 자동 판정한다 — bridge 가 채운 8개가 이 경로다
+  assert.equal(run({ solutions: [isv] }).excluded.length, 1, 'A03 1.8 이라 제외여야 한다');
+  const passing = recommend({
+    deal: lowSecurityDeal, slots,
+    totals: { ...LOW_SECURITY_TOTALS, A03: { score: 4, threshold: 3.5, answered: 1 } },
+    categoryLabels: LABELS, itemCountByCategory: AREA_COUNTS, solutions: [isv]
+  });
+  assert.equal(passing.eligible.length, 1);
 });

@@ -15,13 +15,7 @@ const refs = {
     { id: 'E-2', name: '개발 생산성형', why: '개발조직 KPI 를 기준으로 코드·테스트 자동화의 Codex 효과를 검증하는 딜입니다.', warn: 'Codex 는 Workspace Credit 종량제입니다. 개발자별 월 한도를 먼저 정하지 않으면 비용이 튑니다.' },
     { id: 'E-3', name: '서비스 개발형', why: 'API 기반 고객·사내 서비스를 PoC 후 상용화하고 유지 관리하는 딜입니다.', warn: 'API 사용량은 변동성이 큽니다. 상용 전환 전에 사용량·비용 한도와 운영 이관 주체를 확정하세요.' }
   ],
-  fqaItems: [
-    { category: 'A', no: 1, name: '데이터 분류와 민감도 기준', detail: 'AI에 투입 가능한 데이터가 정의되어 있나요?', weight: 5, threshold: 3.5 },
-    { category: 'A', no: 2, name: '접근권한과 계정 체계', detail: '사용자와 관리자 권한이 분리되어 있나요?', weight: 5, threshold: 3.5 },
-    { category: 'B', no: 3, name: '업무 시스템 연동성', detail: '핵심 시스템에 API로 연결할 수 있나요?', weight: 4, threshold: 3 },
-    { category: 'C', no: 4, name: '운영 책임자 지정', detail: '운영 책임자가 지정되어 있나요?', weight: 5, threshold: 3 },
-    { category: 'D', no: 5, name: '성과 KPI', detail: 'PoC 성공 KPI가 합의되어 있나요?', weight: 5, threshold: 3.5 }
-  ],
+
   // 기획안 5대 코어 오퍼링 = 딜사이징 단위 (035). 단가는 기획안에 없어 전부 미정이다.
   packages: [
     { id: 'STARTER', name: 'OpenAI Starter Package', scale: 'S', period: '3개월 (MS Light 기준)', target: '라이선스 도입부터 초기 설정·온보딩·운영관리까지 한 패키지로 시작', base_md: 0, unit_price: 0, price_is_placeholder: true, items: [{ label: 'AI Readiness Assessment 6대 영역 진단 리포트 (기본 제공)' }] },
@@ -43,18 +37,18 @@ const refs = {
 };
 
 let deals = [
-  { id: 'd1', customer: '한빛금융', customer_meta: { industry: 'Finance', companySize: '1,000명 초과', targetUsers: '전사 1,200명', securityStack: 'zscaler' }, fqa_scores: { 1: 4, 2: 3, 3: 4, 4: 3, 5: 4 }, fqa_totals: { A: { score: 3.5, ready: true, answered: 2 }, B: { score: 4, ready: true, answered: 1 }, C: { score: 3, ready: true, answered: 1 }, D: { score: 4, ready: true, answered: 1 } }, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1', 's2'], packages: [{ id: 'P03', md: 28 }], stage: 2, source: 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() },
+  { id: 'd1', customer: '한빛금융', customer_meta: { industry: 'Finance', companySize: '1,000명 초과', targetUsers: '전사 1,200명', securityStack: 'zscaler' }, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1', 's2'], packages: [{ id: 'P03', md: 28 }], stage: 2, source: 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() },
   // 포탈로 들어온 딜. 027 이후 담당자 이름·전화번호가 leads 에 남고 허브는 읽기 전용으로
   // 보여준다. 업종·규모는 taxonomy.js 어휘(SFDC 코드 · 진단기준 구간)로 저장된다.
   { id: 'd2', customer: '온누리제조',
     customer_meta: { industry: 'Manufacturing', companySize: '501~1,000명', securityStack: 'none' },
-    fqa_scores: {}, fqa_totals: {}, track: 'E-3', track_name: '서비스 개발형',
+    track: 'E-3', track_name: '서비스 개발형',
     isv_combo: [], packages: [], stage: 0, source: 'portal',
     lead_contact: 'park@onnuri.co.kr', lead_contact_name: '박담당',
     lead_contact_phone: '031-987-6543 (내선 12)',
     lead_message: '전사 문서 검색부터 검토 중입니다.',
     owner_id: null, owner_name: null, updated_at: new Date(Date.now() - 3600000).toISOString() },
-  { id: 'd3', customer: '다온커머스', customer_meta: { industry: '유통' }, fqa_scores: {}, fqa_totals: {}, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1'], packages: [{ id: 'P01', md: 8 }], stage: 4, source: 'sheet', owner_id: user.id, owner_name: user.name, updated_at: new Date(Date.now() - 86400000).toISOString() }
+  { id: 'd3', customer: '다온커머스', customer_meta: { industry: '유통' }, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1'], packages: [{ id: 'P01', md: 8 }], stage: 4, source: 'sheet', owner_id: user.id, owner_name: user.name, updated_at: new Date(Date.now() - 86400000).toISOString() }
 ];
 
 app.get('/api/auth/me', (_req, res) => res.json({ user }));
@@ -135,24 +129,26 @@ const isvBundles = (() => {
     .sort((a, b) => a.sort_order - b.sort_order);
 })();
 
+// 기획안 Appendix A 평가영역 (036). 036 시드를 직접 읽는다.
+const assessment = (() => {
+  const sql = require('fs').readFileSync(
+    path.join(__dirname, '..', 'db', 'migrations', '036_assessment_criteria.sql'), 'utf8');
+  const domains = [...sql.matchAll(/\('(D\d)', '([^']+)',\s*(\d+)\)/g)]
+    .map((m) => ({ id: m[1], name: m[2], sort_order: Number(m[3]) }));
+  const areas = [...sql.matchAll(
+    /\('(A\d\d)', '(D\d)', '([^']+)',\s*\n\s*'([^']+)',\s*\n\s*'([^']+)',\s*\n\s*(\d), (\d\.\d), (\d+)\)/g
+  )].map((m) => ({
+    id: m[1], domain_id: m[2], name: m[3], checkpoints: m[4], concerns: m[5],
+    weight: Number(m[6]), threshold: Number(m[7]), sort_order: Number(m[8])
+  }));
+  return { domains, areas };
+})();
+
 app.get('/api/hub/reference-data', (_req, res) => res.json({
-  ...refs, readinessAreas: readiness.areas, readinessItems: readiness.items, isvBundles
+  ...refs, readinessAreas: readiness.areas, readinessItems: readiness.items,
+  assessmentDomains: assessment.domains, assessmentAreas: assessment.areas, isvBundles
 }));
-app.get('/api/hub/public/fqa-items', (_req, res) => res.json(refs.fqaItems.map(({ weight, threshold, ...item }) => item)));
 app.get('/api/hub/public/packages', (_req, res) => res.json(refs.packages.map(({ scale, ...pkg }) => pkg)));
-app.post('/api/hub/public/diagnose', (req, res) => {
-  const scores = Object.values(req.body.fqa_scores || {}).map(Number);
-  const average = scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
-  const answeredIn = (category) => refs.fqaItems
-    .filter((item) => item.category === category && (req.body.fqa_scores || {})[item.no]).length;
-  res.json({
-    summary: average >= 4 ? '확장 준비 단계' : average >= 3 ? '검증 준비 단계' : '기반 정비 단계',
-    categories: ['A', 'B', 'C', 'D'].map((category) => ({
-      category, score: average, answered: answeredIn(category),
-      status: average >= 3.5 ? 'ready' : 'strengthen'
-    }))
-  });
-});
 // 실제 서버와 같은 검증을 거친다. 목업이 무조건 201 을 주면 폼 오류를 화면에서 못 본다.
 const { validateLead } = require('../lib/hub-domain');
 const mockLeads = [];
@@ -166,15 +162,17 @@ app.post('/api/hub/public/leads', (req, res) => {
   // 나타나는지를 로컬에서 확인할 수 없다.
   const readinessResult = Object.keys(lead.readiness_scores || {}).length
     ? mockApplyReadiness(lead.readiness_scores) : null;
+  const assessed = readinessResult ? mockApplyAssessment(lead.readiness_scores, null) : null;
   deals.push({
     id: `d${deals.length + 1}`, customer: lead.customer,
     customer_meta: lead.customer_meta || {},
-    fqa_scores: readinessResult ? { ...readinessResult.fqaScores, ...lead.fqa_scores } : lead.fqa_scores,
-    fqa_totals: {}, track: lead.track, track_name: null,
+    track: lead.track, track_name: null,
     isv_combo: [], packages: [], stage: 0, source: 'portal',
     readiness_scores: lead.readiness_scores || {},
     readiness_customer_scores: lead.readiness_scores || {},
-    readiness_totals: readinessResult ? readinessResult.totals : {},
+    readiness_totals: readinessResult || {},
+    assessment_scores: assessed ? assessed.scores : {},
+    assessment_totals: assessed ? { ...assessed.totals, bridged: assessed.bridged } : {},
     lead_contact: lead.contact, lead_contact_name: lead.contact_name,
     lead_contact_phone: lead.contact_phone, lead_message: lead.message,
     owner_id: null, owner_name: null, updated_at: new Date().toISOString()
@@ -183,9 +181,9 @@ app.post('/api/hub/public/leads', (req, res) => {
 });
 // 저장된 리드 확인용. 실제 서버에는 없는 목업 전용 경로다.
 app.get('/api/hub/public/_leads', (_req, res) => res.json(mockLeads));
-app.get('/api/hub/deals', (_req, res) => res.json(deals.map(({ fqa_scores, fqa_totals, isv_combo, packages, ...deal }) => deal)));
+app.get('/api/hub/deals', (_req, res) => res.json(deals.map(({ assessment_scores, assessment_totals, isv_combo, packages, ...deal }) => deal)));
 app.post('/api/hub/deals', (req, res) => {
-  const deal = { id: `d${deals.length + 1}`, customer: req.body.customer, customer_meta: req.body.customer_meta || {}, fqa_scores: {}, fqa_totals: {}, track: null, isv_combo: [], packages: [], stage: 0, source: req.body.source || 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() };
+  const deal = { id: `d${deals.length + 1}`, customer: req.body.customer, customer_meta: req.body.customer_meta || {}, track: null, isv_combo: [], packages: [], stage: 0, source: req.body.source || 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() };
   deals.unshift(deal); res.status(201).json(deal);
 });
 app.get('/api/hub/deals/:id', (req, res) => {
@@ -196,17 +194,18 @@ app.patch('/api/hub/deals/:id', (req, res) => {
   const index = deals.findIndex((item) => item.id === req.params.id);
   if (index < 0) return res.status(404).json({ error: 'not found' });
   const patch = { ...req.body };
-  // 실제 서버와 같이 다시 채점하고 21문항을 다시 채운다. 목업이 그냥 저장만 하면
+  // 실제 서버와 같이 다시 채점하고 평가영역을 다시 채운다. 목업이 그냥 저장만 하면
   // 축 점수가 안 바뀌어 화면 확인이 거짓말이 된다.
   if (patch.readiness_scores) {
-    const result = mockApplyReadiness(patch.readiness_scores, { partial: true });
-    const previouslyBridged = new Set((deals[index].readiness_totals?.fqaFilled || []).map(String));
+    patch.readiness_totals = mockApplyReadiness(patch.readiness_scores, { partial: true });
+    const previouslyBridged = new Set(deals[index].assessment_totals?.bridged || []);
     const manual = {};
-    for (const [no, value] of Object.entries(deals[index].fqa_scores || {})) {
-      if (!previouslyBridged.has(String(no))) manual[no] = value;
+    for (const [area, value] of Object.entries(deals[index].assessment_scores || {})) {
+      if (!previouslyBridged.has(area)) manual[area] = value;
     }
-    patch.fqa_scores = { ...result.fqaScores, ...manual };
-    patch.readiness_totals = result.totals;
+    const applied = mockApplyAssessment(patch.readiness_scores, manual);
+    patch.assessment_scores = applied.scores;
+    patch.assessment_totals = { ...applied.totals, bridged: applied.bridged };
   }
   deals[index] = { ...deals[index], ...patch, updated_at: new Date().toISOString() };
   res.json(deals[index]);
@@ -279,13 +278,10 @@ const mockSolutions = [
       7: '### 7.1 필수 요건 (5가지)\n- [ ] 최소 도입 인원이 150명 이상인가?\n- [ ] 사내 로그인 연동을 위한 SSO 인프라가 갖춰져 있는가?\n- [ ] 사내 데이터 전송에 법무/보안 규정상 문제가 없는가?\n- [ ] AI 도입 총괄 챔피언이 지정되어 있는가?\n- [ ] 글로벌 DPA 표준안을 수용할 수 있는가?'
     },
     sections_internal: {}, industries: [], simulator_mappings: [],
-    fqa_coverage: [
-      { category: 'D', items: ['명확한 업무 문제'], strength: 2 },
-      { category: 'B', items: ['지식 소스 품질'], strength: 2 }
-    ],
-    prerequisites: [
+    assessment_coverage: [{ area: 'A07', strength: 2 }],
+    assessment_prerequisites: [
       { kind: 'numeric', field: 'seats', min: 150, blocking: true, label: '최소 도입 인원 150명 (ChatGPT Enterprise 기준)' },
-      { kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3, blocking: true, label: 'SSO(Okta/Azure AD) 인프라' },
+      { kind: 'assessment', area: 'A03', min: 3, blocking: true, label: 'SSO(Okta/Azure AD) 인프라' },
       { kind: 'manual', label: '사내 데이터의 OpenAI 클라우드 전송에 법무·보안 승인', blocking: true }
     ],
     red_flags: [
@@ -306,13 +302,10 @@ const mockSolutions = [
     },
     sections_internal: { 1: '- **AI Tech 의견 (PreSales)**: 마진율이 가장 높은 고수익성 카드입니다.' },
     industries: [], simulator_mappings: [],
-    fqa_coverage: [
-      { category: 'A', items: ['데이터 분류와 민감도 기준', '보안 게이트웨이 준비도'], strength: 3 },
-      { category: 'B', items: ['지식 소스 품질'], strength: 2 }
-    ],
-    prerequisites: [
+    assessment_coverage: [{ area: 'A01', strength: 3 }, { area: 'A07', strength: 2 }],
+    assessment_prerequisites: [
       { kind: 'numeric', field: 'annual_budget_krw', min: 100000000, blocking: true, label: '연간 예산 1억원 이상 (GPU 서버 구축비 포함)' },
-      { kind: 'fqa', category: 'C', item: '운영 책임자 지정', min: 3, blocking: true, label: 'Kubernetes 관리 인프라 엔지니어' }
+      { kind: 'manual', blocking: true, label: 'Kubernetes 관리 인프라 엔지니어' }
     ],
     red_flags: [
       { signal: '연간 예산 1억원 미만 · GPU 서버 구축비 지출 불가', alternatives: [{ label: '퍼블릭 Cloud RAG' }] },
@@ -328,14 +321,9 @@ const mockSolutions = [
     value_chain: 'AI Governance', status: 'published', version: 2, grade: 2, scale: 'M',
     bundle_potential: 3,
     sections: portal26Sections, sections_internal: {}, industries: [], simulator_mappings: [],
-    fqa_coverage: [
-      { category: 'A', items: ['감사 로그와 추적성'], strength: 3 },
-      { category: 'A', items: ['데이터 분류와 민감도 기준'], strength: 2 },
-      { category: 'C', items: ['비용 모니터링'], strength: 2 }
-    ],
-    prerequisites: [
-      { kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3, blocking: true,
-        label: '사용자·부서 식별이 가능한 계정 체계' },
+    assessment_coverage: [{ area: 'A01', strength: 2 }, { area: 'A05', strength: 3 }, { area: 'A10', strength: 2 }],
+    assessment_prerequisites: [
+      { kind: 'assessment', area: 'A03', min: 3, blocking: true, label: '사용자·부서 식별이 가능한 계정 체계' },
       { kind: 'manual', label: '임직원 AI 사용 로그 수집에 대한 노무·개인정보 검토', blocking: true }
     ],
     red_flags: [
@@ -359,14 +347,9 @@ const mockSolutions = [
       7: '### 7.1 필수 요건 (5가지)\n- [ ] AWS 계정과 Bedrock 사용 가능 리전이 확보되어 있는가?\n- [ ] 사용자 식별을 위한 SSO 인프라가 있는가?\n- [ ] 사내 데이터의 모델 호출 전송에 법무·보안 승인이 가능한가?\n- [ ] 활용을 이끌 현업 챔피언이 지정되어 있는가?\n- [ ] 응답 품질을 판정할 평가 기준이 있는가?\n### 7.3 부적합 신호: Red Flag (3가지)\n- [ ] 1. 완전 폐쇄망 에어갭 요구 ➔ **Articul8 제안**\n- [ ] 2. 이미지·음성 생성이 주 목적 ➔ **다른 모달리티 특화 제품 제안**\n- [ ] 3. AWS 를 쓰지 않고 도입 계획도 없음 ➔ **직접 API 계약 검토**'
     },
     sections_internal: {}, industries: [], simulator_mappings: [],
-    fqa_coverage: [
-      { category: 'D', items: ['명확한 업무 문제'], strength: 2 },
-      { category: 'B', items: ['지식 소스 품질'], strength: 2 },
-      { category: 'A', items: ['데이터 분류와 민감도 기준'], strength: 2 }
-    ],
-    prerequisites: [
-      { kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3, blocking: true,
-        label: 'SSO 인프라' },
+    assessment_coverage: [{ area: 'A01', strength: 2 }, { area: 'A07', strength: 2 }],
+    assessment_prerequisites: [
+      { kind: 'assessment', area: 'A03', min: 3, blocking: true, label: 'SSO 인프라' },
       { kind: 'manual', label: 'AWS Bedrock 사용 가능 리전 확보', blocking: true }
     ],
     red_flags: [
@@ -384,13 +367,9 @@ const mockSolutions = [
     value_chain: 'AI Platform', status: 'published', version: 1, grade: 2, scale: 'L',
     bundle_potential: 3,
     sections: cohereSections, sections_internal: {}, industries: [], simulator_mappings: [],
-    fqa_coverage: [
-      { category: 'B', items: ['지식 소스 품질'], strength: 3 },
-      { category: 'B', items: ['업무 시스템 연동성'], strength: 2 }
-    ],
-    prerequisites: [
-      { kind: 'fqa', category: 'A', item: '데이터 분류와 민감도 기준', min: 3, blocking: true,
-        label: '검색 인덱스 대상 데이터 범위 확정' },
+    assessment_coverage: [{ area: 'A04', strength: 2 }, { area: 'A07', strength: 3 }],
+    assessment_prerequisites: [
+      { kind: 'assessment', area: 'A01', min: 3, blocking: true, label: '검색 인덱스 대상 데이터 범위 확정' },
       { kind: 'manual', label: '배포 형태 확정 — Bedrock 경유 / VPC / 온프레·에어갭', blocking: true }
     ],
     red_flags: [
@@ -411,7 +390,7 @@ const mockSolutions = [
       3: '- **CIO / CDO (의사결정자)**: 데이터 자산화 및 통합 AI 거버넌스 수립이 주요 관심사 ➔ **{name}의 엔터프라이즈 제어 기능 강조**\n- **플랫폼 엔지니어 / IT 운영 리더**: 인프라 복잡성 완화 및 운영비용(FinOps) 최적화가 관심사 ➔ **MZC MSP 관리 서비스 연계**'
     },
     sections_internal: {}, industries: [], simulator_mappings: [],
-    fqa_coverage: [], prerequisites: [], red_flags: [],
+    assessment_coverage: [],
     price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
   }
 ];
@@ -468,6 +447,7 @@ app.put('/api/admin/solutions/:id', (req, res) => {
 // ── AI 준비도 42문항 (029) ────────────────────────────────
 // 목업이 실제와 어긋나면 화면 확인이 거짓말이 된다. 029 시드를 직접 파싱해 쓴다.
 const { scoreReadiness } = require('../lib/readiness-scoring');
+const { scoreAssessment, bridgeAssessmentScores } = require('../lib/assessment-scoring');
 const readiness = (() => {
   const sql = require('fs').readFileSync(
     path.join(__dirname, '..', 'db', 'migrations', '029_readiness_items.sql'), 'utf8');
@@ -483,27 +463,28 @@ const readiness = (() => {
   return { areas, items };
 })();
 
-// 030 bridge. 어느 42문항이 어느 21문항을 채우는지 — 이것도 시드에서 직접 읽는다.
-const readinessBridge = (() => {
+// 037 bridge. 어느 42문항이 어느 평가영역을 채우는지 — 시드에서 직접 읽는다.
+const assessmentBridge = (() => {
   const sql = require('fs').readFileSync(
-    path.join(__dirname, '..', 'db', 'migrations', '030_readiness_fqa_bridge.sql'), 'utf8');
-  const body = sql.slice(sql.indexOf('insert into readiness_fqa_bridge'));
-  return [...body.matchAll(/\('([SPDTBG]\d+)',\s*'([ABCD])',\s*'([^']+)'/g)]
-    .map((m) => ({ item_code: m[1], fqa_category: m[2], fqa_item: m[3].trim() }));
+    path.join(__dirname, '..', 'db', 'migrations', '037_readiness_assessment_bridge.sql'), 'utf8');
+  const body = sql.slice(sql.indexOf('insert into readiness_assessment_bridge'));
+  return [...body.matchAll(/\('([SPDTBG]\d+)', '(A\d\d)', '(exact|good)'/g)]
+    .map((m) => ({ item_code: m[1], area_id: m[2], fidelity: m[3] }));
 })();
 
-/** 실제 서버의 applyReadiness 와 같은 일. 채점하고 bridge 로 21문항을 채운다. */
+/** 실제 서버의 applyReadiness 와 같은 일. 채점만 한다. */
 function mockApplyReadiness(scores, options = {}) {
-  const totals = scoreReadiness(readiness.items, readiness.areas, scores, options);
-  const fqaScores = {};
-  for (const link of readinessBridge) {
-    const item = refs.fqaItems.find((i) => i.category === link.fqa_category && i.name === link.fqa_item);
-    const value = Number(scores[link.item_code]);
-    if (item && Number.isInteger(value) && value >= 1 && value <= 5) fqaScores[item.no] = value;
-  }
+  return scoreReadiness(readiness.items, readiness.areas, scores, options);
+}
+
+/** 실제 서버의 applyAssessment 와 같은 일. 037 bridge 로 평가영역을 채운다. */
+function mockApplyAssessment(readinessScores, manualScores) {
+  const bridged = bridgeAssessmentScores(assessmentBridge, readinessScores);
+  const scores = { ...bridged, ...(manualScores || {}) };
   return {
-    totals: { ...totals, fqaFilled: Object.keys(fqaScores).map(Number).sort((x, y) => x - y) },
-    fqaScores
+    scores,
+    totals: scoreAssessment(assessment.areas, assessment.domains, scores),
+    bridged: Object.keys(bridged)
   };
 }
 

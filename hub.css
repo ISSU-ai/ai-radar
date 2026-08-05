@@ -505,3 +505,4 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 .lic-total { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; color: var(--faint); font-size: 12px; }
 .lic-total b { color: var(--text); font: 700 22px var(--font-mono); }
 .lic-total small { color: var(--faint); font: 600 11px var(--font-mono); }
+.prereq-check span small { display: block; margin-top: 2px; color: var(--faint); font-size: 10px; line-height: 1.45; }

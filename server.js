@@ -218,14 +218,14 @@ async function persistSectionsInternal(executor, solutionId, value) {
 }
 
 /**
- * 추천 판정 필드(slot·fqa_coverage·prerequisites·red_flags·bundle_potential)를 반영한다.
+ * 추천 판정 필드(slot·assessment_coverage·assessment_prerequisites·red_flags·bundle_potential)를 반영한다.
  * 010 적용 전이면 해당 컬럼만 조용히 건너뛴다. 값이 undefined 면 손대지 않아,
  * 이 필드를 모르는 클라이언트가 저장해도 기존 판정 데이터가 날아가지 않는다.
  */
 const RECOMMENDATION_FIELDS = Object.freeze([
   { column: 'slot', json: false },
-  { column: 'fqa_coverage', json: true },
-  { column: 'prerequisites', json: true },
+  { column: 'assessment_coverage', json: true },
+  { column: 'assessment_prerequisites', json: true },
   { column: 'red_flags', json: true },
   { column: 'bundle_potential', json: false }
 ]);
@@ -997,8 +997,8 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, catalogEditorOnl
         layer: payload.layer,
         sections,
         slot: payload.slot ?? sol.slot,
-        fqa_coverage: payload.fqa_coverage ?? sol.fqa_coverage,
-        prerequisites: payload.prerequisites ?? sol.prerequisites,
+        assessment_coverage: payload.assessment_coverage ?? sol.assessment_coverage,
+        assessment_prerequisites: payload.assessment_prerequisites ?? sol.assessment_prerequisites,
         red_flags: payload.red_flags ?? sol.red_flags,
         bundle_potential: payload.bundle_potential ?? sol.bundle_potential
       };

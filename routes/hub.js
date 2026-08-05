@@ -176,8 +176,8 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
   });
 
   // ── AI 준비도 42문항 (029) ──────────────────────────────────
-  // 기존 21문항(/public/fqa-items)과 다른 층이다. 이쪽은 고객이 답하는 회사 수준
-  // 진단이고, 저쪽은 영업이 ISV 판정에 쓰는 게이트다. 섞지 않는다.
+  // 판정 기준(Appendix A 10평가영역)과 다른 층이다. 이쪽은 고객이 답하는 회사 수준
+  // 진단이고, 저쪽은 "이 제품을 지금 넣을 수 있나" 게이트다. 섞지 않는다.
   const loadReadinessItems = async () => {
     if (!(hasColumn && await hasColumn('readiness_items', 'code'))) return null;
     const [areas, items] = await Promise.all([
@@ -189,13 +189,44 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
   };
 
   /**
-   * 42문항 응답을 채점하고, 030 bridge 로 21문항 점수를 채운다.
+   * 기획안 Appendix A 10평가영역 (036) 과 42→10 bridge (037).
    *
-   * 겹치는 13개만 채운다. 나머지 8개는 비워 두고 영업이 허브에서 넣는다 —
-   * 뜻이 어긋나는 문항을 억지로 채우면 ISV 전제조건 판정이 조용히 틀어진다.
-   * 틀린 자동 채움은 빈칸보다 나쁘다. 빈칸은 영업이 보고 채우지만 틀린 값은
-   * 그냥 통과한다.
+   * 036 미적용 구간에는 null 로 간다 — 판정 없이 도는 것이 화면이 깨지는 것보다 낫다.
    */
+  const loadAssessment = async () => {
+    if (!(hasColumn && await hasColumn('assessment_areas', 'checkpoints'))) return null;
+    const [domains, areas, bridge] = await Promise.all([
+      pool.query('select id, name, sort_order from assessment_domains order by sort_order'),
+      pool.query(`select id, domain_id, name, checkpoints, concerns, weight, threshold, sort_order
+                    from assessment_areas where status = 'active' order by sort_order`),
+      hasColumn('readiness_assessment_bridge', 'area_id')
+        ? pool.query('select item_code, area_id, fidelity from readiness_assessment_bridge')
+        : Promise.resolve({ rows: [] })
+    ]);
+    return { domains: domains.rows, areas: areas.rows, bridge: bridge.rows };
+  };
+
+  /**
+   * 42문항 응답 → 평가영역 점수 → 집계.
+   *
+   * 8개가 차고 저장·보존·계정통제는 안 찬다 — 제품 설정이라 42문항이 묻지 않는다.
+   * 영업이 STEP03 에서 후보별로 확인한다.
+   *
+   * 영업이 직접 확인한 값(manualScores)이 bridge 자동 채움을 이긴다. 순서가 뒤집히면
+   * 확인해 고친 값을 진단 응답이 덮는다.
+   */
+  const applyAssessment = async (readinessScores, manualScores) => {
+    const data = await loadAssessment();
+    if (!data) return null;
+    const bridged = bridgeAssessmentScores(data.bridge, readinessScores);
+    const scores = { ...bridged, ...(manualScores || {}) };
+    return {
+      scores,
+      totals: scoreAssessment(data.areas, data.domains, scores),
+      bridged: Object.keys(bridged)
+    };
+  };
+
   const applyReadiness = async (readinessScores, options = {}) => {
     const data = await loadReadinessItems();
     if (!data) return null;
@@ -735,8 +766,8 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       const solutionPlaceholder = solutionFlag ? 's.price_is_placeholder' : 'true';
       // 판정 데이터 보유 여부로 카탈로그 노출을 가른다. 010 미적용 환경에서는
       // 전부 보이게 둔다(빈 배열이면 감춰져 카탈로그가 통째로 사라진다).
-      const hasCoverage = hasColumn ? await hasColumn('solutions', 'fqa_coverage') : false;
-      const coverageColumn = hasCoverage ? 's.fqa_coverage' : `'[{"legacy":true}]'::jsonb`;
+      const hasCoverage = hasColumn ? await hasColumn('solutions', 'assessment_coverage') : false;
+      const coverageColumn = hasCoverage ? 's.assessment_coverage' : `'[{"legacy":true}]'::jsonb`;
       // 020 미적용이면 조건을 빼서 "숨김 없음"으로 동작한다.
       const refHiddenFilter = (hasColumn && await hasColumn('solutions', 'is_hidden'))
         ? 'and s.is_hidden = false' : '';
@@ -758,7 +789,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
           `select s.id, s.slug, s.name, s.category, s.jtbd, s.grade, s.scale,
                   s.tech_note, s.status_op, s.price_type, s.unit_price, s.currency, s.price_tiers,
                   ${solutionPlaceholder} as price_is_placeholder,
-                  ${coverageColumn} as fqa_coverage,
+                  ${coverageColumn} as assessment_coverage,
                   f.name as focal_name, f.org as focal_org
            from solutions s left join focal_contacts f on f.id = s.focal_id
            where s.is_archived = false and s.status = 'published'

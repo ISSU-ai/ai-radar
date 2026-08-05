@@ -69,11 +69,12 @@ test('허브에서 21문항을 직접 받지 않는다', () => {
   assert.doesNotMatch(css, /\.residual-fqa/);
 });
 
-test('42문항으로 판정 안 되는 전제는 후보 옆에서 확인한다', () => {
+test('진단으로 판정 안 되는 전제는 후보 옆에서 확인한다', () => {
   // 모르는 것을 조용히 통과시키면 막혔어야 할 후보가 추천에 올라온다.
   // 낙관적으로 틀리는 쪽이라 화면에서는 티가 안 난다.
   const engine = fs.readFileSync(path.join(__dirname, '..', 'lib', 'recommendation-engine.js'), 'utf8');
-  const open = engine.indexOf("if (prereq.kind === 'fqa')");
+  const open = engine.indexOf("if (prereq.kind === 'assessment')");
+  assert.ok(open > 0, '전제가 평가영역을 보지 않는다');
   const body = engine.slice(open, engine.indexOf("if (prereq.kind === 'numeric')", open));
   assert.match(body, /pendingManual\.push/, '모르면 확인 대상으로 올려야 한다');
   assert.doesNotMatch(body, /if \(!Number\.isFinite\(actual\)\) continue/,

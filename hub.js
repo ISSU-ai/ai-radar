@@ -7,7 +7,7 @@ if (window.self !== window.top) {
 const state = {
   user: null,
   deals: [],
-  refs: { stages: [], tracks: [], readinessAreas: [], readinessItems: [], isvBundles: [], packages: [], solutions: [] },
+  refs: { stages: [], tracks: [], readinessAreas: [], readinessItems: [], assessmentAreas: [], assessmentDomains: [], isvBundles: [], packages: [], solutions: [] },
   deal: null,
   reco: null,
   activeStage: 0,
@@ -579,7 +579,7 @@ function isCatalogEditor() { return ['admin', 'curator'].includes(state.user?.ro
 
 /** 추천 후보가 될 최소 조건. 이게 없으면 근거를 댈 수 없다. */
 function hasJudgementData(solution) {
-  return asArray(solution?.fqa_coverage).length > 0;
+  return asArray(solution?.assessment_coverage).length > 0;
 }
 
 /**
@@ -897,12 +897,19 @@ function recoCardMarkup(item, tone) {
   // 진단 응답으로 자동 판정이 안 되는 전제만 여기 온다. 확인은 후보별로 남는다 —
   // 같은 전제라도 솔루션마다 요구 수준이 다르고, 한 번 확인한 것이 다른 후보까지
   // 통과시키면 그게 조용히 틀리는 자리다.
-  const pending = (item.prerequisites?.pendingManual || []).map((p) => `<li>
+  //
+  // 평가영역 전제면 기획안 Appendix A 의 「핵심 확인사항」을 같이 보여준다.
+  // 영업이 무엇을 확인해야 하는지가 문서 문장 그대로 나온다.
+  const areaById = new Map(asArray(state.refs.assessmentAreas).map((a) => [a.id, a]));
+  const pending = (item.prerequisites?.pendingManual || []).map((p) => {
+    const area = p.area ? areaById.get(p.area) : null;
+    return `<li>
     <label class="prereq-check">
       <input type="checkbox" data-prereq-slug="${escapeHtml(item.slug || item.id)}"
         data-prereq-label="${escapeHtml(p.label)}" ${isOwner() ? '' : 'disabled'}>
-      <span>${escapeHtml(p.label)}</span>
-    </label></li>`).join('');
+      <span>${escapeHtml(p.label)}${area ? `<small>${escapeHtml(area.checkpoints)}</small>` : ''}</span>
+    </label></li>`;
+  }).join('');
 
   return `<div class="reco-card reco-${tone}">
     <div class="reco-head">

@@ -54,7 +54,7 @@ test('저장 payload 와 서버 저장 필드가 일치한다', () => {
     adminHtml.indexOf('sections_internal,\n        industries,'),
     adminHtml.indexOf("red_flags: parseJsonField('sol-red-flags'") + 200
   );
-  for (const field of ['slot', 'bundle_potential', 'fqa_coverage', 'prerequisites', 'red_flags']) {
+  for (const field of ['slot', 'bundle_potential', 'assessment_coverage', 'assessment_prerequisites', 'red_flags']) {
     assert.match(payloadBlock, new RegExp(`${field}:`), `payload 에 ${field} 가 없다`);
     assert.match(serverSource, new RegExp(`column: '${field}'`), `서버가 ${field} 를 저장하지 않는다`);
   }

@@ -32,39 +32,39 @@ test('42문항이 없으면 빈 객체로 지나간다 — 기존 리드 경로�
   assert.deepEqual(validateLead(baseLead).readiness_scores, {});
 });
 
-test('42문항으로 들어온 리드에는 21문항 전량을 요구하지 않는다', () => {
-  // 고객은 21문항을 본 적이 없다. 요구하면 진단 결과가 통째로 버려진다.
+test('공개 리드는 42문항 진단을 거쳐야 들어온다', () => {
+  // 판정 기준이 Appendix A 로 바뀌면서 고객이 답하는 문항집은 42문항 하나뿐이다.
+  // 진단 없이 리드만 들어오면 영업이 맥락 없이 만난다.
   const server = read('server.js');
-  const open = server.indexOf('const requireCompleteFqaScores');
-  assert.ok(open > 0, 'requireCompleteFqaScores 가 있어야 한다');
-  const body = server.slice(open, open + 1600);
+  const open = server.indexOf('const requireReadinessScores');
+  assert.ok(open > 0, 'requireReadinessScores 가 있어야 한다');
+  const body = server.slice(open, open + 700);
   assert.match(body, /readiness_scores/);
   assert.match(body, /return next\(\)/);
+  assert.ok(!/requireCompleteFqaScores/.test(server), '21문항 게이트가 남아 있다');
 });
 
 // ── 채점과 bridge ────────────────────────────────────────────────
-test('접수 때 채점하고 bridge 로 21문항을 채운다', () => {
+test('접수 때 채점하고 bridge 로 평가영역을 채운다', () => {
   const routes = read('routes/hub.js');
 
-  const bridgeAt = routes.indexOf('const bridgeFqaScores');
-  assert.ok(bridgeAt > 0, 'bridgeFqaScores 가 있어야 한다');
-  const bridge = routes.slice(bridgeAt, routes.indexOf('const applyReadiness'));
-  assert.match(bridge, /readiness_fqa_bridge/, '030 bridge 로 21문항을 채워야 한다');
-  assert.match(bridge, /value >= 1 && value <= 5/, '범위 밖 값을 넣으면 안 된다');
-  assert.match(bridge, /hasColumn\('readiness_fqa_bridge'/,
-    '030 미적용 구간에도 접수는 성공해야 한다');
-
-  const open = routes.indexOf('const applyReadiness');
-  const body = routes.slice(open, routes.indexOf('router.get(', open));
-  assert.match(body, /scoreReadiness\(/, '서버가 채점해야 한다');
-  assert.match(body, /bridgeFqaScores\(/);
-  assert.match(body, /fqaFilled/, '어느 문항이 자동으로 찼는지 남겨야 한다');
+  const at = routes.indexOf('const applyAssessment');
+  assert.ok(at > 0, 'applyAssessment 가 있어야 한다');
+  const body = routes.slice(at, routes.indexOf('router.get(', at));
+  assert.match(body, /bridgeAssessmentScores/, '037 bridge 로 평가영역을 채워야 한다');
+  assert.match(body, /scoreAssessment/);
+  assert.match(body, /\{ \.\.\.bridged, \.\.\.\(manualScores \|\| \{\}\) \}/,
+    '영업이 확인한 값이 자동 채움을 이겨야 한다');
+  assert.match(routes, /hasColumn\('assessment_areas', 'checkpoints'\)/,
+    '036 미적용 구간에도 접수는 성공해야 한다');
 });
 
-test('영업이 직접 답한 21문항이 자동 채움을 이긴다', () => {
-  // 순서가 뒤집히면 영업이 확인해 고친 값을 고객 응답이 덮는다.
+test('21문항 경로가 남아 있지 않다', () => {
   const routes = read('routes/hub.js');
-  assert.match(routes, /\{ \.\.\.readiness\.fqaScores, \.\.\.lead\.fqa_scores \}/);
+  for (const dead of ['bridgeFqaScores', 'loadFqaItems', 'calculateFqaTotals',
+    "'/public/fqa-items'", "'/public/diagnose'"]) {
+    assert.ok(!routes.includes(dead), `21문항 경로가 남았다: ${dead}`);
+  }
 });
 
 test('031 미적용 구간에도 접수가 살아남는다', () => {
@@ -97,20 +97,18 @@ test('고객 원본을 따로 남긴다 (032)', () => {
   assert.match(read('routes/hub.js'), /hasColumn\('deals', 'readiness_customer_scores'\)/);
 });
 
-test('영업이 42문항을 고치면 서버가 다시 채점하고 게이트를 다시 채운다', () => {
+test('영업이 42문항을 고치면 서버가 다시 채점하고 평가영역을 다시 채운다', () => {
   const routes = read('routes/hub.js');
   const open = routes.indexOf('if (patch.readiness_scores)');
   assert.ok(open > 0, 'PATCH 가 42문항을 처리하지 않는다');
   const body = routes.slice(open, routes.indexOf('const JSONB_DEAL_FIELDS', open));
 
   assert.match(body, /partial: true/, '영업은 채워 넣는 중이라 부분 응답이 정상이다');
-  assert.match(body, /bridgeFqaScores\(patch\.readiness_scores\)/);
+  assert.match(body, /applyAssessment\(patch\.readiness_scores/);
   assert.match(body, /previouslyBridged/,
-    '영업이 손으로 넣은 21문항 답이 42문항 수정 때마다 지워지면 안 된다');
-  assert.match(body, /hasColumn\('deals', 'readiness_scores'\)/);
-  for (const field of ['readiness_scores', 'readiness_totals', 'prereq_confirmations']) {
-    assert.match(routes, new RegExp(`'${field}'[^\\n]*\\]\\)|'${field}',`),
-      `${field} 가 jsonb 직렬화 목록에 없으면 저장이 깨진다`);
+    '영업이 확인해 넣은 평가영역이 42문항 수정 때마다 지워지면 안 된다');
+  for (const field of ['assessment_scores', 'assessment_totals', 'readiness_scores', 'prereq_confirmations']) {
+    assert.ok(routes.includes(`'${field}'`), `${field} 가 jsonb 직렬화 목록에 없다`);
   }
 });
 
@@ -190,12 +188,43 @@ test('031 이 컬럼만 만들고 자동 적용에 들어간다', () => {
   assert.match(read('scripts/apply-migrations.js'), /'031_deal_readiness\.sql'/);
 });
 
-test('목업이 030 bridge 를 직접 읽고 딜까지 만든다', () => {
+test('목업이 037 bridge 와 036 평가영역을 직접 읽고 딜까지 만든다', () => {
   // 베껴 두면 실제와 어긋나고, 딜을 안 만들면 연동을 로컬에서 확인할 수 없다.
   const mock = read('scripts/mock-ui-server.js');
-  assert.match(mock, /030_readiness_fqa_bridge\.sql/);
-  assert.match(mock, /mockApplyReadiness/);
+  assert.match(mock, /036_assessment_criteria\.sql/);
+  assert.match(mock, /037_readiness_assessment_bridge\.sql/);
+  assert.match(mock, /mockApplyAssessment/);
   assert.match(mock, /deals\.push\(/);
+  assert.ok(!mock.includes('030_readiness_fqa_bridge.sql'), '21문항 bridge 가 남아 있다');
+});
+
+test('21문항이 화면·목업·라우트 어디에도 없다', () => {
+  for (const file of ['hub.js', 'routes/hub.js', 'server.js', 'scripts/mock-ui-server.js']) {
+    const body = read(file).replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const dead of ['fqa_scores', 'fqa_totals', 'fqaItems', 'fqa_coverage', "kind: 'fqa'"]) {
+      // leads.fqa_scores 는 접수 당시 기록이라 남긴다(040 주석 참조)
+      if (file === 'routes/hub.js' && dead === 'fqa_scores') continue;
+      assert.ok(!body.includes(dead), `${file} 에 21문항이 남았다: ${dead}`);
+    }
+  }
+});
+
+test('040 이 지우는 것을 전부 적었다', () => {
+  const sql = read('db/migrations/040_drop_fqa.sql');
+  for (const target of [
+    'alter table deals drop column if exists fqa_scores',
+    'alter table solutions drop column if exists fqa_coverage',
+    'alter table packages  drop column if exists readiness_lift',
+    'drop table if exists readiness_fqa_bridge',
+    'drop table if exists fqa_items'
+  ]) {
+    assert.ok(sql.includes(target), `040 이 안 지운다: ${target}`);
+  }
+  // 되돌릴 수 없으므로 적용 전 확인 절차를 파일에 남긴다
+  assert.match(sql, /되돌릴 수 없다/);
+  assert.match(sql, /적용 전 확인/);
+  // leads.fqa_scores 는 동의 이력과 같은 자리의 기록이라 남긴다
+  assert.ok(!/alter table leads drop column/.test(sql));
 });
 
 // ── 고객 진단은 한 곳뿐이다 ──────────────────────────────────────

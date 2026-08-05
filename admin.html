@@ -1702,10 +1702,10 @@
         document.getElementById('sol-slot').value = sol.slot || '';
         document.getElementById('sol-bundle-potential').value = sol.bundle_potential ?? '';
         document.getElementById('sol-prerequisites').value =
-          Array.isArray(sol.prerequisites) && sol.prerequisites.length ? JSON.stringify(sol.prerequisites, null, 2) : '';
+          Array.isArray(sol.assessment_prerequisites) && sol.assessment_prerequisites.length ? JSON.stringify(sol.assessment_prerequisites, null, 2) : '';
         document.getElementById('sol-red-flags').value =
           Array.isArray(sol.red_flags) && sol.red_flags.length ? JSON.stringify(sol.red_flags, null, 2) : '';
-        renderFqaCoverageEditor(sol.fqa_coverage || []);
+        renderFqaCoverageEditor(sol.assessment_coverage || []);
         document.getElementById('completeness-result').textContent = '저장 후 [지금 검사]를 누르세요.';
 
         // 내부 전용 문단. 서버가 admin 응답에만 실어준다(009 적용 전이면 비어 있다).
@@ -1802,8 +1802,8 @@
         simulator_mappings,
         slot: document.getElementById('sol-slot').value || null,
         bundle_potential: document.getElementById('sol-bundle-potential').value || null,
-        fqa_coverage: collectFqaCoverage(),
-        prerequisites: parseJsonField('sol-prerequisites', '전제 조건'),
+        assessment_coverage: collectFqaCoverage(),
+        assessment_prerequisites: parseJsonField('sol-prerequisites', '전제 조건'),
         red_flags: parseJsonField('sol-red-flags', '부적합 신호')
       };
     }
