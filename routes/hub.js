@@ -3,11 +3,13 @@
 const express = require('express');
 const {
   PIPELINE_STAGES,
-  calculateFqaTotals,
   normaliseDealPatch,
   validateDealCreate,
   validateLead
 } = require('../lib/hub-domain');
+
+/** jsonb 컬럼이 null·잘못된 모양으로 와도 map/filter 가 터지지 않게 한다. */
+const asArray = (value) => (Array.isArray(value) ? value : []);
 
 const STALE_RATE_LIMIT_MS = 15 * 60 * 1000;
 const PUBLIC_LEAD_LIMIT = 8;
@@ -19,6 +21,7 @@ const PRIVACY_NOTICE = Object.freeze({
 
 const { recommend } = require('../lib/recommendation-engine');
 const { scoreReadiness } = require('../lib/readiness-scoring');
+const { scoreAssessment, bridgeAssessmentScores, buildGapTotals } = require('../lib/assessment-scoring');
 
 function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColumn }) {
   // 009 는 수동 적용이라 컬럼이 아직 없을 수 있다. 없으면 "미확정(true)"으로 본다 —
@@ -68,10 +71,6 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     next();
   };
 
-  const loadFqaItems = () => pool.query(
-    `select id, category, no, name, weight, detail, fix, threshold
-     from fqa_items where status = 'active' order by no`
-  ).then((result) => result.rows);
 
   const broadcastDealChange = (payload) => {
     for (const stream of eventStreams) {
@@ -149,19 +148,6 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     return dealListenerPromise;
   };
 
-  router.get('/public/fqa-items', async (_req, res) => {
-    try {
-      const result = await pool.query(
-        `select id, category, no, name, detail
-         from fqa_items where status = 'active' order by no`
-      );
-      res.json(result.rows);
-    } catch (error) {
-      console.error('Public FQA items failed:', error.message);
-      sendPublicUnavailable(res, '준비도 진단 문항을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
-    }
-  });
-
   router.get('/public/tracks', async (_req, res) => {
     try {
       const result = await pool.query('select id, name, why from tracks order by id');
@@ -210,32 +196,10 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
    * 틀린 자동 채움은 빈칸보다 나쁘다. 빈칸은 영업이 보고 채우지만 틀린 값은
    * 그냥 통과한다.
    */
-  /** 030 bridge 로 42문항 응답에서 채울 수 있는 21문항 점수. */
-  const bridgeFqaScores = async (readinessScores) => {
-    const fqaScores = {};
-    if (!(hasColumn && await hasColumn('readiness_fqa_bridge', 'item_code'))) return fqaScores;
-    const bridge = await pool.query(
-      `select b.item_code, i.no
-         from readiness_fqa_bridge b
-         join fqa_items i on i.category = b.fqa_category and i.name = b.fqa_item
-        where i.status = 'active'`
-    );
-    for (const row of bridge.rows) {
-      const value = Number(readinessScores[row.item_code]);
-      if (Number.isInteger(value) && value >= 1 && value <= 5) fqaScores[row.no] = value;
-    }
-    return fqaScores;
-  };
-
   const applyReadiness = async (readinessScores, options = {}) => {
     const data = await loadReadinessItems();
     if (!data) return null;
-    const totals = scoreReadiness(data.items, data.areas, readinessScores, options);
-    const fqaScores = await bridgeFqaScores(readinessScores);
-    // 어느 21문항이 자동으로 채워졌는지 결과에 실어 둔다. 허브에서 영업이
-    // "이건 고객이 답한 값" 과 "내가 채워야 할 값" 을 구분해야 하는데, 나중에
-    // bridge 를 다시 조회하면 그 사이 bridge 가 바뀌었을 때 표시가 어긋난다.
-    return { totals: { ...totals, fqaFilled: Object.keys(fqaScores).map(Number).sort((x, y) => x - y) }, fqaScores };
+    return scoreReadiness(data.items, data.areas, readinessScores, options);
   };
 
   router.get('/public/readiness-items', async (_req, res) => {
@@ -267,27 +231,6 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     }
   });
 
-  router.post('/public/diagnose', async (req, res) => {
-    try {
-      const items = await loadFqaItems();
-      const totals = calculateFqaTotals(items, req.body?.fqa_scores || {});
-      const categories = Object.entries(totals).map(([category, value]) => ({
-        category,
-        score: value.score,
-        answered: value.answered,
-        status: value.ready ? 'ready' : 'strengthen'
-      }));
-      const average = categories.length
-        ? categories.reduce((sum, item) => sum + item.score, 0) / categories.length
-        : 0;
-      const summary = average >= 4 ? '확장 준비 단계' : average >= 3 ? '검증 준비 단계' : '기반 정비 단계';
-      res.json({ categories, summary });
-    } catch (error) {
-      console.error('Public diagnosis failed:', error.message);
-      sendPublicUnavailable(res, '준비도 진단 결과를 계산하지 못했습니다. 잠시 후 다시 시도해주세요.');
-    }
-  });
-
   router.post('/public/leads', checkPublicRateLimit, async (req, res) => {
     let lead;
     try {
@@ -305,29 +248,31 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       if (Object.keys(lead.readiness_scores || {}).length) {
         readiness = await applyReadiness(lead.readiness_scores);
       }
-      const effectiveFqaScores = readiness
-        ? { ...readiness.fqaScores, ...lead.fqa_scores }   // 직접 답한 값이 우선
-        : lead.fqa_scores;
+      // 42문항 응답으로 10평가영역을 채운다(037 bridge). 8개가 차고 나머지는
+      // 영업이 STEP03 에서 후보별로 확인한다.
+      const assessment = await applyAssessment(lead.readiness_scores, null);
 
-      const fqaItems = await client.query(
-        `select category, no, weight, threshold from fqa_items where status = 'active' order by no`
-      );
-      const fqaTotals = calculateFqaTotals(fqaItems.rows, effectiveFqaScores);
-
-      // 031 미적용 구간에도 코드가 먼저 배포될 수 있다. 컬럼이 없으면 빼고 넣는다 —
+      // 031·036 미적용 구간에도 코드가 먼저 배포될 수 있다. 컬럼이 없으면 빼고 넣는다 —
       // 리드 접수 자체가 실패하는 것보다 낫다.
       const hasReadinessCols = hasColumn
         ? await hasColumn('deals', 'readiness_scores') : false;
-      const dealColumns = ['customer', 'customer_meta', 'fqa_scores', 'fqa_totals', 'track'];
-      const dealValues = [lead.customer, lead.customer_meta, effectiveFqaScores, fqaTotals, lead.track];
+      const hasAssessmentCols = hasColumn
+        ? await hasColumn('deals', 'assessment_scores') : false;
+      const dealColumns = ['customer', 'customer_meta', 'track'];
+      const dealValues = [lead.customer, lead.customer_meta, lead.track];
       if (hasReadinessCols && readiness) {
         dealColumns.push('readiness_scores', 'readiness_totals');
-        dealValues.push(lead.readiness_scores, readiness.totals);
+        dealValues.push(lead.readiness_scores, readiness);
         // 032: 영업이 STEP02 에서 고쳐도 고객이 뭐라고 답했는지는 남는다.
         if (await hasColumn('deals', 'readiness_customer_scores')) {
           dealColumns.push('readiness_customer_scores');
           dealValues.push(lead.readiness_scores);
         }
+      }
+      if (hasAssessmentCols && assessment) {
+        // bridge 로 채운 영역을 기록해 둔다. 영업이 확인해 넣은 값과 갈라야 한다.
+        dealColumns.push('assessment_scores', 'assessment_totals');
+        dealValues.push(assessment.scores, { ...assessment.totals, bridged: assessment.bridged });
       }
       const dealResult = await client.query(
         `insert into deals (${dealColumns.join(', ')}, stage, source)
@@ -514,11 +459,21 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       const hiddenFilter = (hasColumn && await hasColumn('solutions', 'is_hidden'))
         ? 'and s.is_hidden = false' : '';
 
-      const [solutions, packages, slotRows, fqaItems, config] = await Promise.all([
+      // 038 미적용 구간에는 컬럼이 없다. 없으면 빈 값으로 내려 후보가 안 잡히게 둔다 —
+      // 옛 어휘로 판정하면 화면과 근거가 어긋난다.
+      const hasAssessment = hasColumn ? await hasColumn('solutions', 'assessment_coverage') : false;
+      const solutionJudgement = hasAssessment
+        ? 's.assessment_coverage, s.assessment_prerequisites'
+        : `'[]'::jsonb as assessment_coverage, '[]'::jsonb as assessment_prerequisites`;
+      const packageJudgement = hasAssessment
+        ? 'p.readiness_coverage, p.assessment_coverage, p.assessment_lift'
+        : `'[]'::jsonb as readiness_coverage, '[]'::jsonb as assessment_coverage, '{}'::jsonb as assessment_lift`;
+
+      const [solutions, packages, slotRows, config] = await Promise.all([
         pool.query(
           `select s.id, s.slug, s.name, s.slot, s.layer, s.synergy, s.grade, s.scale,
                   s.status, s.status_op, s.industries,
-                  s.fqa_coverage, s.prerequisites, s.red_flags, s.bundle_potential
+                  ${solutionJudgement}, s.red_flags, s.bundle_potential
              from solutions s
             where s.is_archived = false and s.status = 'published'
               ${hiddenFilter}
@@ -526,8 +481,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         ).then((r) => r.rows),
         pool.query(
           `select p.id, p.id as slug, p.name, p.scale, p.period, p.target,
-                  p.fqa_coverage, p.prerequisites,
-                  p.role, p.depends_on, p.readiness_lift
+                  ${packageJudgement}, p.role, p.depends_on
              from packages p where p.status = 'active'
              order by p.sort_order, p.id`
         ).then((r) => r.rows),
@@ -535,23 +489,30 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
           `select s.id, s.name, s.layer, s.is_competitive, s.domain, d.name as domain_name
              from solution_slots s left join solution_domains d on d.id = s.domain`
         ).then((r) => r.rows).catch(() => []),
-        loadFqaItems(),
         pool.query('select key, kind, weight, enabled from recommendation_config')
           .then((r) => r.rows).catch(() => [])
       ]);
 
-      const itemCountByCategory = fqaItems.reduce((acc, item) => {
-        acc[item.category] = (acc[item.category] || 0) + 1;
-        return acc;
-      }, {});
-      // 문항 단위 전제(예: A[보안 게이트웨이 준비도] ≥ 3)를 카테고리 평균 대신
-      // 실제 문항 점수로 판정할 수 있게 이름→점수 맵을 만든다.
-      const rawScores = deal.fqa_scores && typeof deal.fqa_scores === 'object' ? deal.fqa_scores : {};
-      const itemScores = {};
-      for (const item of fqaItems) {
-        const score = Number(rawScores[item.no] ?? rawScores[String(item.no)]);
-        if (Number.isFinite(score)) itemScores[item.name] = score;
-      }
+      // 갭은 두 어휘가 한 맵에 들어온다 — 평가영역(ISV 게이트)과 42문항 축(고객 준비도).
+      // 키가 겹치지 않아 솔루션과 패키지가 각자 맞물린다.
+      const { totals, labels, itemCount } = buildGapTotals(deal.assessment_totals, deal.readiness_totals);
+
+      // 후보의 커버리지 어휘를 맞춰 넘긴다. 엔진은 어휘를 모른다.
+      const asCoverage = (list, key) => asArray(list)
+        .map((e) => ({ category: e?.[key], strength: Number(e?.strength) || 0 }))
+        .filter((e) => e.category);
+      const scoredSolutions = solutions.map((row) => ({
+        ...row,
+        coverage: asCoverage(row.assessment_coverage, 'area'),
+        prerequisites: asArray(row.assessment_prerequisites)
+      }));
+      const scoredPackages = packages.map((row) => ({
+        ...row,
+        // 후보 선정은 42문항 축으로, 번들 선행은 평가영역으로. 다른 질문이다.
+        coverage: asCoverage(row.readiness_coverage, 'axis'),
+        enablerCoverage: asCoverage(row.assessment_coverage, 'area'),
+        lift: row.assessment_lift
+      }));
 
       const weights = {};
       const filters = {};
@@ -562,11 +523,12 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
 
       const result = recommend({
         deal,
-        solutions,
-        packages,
+        solutions: scoredSolutions,
+        packages: scoredPackages,
         slots: new Map(slotRows.map((row) => [row.id, row])),
-        itemCountByCategory,
-        itemScores,
+        totals,
+        categoryLabels: labels,
+        itemCountByCategory: itemCount,
         config: { weights, filters }
       });
 
@@ -628,7 +590,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         return res.status(403).json({ error: '담당자만 이 딜을 수정할 수 있습니다.' });
       }
 
-      // 영업이 STEP02 에서 42문항을 고쳤다. 다시 채점하고 21문항을 다시 채운다.
+      // 영업이 STEP02 에서 42문항을 고쳤다. 다시 채점하고 평가영역을 다시 채운다.
       // 화면이 계산해 보내게 하면 고객 리포트의 숫자와 갈라진다.
       if (patch.readiness_scores) {
         if (!(hasColumn && await hasColumn('deals', 'readiness_scores'))) {
@@ -637,42 +599,45 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         const data = await loadReadinessItems();
         if (!data) return res.status(503).json({ error: '진단 문항을 불러올 수 없습니다.' });
 
-        let totals;
         try {
           // 영업은 채워 넣는 중이라 부분 응답이 정상이다. 고객 진단과 다른 점이다.
-          totals = scoreReadiness(data.items, data.areas, patch.readiness_scores, { partial: true });
+          patch.readiness_totals = scoreReadiness(data.items, data.areas, patch.readiness_scores, { partial: true });
         } catch (error) {
           return sendError(res, error);
         }
 
-        // bridge 가 채우는 문항과 영업이 직접 넣은 문항을 가른다. 안 가르면
-        // 42문항을 한 번 고칠 때마다 영업이 손으로 넣은 21문항 답이 지워진다.
-        const bridged = await bridgeFqaScores(patch.readiness_scores);
-        const previouslyBridged = new Set(
-          (Array.isArray(current.readiness_totals?.fqaFilled) ? current.readiness_totals.fqaFilled : [])
-            .map(String)
-        );
-        const manual = {};
-        for (const [no, value] of Object.entries(current.fqa_scores || {})) {
-          if (!previouslyBridged.has(String(no))) manual[no] = value;
+        // bridge 가 채우는 영역과 영업이 직접 확인한 영역을 가른다. 안 가르면
+        // 42문항을 한 번 고칠 때마다 영업이 확인해 넣은 값이 지워진다.
+        const assessment = await applyAssessment(patch.readiness_scores, null);
+        if (assessment) {
+          const previouslyBridged = new Set(asArray(current.assessment_totals?.bridged));
+          const manual = {};
+          for (const [area, value] of Object.entries(current.assessment_scores || {})) {
+            if (!previouslyBridged.has(area)) manual[area] = value;
+          }
+          const merged = await applyAssessment(patch.readiness_scores, manual);
+          patch.assessment_scores = merged.scores;
+          patch.assessment_totals = { ...merged.totals, bridged: merged.bridged };
         }
-        patch.fqa_scores = { ...bridged, ...manual };
-        patch.readiness_totals = {
-          ...totals,
-          fqaFilled: Object.keys(bridged).map(Number).sort((x, y) => x - y)
-        };
       }
 
-      if (patch.fqa_scores) {
-        const items = await loadFqaItems();
-        patch.fqa_totals = calculateFqaTotals(items, patch.fqa_scores);
+      // 영업이 평가영역을 직접 확인했다. 다시 집계한다.
+      if (patch.assessment_scores && !patch.readiness_scores) {
+        const data = await loadAssessment();
+        if (data) {
+          patch.assessment_totals = {
+            ...scoreAssessment(data.areas, data.domains, patch.assessment_scores),
+            bridged: asArray(current.assessment_totals?.bridged)
+          };
+        }
       }
 
       // jsonb columns must receive a JSON string. node-postgres serialises a JS
       // array as a Postgres array literal ({...}), which jsonb rejects with
       // "invalid input syntax for type json" — so stringify these explicitly.
       const JSONB_DEAL_FIELDS = new Set(['isv_combo', 'packages', 'customer_meta',
-        'fqa_scores', 'fqa_totals', 'readiness_scores', 'readiness_totals', 'prereq_confirmations']);
+        'assessment_scores', 'assessment_totals',
+        'readiness_scores', 'readiness_totals', 'prereq_confirmations']);
       const fields = Object.keys(patch);
       const values = fields.map((field) => (JSONB_DEAL_FIELDS.has(field) ? JSON.stringify(patch[field]) : patch[field]));
       values.push(req.params.id);
@@ -776,8 +741,8 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       const refHiddenFilter = (hasColumn && await hasColumn('solutions', 'is_hidden'))
         ? 'and s.is_hidden = false' : '';
 
-      const [fqaItems, readiness, isvBundles, tracks, packages, solutions, settings] = await Promise.all([
-        loadFqaItems(),
+      const [assessment, readiness, isvBundles, tracks, packages, solutions, settings] = await Promise.all([
+        loadAssessment(),
         loadReadinessItems(),
         loadIsvBundles(),
         pool.query('select id, name, why, warn, ask from tracks order by id').then((r) => r.rows),
@@ -804,11 +769,14 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         pool.query('select usd_krw from hub_settings where id = true').then((r) => r.rows[0] || { usd_krw: 1400 })
       ]);
       res.json({
-        stages: PIPELINE_STAGES, fqaItems, tracks, packages, solutions, settings,
+        stages: PIPELINE_STAGES, tracks, packages, solutions, settings,
         // 029 미적용 구간에는 빈 배열로 간다. 허브가 STEP02 를 못 그리는 것보다
         // 문항 없이 뜨는 편이 낫다 — 나머지 단계는 그대로 돌아간다.
         readinessAreas: readiness?.areas || [],
         readinessItems: readiness?.items || [],
+        // 036 미적용 구간에는 빈 배열로 간다. STEP03 확인 목록이 안 뜰 뿐이다.
+        assessmentDomains: assessment?.domains || [],
+        assessmentAreas: assessment?.areas || [],
         isvBundles
       });
     } catch (error) {

@@ -27,7 +27,7 @@ const slots = new Map([
 const lowSecurityDeal = {
   track: 'T-B',
   customer_meta: { industry: '금융/보험', targetUsers: '전사 2,000명', investment: '3억' },
-  fqa_totals: {
+  totals: {
     A: { score: 1.8, threshold: 3.5, answered: 6, ready: false },
     B: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
     C: { score: 3.2, threshold: 3.0, answered: 5, ready: true },
@@ -54,7 +54,7 @@ const ITEM_SCORES = {
 };
 
 const run = (extra) => recommend({
-  deal: lowSecurityDeal, slots, itemCountByCategory: ITEM_COUNTS, itemScores: ITEM_SCORES, ...extra
+  deal: lowSecurityDeal, slots, itemCountByCategory: AREA_COUNTS,  ...extra
 });
 
 test('갭 분석이 미달 여부와 신뢰도를 계산한다', () => {
@@ -73,9 +73,9 @@ test('미달 카테고리를 안 메우는 후보는 제외한다', () => {
   const out = run({
     solutions: [
       { slug: 'covers-a', name: 'A보강', slot: 'llm-platform', status: 'published',
-        fqa_coverage: [{ category: 'A', strength: 3 }] },
+        coverage: [{ category: 'A01', strength: 3 }] },
       { slug: 'covers-b', name: 'B보강', slot: 'llm-platform', status: 'published',
-        fqa_coverage: [{ category: 'B', strength: 3 }] }
+        coverage: [{ category: 'A04', strength: 3 }] }
     ]
   });
   assert.deepEqual(out.eligible.map((x) => x.slug), ['covers-a']);
@@ -85,13 +85,13 @@ test('미달 카테고리를 안 메우는 후보는 제외한다', () => {
 
 test('판정 데이터가 비면 제외 사유를 그렇게 밝힌다', () => {
   const out = run({
-    solutions: [{ slug: 'empty', name: '미보강', slot: 'llm-platform', status: 'published', fqa_coverage: [] }]
+    solutions: [{ slug: 'empty', name: '미보강', slot: 'llm-platform', status: 'published', coverage: [] }]
   });
   assert.match(out.excluded[0].excludedBy[0], /판정 데이터\(fqa_coverage\) 미입력/);
 });
 
 test('운영중단·미발행·게이트웨이 중복을 거른다', () => {
-  const base = { slot: 'llm-platform', status: 'published', fqa_coverage: [{ category: 'A', strength: 3 }] };
+  const base = { slot: 'llm-platform', status: 'published', coverage: [{ category: 'A01', strength: 3 }] };
   const out = run({
     solutions: [
       { ...base, slug: 'paused', name: '중단', status_op: 'paused' },
@@ -104,7 +104,7 @@ test('운영중단·미발행·게이트웨이 중복을 거른다', () => {
   // 옮겼다. 트랙은 영업이 손으로 바꿀 수 있어 보안 환경과 어긋날 수 있었다.
   const swgDeal = (securityStack) => recommend({
     deal: { ...lowSecurityDeal, track: 'E-1', customer_meta: { ...lowSecurityDeal.customer_meta, securityStack } },
-    slots, itemCountByCategory: ITEM_COUNTS, itemScores: ITEM_SCORES,
+    slots, itemCountByCategory: AREA_COUNTS, 
     solutions: [{ ...base, slug: 'swg', name: 'SWG', slot: 'security-gateway' }]
   });
   assert.match(swgDeal('other-swg').excluded[0].excludedBy[0], /타사 SWG 운영 중/);
@@ -118,9 +118,9 @@ test('fqa 전제가 미달이면 적합에서 빠진다', () => {
   const out = run({
     solutions: [{
       slug: 'needs-a', name: 'A전제', slot: 'llm-platform', status: 'published',
-      fqa_coverage: [{ category: 'A', strength: 3 }],
+      coverage: [{ category: 'A01', strength: 3 }],
       // A 를 메우면서 A 를 요구하는 구조 — Portal26 과 같은 형태
-      prerequisites: [{ kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3, blocking: true, label: 'SSO 인프라' }]
+      prerequisites: [{ kind: 'assessment', area: 'A03', min: 3, blocking: true, label: 'SSO 인프라' }]
     }]
   });
   assert.equal(out.eligible.length, 0);
@@ -131,7 +131,7 @@ test('fqa 전제가 미달이면 적합에서 빠진다', () => {
 test('numeric 전제는 좌석·예산으로 자동 판정한다', () => {
   const solutions = [{
     slug: 'big-only', name: '대규모전용', slot: 'llm-platform', status: 'published',
-    fqa_coverage: [{ category: 'A', strength: 3 }],
+    coverage: [{ category: 'A01', strength: 3 }],
     prerequisites: [{ kind: 'numeric', field: 'seats', min: 5000, blocking: true, label: '최소 5,000석' }]
   }];
   assert.equal(run({ solutions }).eligible.length, 0, '2,000석이라 미달이어야 한다');
@@ -143,10 +143,10 @@ test('numeric 전제는 좌석·예산으로 자동 판정한다', () => {
 test('값이 없으면 전제로 거르지 않는다', () => {
   const out = recommend({
     deal: { ...lowSecurityDeal, customer_meta: { industry: '금융/보험' } }, // 좌석·예산 없음
-    slots, itemCountByCategory: ITEM_COUNTS,
+    slots, itemCountByCategory: AREA_COUNTS,
     solutions: [{
       slug: 'x', name: 'X', slot: 'llm-platform', status: 'published',
-      fqa_coverage: [{ category: 'A', strength: 3 }],
+      coverage: [{ category: 'A01', strength: 3 }],
       prerequisites: [{ kind: 'numeric', field: 'seats', min: 5000, blocking: true, label: '5,000석' }]
     }]
   });
@@ -156,7 +156,7 @@ test('값이 없으면 전제로 거르지 않는다', () => {
 test('manual 전제는 확인 전까지 "확인 필요"로 보류한다', () => {
   const solutions = [{
     slug: 'legal', name: '법무필요', slot: 'llm-platform', status: 'published',
-    fqa_coverage: [{ category: 'A', strength: 3 }],
+    coverage: [{ category: 'A01', strength: 3 }],
     prerequisites: [{ kind: 'manual', label: '법무 검토 완료', blocking: true }]
   }];
   const pending = run({ solutions });
@@ -165,7 +165,7 @@ test('manual 전제는 확인 전까지 "확인 필요"로 보류한다', () => 
 
   const confirmed = recommend({
     deal: { ...lowSecurityDeal, prereq_confirmations: { legal: { '법무 검토 완료': true } } },
-    slots, itemCountByCategory: ITEM_COUNTS, solutions
+    slots, itemCountByCategory: AREA_COUNTS, solutions
   });
   assert.equal(confirmed.eligible.length, 1);
 });
@@ -174,10 +174,10 @@ test('enabled_by 가 적합 후보에 있으면 번들로 살린다', () => {
   const out = run({
     solutions: [
       { slug: 'zscaler', name: 'Zscaler', slot: 'security-gateway', status: 'published',
-        fqa_coverage: [{ category: 'A', items: ['보안 게이트웨이 준비도'], strength: 3 }] },
+        coverage: [{ category: 'A01', strength: 3 }] },
       { slug: 'portal26', name: 'Portal26', slot: 'ai-usage-governance', status: 'published',
-        fqa_coverage: [{ category: 'A', items: ['감사 로그와 추적성'], strength: 3 }],
-        prerequisites: [{ kind: 'fqa', category: 'A', item: '보안 게이트웨이 준비도', min: 3,
+        coverage: [{ category: 'A05', strength: 3 }],
+        prerequisites: [{ kind: 'assessment', area: 'A01', min: 3,
           blocking: true, label: 'SWG 보유', enabled_by: ['zscaler'] }] }
     ]
   });
@@ -194,13 +194,13 @@ test('enabled_by 가 없어도 갭을 메우는 패키지를 선행으로 잇는
   const out = run({
     solutions: [{
       slug: 'needs-a', name: 'A전제ISV', slot: 'llm-platform', status: 'published',
-      fqa_coverage: [{ category: 'A', items: ['규제·컴플라이언스 검토'], strength: 2 }],
-      prerequisites: [{ kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3,
+      coverage: [{ category: 'A08', strength: 2 }],
+      prerequisites: [{ kind: 'assessment', area: 'A03', min: 3,
         blocking: true, label: 'IAM 관리 엔지니어' }]
     }],
     packages: [{
       id: 'SECURITY', slug: 'SECURITY', name: 'AI Security Readiness',
-      fqa_coverage: [{ category: 'A', items: ['접근권한과 계정 체계', '규제·컴플라이언스 검토'], strength: 3 }]
+      coverage: [{ category: 'A03', strength: 3 }, { category: 'A08', strength: 3 }]
     }]
   });
   assert.equal(out.eligible.length, 1);
@@ -244,7 +244,7 @@ function loadSeeds() {
     /update solutions set\s*\n([\s\S]*?)where slug (?:=|in) \(?((?:'[a-z0-9-]+'(?:,\s*)?)+)\)?;/g
   )].flatMap((m) => [...m[2].matchAll(/'([a-z0-9-]+)'/g)].map((s) => ({
     slug: s[1], name: s[1], slot: 'llm-platform', status: 'published',
-    fqa_coverage: pick(m[1], 'fqa_coverage'),
+    coverage: pick(m[1], 'fqa_coverage'),
     prerequisites: pick(m[1], 'prerequisites'),
     red_flags: pick(m[1], 'red_flags')
   }))).filter((s) => s.fqa_coverage.length);
@@ -259,7 +259,7 @@ function loadSeeds() {
     /update packages set\s*\n\s*fqa_coverage = '([\s\S]*?)'::jsonb,\s*\n\s*readiness_lift = '\{[\s\S]*?\}'::jsonb\s*\n\s*where id = '(\w+)'/g
   )].map((m) => ({
     id: m[2], slug: m[2], name: m[2],
-    fqa_coverage: JSON.parse(m[1]), readiness_lift: lifts.get(m[2]) || {}
+    coverage: JSON.parse(m[1]), readiness_lift: lifts.get(m[2]) || {}
   }));
 
   return {
@@ -289,7 +289,7 @@ const BUSINESS_ITEM_SCORES = {
 const lowBusinessDeal = {
   track: 'T-B',
   customer_meta: { industry: '제조', targetUsers: '500명', investment: '2억' },
-  fqa_totals: {
+  totals: {
     A: { score: 3.6, threshold: 3.0, answered: 6, ready: true },
     B: { score: 2.4, threshold: 3.0, answered: 5, ready: false },
     C: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
@@ -302,16 +302,16 @@ test('문항을 안 덮는 패키지는 lift 가 있어도 선행으로 쓰지 �
   // ADOPTION 은 D 를 1.2 올리지만 덮는 것은 현업 오너십·변화관리·교육이다.
   // 예산·구매 준비도는 손도 대지 않으므로 "이걸 하면 예산 전제가 풀린다"고 말하면 안 된다.
   const out = recommend({
-    deal: lowBusinessDeal, slots, itemCountByCategory: ITEM_COUNTS, itemScores: BUSINESS_ITEM_SCORES,
+    deal: lowBusinessDeal, slots, itemCountByCategory: AREA_COUNTS, itemScores: BUSINESS_ITEM_SCORES,
     solutions: [{
       slug: 'needs-budget', name: '예산전제ISV', slot: 'llm-platform', status: 'published',
-      fqa_coverage: [{ category: 'D', items: ['명확한 업무 문제'], strength: 2 }],
-      prerequisites: [{ kind: 'fqa', category: 'D', item: '예산·구매 준비도', min: 3,
+      coverage: [/* 대응 없음 */],
+      prerequisites: [{ kind: 'manual',
         blocking: true, label: '예산·구매 준비도 3 이상' }]
     }],
     packages: [{
       id: 'ADOPTION', slug: 'ADOPTION', name: '도입 확산 키트',
-      fqa_coverage: [{ category: 'D', items: ['현업 오너십', '변화관리·교육'], strength: 3 }],
+      coverage: [/* 대응 없음 */],
       readiness_lift: { D: 1.2 }
     }]
   });
@@ -326,20 +326,20 @@ test('같은 카테고리라도 문항을 덮는 패키지가 선행이 된다',
   // INTEGRATION 의 lift(B +1.5)가 POC(B +0.8)보다 크고 목록에도 먼저 오지만,
   // "개발·테스트 환경"을 덮는 것은 POC 뿐이다. 큰 숫자가 아니라 맞는 문항이 이긴다.
   const out = recommend({
-    deal: lowBusinessDeal, slots, itemCountByCategory: ITEM_COUNTS, itemScores: BUSINESS_ITEM_SCORES,
+    deal: lowBusinessDeal, slots, itemCountByCategory: AREA_COUNTS, itemScores: BUSINESS_ITEM_SCORES,
     solutions: [{
       slug: 'needs-devenv', name: '개발환경전제ISV', slot: 'llm-platform', status: 'published',
-      fqa_coverage: [{ category: 'B', items: ['모델·벤더 전환성'], strength: 2 }],
-      prerequisites: [{ kind: 'fqa', category: 'B', item: '개발·테스트 환경', min: 3,
+      coverage: [{ category: 'A10', strength: 2 }],
+      prerequisites: [{ kind: 'manual',
         blocking: true, label: '개발·테스트 환경 3 이상' }]
     }],
     packages: [
       { id: 'INTEGRATION', slug: 'INTEGRATION', name: 'AI Integration',
-        fqa_coverage: [{ category: 'B', items: ['업무 시스템 연동성', '지식 소스 품질'], strength: 3 }],
+        coverage: [{ category: 'A04', strength: 3 }, { category: 'A07', strength: 3 }],
         readiness_lift: { B: 1.5 } },
       { id: 'POC', slug: 'POC', name: 'AI PoC',
-        fqa_coverage: [{ category: 'B', items: ['개발·테스트 환경'], strength: 2 },
-          { category: 'D', items: ['명확한 업무 문제'], strength: 2 }],
+        coverage: [/* 대응 없음 */,
+          /* 대응 없음 */],
         readiness_lift: { B: 0.8, D: 0.8 } }
     ]
   });
@@ -357,17 +357,17 @@ test('번들 사유의 수치는 enabler 가 실제로 푸는 전제를 가리�
   const out = run({
     solutions: [{
       slug: 'needs-two-a', name: 'A두전제ISV', slot: 'llm-platform', status: 'published',
-      fqa_coverage: [{ category: 'A', items: ['감사 로그와 추적성'], strength: 2 }],
+      coverage: [{ category: 'A05', strength: 2 }],
       prerequisites: [
-        { kind: 'fqa', category: 'A', item: '데이터 보존·삭제 정책', min: 4,
+        { kind: 'assessment', area: 'A02', min: 4,
           blocking: true, label: '보존정책 4 이상' },
-        { kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3,
+        { kind: 'assessment', area: 'A03', min: 3,
           blocking: true, label: 'IAM 3 이상' }
       ]
     }],
     packages: [{
       id: 'SECURITY', slug: 'SECURITY', name: 'AI Security Readiness',
-      fqa_coverage: [{ category: 'A', items: ['접근권한과 계정 체계'], strength: 3 }],
+      coverage: [{ category: 'A03', strength: 3 }],
       readiness_lift: { A: 1.5 }
     }]
   });
@@ -400,9 +400,8 @@ test('실데이터 — 035 의 lift 가 근거 없는 수치를 만들지 않는
     D: { score: 2.0, threshold: 3.5, answered: 5, ready: false }
   };
   const out = recommend({
-    deal: { ...lowSecurityDeal, fqa_totals: lowAll },
-    solutions, packages, slots, itemCountByCategory: ITEM_COUNTS,
-    itemScores: itemScoresFromCategories(lowAll)
+    deal: { ...lowSecurityDeal, totals: lowAll },
+    solutions, packages, slots, itemCountByCategory: AREA_COUNTS,
   });
 
   assert.ok(out.bundles.length > 0, '번들이 하나도 없으면 이 검사가 무의미하다');
@@ -425,7 +424,7 @@ test('검토 여부에 따라 라벨이 달라진다', () => {
   assert.equal(run({ solutions: [] }).label, '고객 자가응답 기준 잠정 추천');
   const reviewed = recommend({
     deal: { ...lowSecurityDeal, fqa_reviewed_at: '2026-07-28T00:00:00Z' },
-    slots, itemCountByCategory: ITEM_COUNTS, solutions: []
+    slots, itemCountByCategory: AREA_COUNTS, solutions: []
   });
   assert.equal(reviewed.label, '실사 반영 추천');
   assert.equal(reviewed.reviewed, true);
@@ -454,9 +453,8 @@ test('실데이터 — 준비도 낮은 딜은 패키지가 먼저 나온다', (
     C: { score: 2.1, threshold: 3.0, answered: 5, ready: false }
   };
   const out = recommend({
-    deal: { ...lowSecurityDeal, fqa_totals: lowAC },
-    solutions, packages, slots, itemCountByCategory: ITEM_COUNTS,
-    itemScores: itemScoresFromCategories(lowAC)
+    deal: { ...lowSecurityDeal, totals: lowAC },
+    solutions, packages, slots, itemCountByCategory: AREA_COUNTS,
   });
 
   // A·C 가 미달인 고객에게는 그 두 축을 덮는 패키지가 나와야 한다.
@@ -502,14 +500,13 @@ test('035 — 예산·구매 준비도를 덮는 패키지가 있다', () => {
       track: 'T-B',
       customer_meta: { industry: '제조', targetUsers: '500명', investment: '2억' },
       prereq_confirmations: {},
-      fqa_totals: budgetGapTotals
+      totals: budgetGapTotals
     },
-    slots, itemCountByCategory: ITEM_COUNTS, packages,
-    itemScores: itemScoresFromCategories(budgetGapTotals),
+    slots, itemCountByCategory: AREA_COUNTS, packages,
     solutions: [{
       slug: 'needs-budget', name: '예산전제ISV', slot: 'llm-platform', status: 'published',
-      fqa_coverage: [{ category: 'D', items: ['명확한 업무 문제'], strength: 2 }],
-      prerequisites: [{ kind: 'fqa', category: 'D', item: '예산·구매 준비도', min: 3,
+      coverage: [/* 대응 없음 */],
+      prerequisites: [{ kind: 'manual',
         blocking: true, label: '예산·구매 준비도 3 이상' }]
     }]
   });
@@ -530,7 +527,7 @@ test('035 — 한 문항을 둘이 덮으면 더 깊게 다루는 쪽이 선행�
     track: 'E-1',
     customer_meta: { industry: '금융/보험', targetUsers: '전사 2,000명', investment: '3억' },
     prereq_confirmations: {},
-    fqa_totals: {
+    totals: {
       A: { score: 2.4, threshold: 3.0, answered: 6, ready: false },
       B: { score: 2.4, threshold: 3.0, answered: 5, ready: false },
       C: { score: 3.4, threshold: 3.0, answered: 5, ready: true },
@@ -539,16 +536,15 @@ test('035 — 한 문항을 둘이 덮으면 더 깊게 다루는 쪽이 선행�
   };
   const isv = {
     slug: 'needs-iam', name: 'IAM전제ISV', slot: 'llm-platform', status: 'published',
-    fqa_coverage: [{ category: 'A', items: ['감사 로그와 추적성'], strength: 2 }],
-    prerequisites: [{ kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3,
+    coverage: [{ category: 'A05', strength: 2 }],
+    prerequisites: [{ kind: 'assessment', area: 'A03', min: 3,
       blocking: true, label: 'IAM 3 이상' }]
   };
 
   // 두 패키지 모두 전제를 넘긴다(2.4+1.5=3.9 / 2.4+0.8=3.2). 순서만 뒤집어 넣는다.
   for (const order of [['P03', 'P02'], ['P02', 'P03']]) {
     const out = recommend({
-      deal, slots, itemCountByCategory: ITEM_COUNTS, solutions: [isv],
-      itemScores: itemScoresFromCategories(deal.fqa_totals),
+      deal, slots, itemCountByCategory: AREA_COUNTS, solutions: [isv],
       packages: order.map(byId)
     });
     assert.equal(out.bundles.length, 1, `순서 ${order.join('→')} 에서 번들이 없다`);
@@ -562,8 +558,8 @@ test('전제가 지목한 문항을 모르면 카테고리 평균으로 때우�
   // 다른 두 문항의 평균으로 "접근권한이 3 이상인가" 를 판정하면 조용히 틀린다.
   const isv = {
     slug: 'needs-iam', name: 'IAM전제ISV', slot: 'llm-platform', status: 'published',
-    fqa_coverage: [{ category: 'A', items: ['감사 로그와 추적성'], strength: 2 }],
-    prerequisites: [{ kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3,
+    coverage: [{ category: 'A05', strength: 2 }],
+    prerequisites: [{ kind: 'assessment', area: 'A03', min: 3,
       blocking: true, label: 'IAM 3 이상' }]
   };
 
@@ -579,7 +575,7 @@ test('전제가 지목한 문항을 모르면 카테고리 평균으로 때우�
   // ② 영업이 확인하면 통과한다
   const confirmed = recommend({
     deal: { ...lowSecurityDeal, prereq_confirmations: { 'needs-iam': { 'IAM 3 이상': true } } },
-    slots, itemCountByCategory: ITEM_COUNTS, itemScores: {}, solutions: [isv]
+    slots, itemCountByCategory: AREA_COUNTS, itemScores: {}, solutions: [isv]
   });
   assert.equal(confirmed.eligible.length, 1, '확인했는데 안 통과하면 확인이 무의미하다');
 
@@ -592,7 +588,7 @@ test('문항을 지목하지 않은 전제는 여전히 카테고리로 본다',
   // item 이 없으면 카테고리 전체를 묻는 전제다. 그건 평균이 맞는 답이다.
   const isv = {
     slug: 'needs-a-area', name: 'A영역전제ISV', slot: 'llm-platform', status: 'published',
-    fqa_coverage: [{ category: 'A', items: ['감사 로그와 추적성'], strength: 2 }],
+    coverage: [{ category: 'A05', strength: 2 }],
     prerequisites: [{ kind: 'fqa', category: 'A', min: 3, blocking: true, label: 'A 영역 3 이상' }]
   };
   const out = run({ solutions: [isv], itemScores: {} });
