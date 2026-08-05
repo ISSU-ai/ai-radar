@@ -1145,7 +1145,7 @@ function renderPackages() {
       <div class="md-control"><input type="number" min="0" max="999" step="1" data-package-md="${pkg.id}" value="${checked && typeof value === 'object' ? escapeHtml(value.md || '') : ''}" placeholder="0" aria-label="${escapeHtml(pkg.name)} 조정 공수" ${checked && isOwner() ? '' : 'disabled'}><span>조정 공수(MD)</span></div>
     </label>`;
   }).join('');
-  return `${stageHeader('04', '패키지와 딜 사이즈', '확정한 ISV 조합 위에 필요한 서비스 패키지를 얹습니다. 조정 공수는 딜별로 저장되고, 가견적은 (기준MD + 조정MD) × MD 단가로 합산됩니다.')}<div class="selection-grid">${cards}</div><div id="quote-estimate" class="quote-estimate">${quoteEstimateMarkup()}</div>${dealSimMarkup()}`;
+  return `${stageHeader('04', '패키지와 딜 사이즈', '확정한 ISV 조합 위에 필요한 서비스 패키지를 얹습니다. 조정 공수는 딜별로 저장되고, 가견적은 (기준MD + 조정MD) × MD 단가로 합산됩니다.')}<div class="selection-grid">${cards}</div>${licenseMarkup()}<div id="quote-estimate" class="quote-estimate">${quoteEstimateMarkup()}</div>${dealSimMarkup()}`;
 }
 
 // 003/006 마이그레이션이 심은 단가는 데모용이다. price_is_placeholder 가 true 면
@@ -1202,6 +1202,109 @@ function quoteEstimateMarkup() {
 function renderQuoteEstimate() {
   const node = document.getElementById('quote-estimate');
   if (node) node.innerHTML = quoteEstimateMarkup();
+}
+
+/**
+ * OpenAI 라이선스 계산 (기획안 Appendix C·D).
+ *
+ * 기본값은 Appendix D 의 표준 고객 가정이다 — 100석 × $18/월 + 개발자 20% ×
+ * $150/월 = 기업당 연 $57,600. 영업이 고객 실제 값으로 바꾼다.
+ *
+ * ⚠ **API 는 넣지 않는다.** 기획안이 "사용량 변동성이 높은 API Consumption 은
+ *   기본 목표 매출에서 제외" 라고 못 박았다. 여기 넣으면 확정 매출처럼 보인다.
+ */
+const LICENSE_DEFAULTS = Object.freeze({ seats: 100, seatPrice: 18, codexRatio: 20, codexPrice: 150 });
+
+function getLicenseInput() {
+  const sim = state.deal?.customer_meta?.sim || {};
+  const pick = (key, min, max) => {
+    const value = Number(sim[key]);
+    return Number.isFinite(value) && value >= min && value <= max ? value : LICENSE_DEFAULTS[key];
+  };
+  return {
+    seats: Math.round(pick('seats', 1, 100000)),
+    seatPrice: pick('seatPrice', 0, 1000),
+    codexRatio: pick('codexRatio', 0, 100),
+    codexPrice: pick('codexPrice', 0, 10000)
+  };
+}
+
+function computeLicense() {
+  const input = getLicenseInput();
+  const fx = Number(state.refs.settings?.usd_krw) || 1500;
+  // 개발자 수는 내림한다. 0.6명에게 Credit 을 팔 수 없다.
+  const codexSeats = Math.floor(input.seats * input.codexRatio / 100);
+  const chatMonthly = input.seats * input.seatPrice;
+  const codexMonthly = codexSeats * input.codexPrice;
+  const monthly = chatMonthly + codexMonthly;
+  return {
+    ...input, fx, codexSeats, chatMonthly, codexMonthly, monthly,
+    annualUsd: monthly * 12,
+    annualKrw: monthly * 12 * fx
+  };
+}
+
+/** 계산 결과만. 입력칸과 분리해야 타이핑 중 재렌더로 포커스를 잃지 않는다. */
+function licenseSummaryMarkup() {
+  const l = computeLicense();
+  const money = (usd) => `$${Math.round(usd).toLocaleString('en-US')}`;
+  return `<div class="lic-total">연 계약금액 <b>${formatKRWCompact(l.annualKrw)}</b>
+      <small>${money(l.annualUsd)} · 1 USD = ${l.fx.toLocaleString('ko-KR')}원</small></div>
+    <div class="quote-scroll"><table class="quote-table">
+      <thead><tr><th>항목</th><th class="num">산식</th><th class="num">월</th><th class="num">연</th></tr></thead>
+      <tbody>
+        <tr><td>ChatGPT License</td><td class="num">${l.seats}석 × $${l.seatPrice}</td>
+          <td class="num">${money(l.chatMonthly)}</td><td class="num amount">${money(l.chatMonthly * 12)}</td></tr>
+        <tr><td>Codex Credit</td><td class="num">${l.codexSeats}명 × $${l.codexPrice}</td>
+          <td class="num">${money(l.codexMonthly)}</td><td class="num amount">${money(l.codexMonthly * 12)}</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="2">합계 (VAT 별도)</td>
+        <td class="num">${money(l.monthly)}</td>
+        <td class="num amount">${formatKRW(l.annualKrw)}</td></tr></tfoot>
+    </table></div>`;
+}
+
+function licenseMarkup() {
+  const l = getLicenseInput();
+  const field = (key, label, value, attrs, hint) => `<label class="lic-field">
+    <span>${label}</span>
+    <input type="number" data-license="${key}" value="${value}" ${attrs} ${isOwner() ? '' : 'disabled'}>
+    <small>${hint}</small>
+  </label>`;
+
+  return `<section class="license-calc">
+    <div class="quote-head"><h3>OpenAI 라이선스<span> · 시트·Codex 기준</span></h3></div>
+    <div class="lic-inputs">
+      ${field('seats', 'ChatGPT 시트', l.seats, 'min="1" max="100000" step="10"', '최소 2석 (Business)')}
+      ${field('seatPrice', '시트 단가 ($/월)', l.seatPrice, 'min="0" max="1000" step="1"', 'Business 연간 $20 · 기획안 가정 $18')}
+      ${field('codexRatio', 'Codex 사용 비율 (%)', l.codexRatio, 'min="0" max="100" step="5"', '기획안 가정 20%')}
+      ${field('codexPrice', 'Codex 단가 ($/월)', l.codexPrice, 'min="0" max="10000" step="10"', 'Rate Card 참고 $100~200')}
+    </div>
+    <div id="license-summary">${licenseSummaryMarkup()}</div>
+    <p class="quote-note">Enterprise 가격·최소 시트는 <b>OpenAI 영업 협의사항</b>입니다. 확정 가격으로 제시하지 마세요.
+      사용량 변동성이 큰 <b>API 는 포함하지 않았습니다</b> — 기획안도 기본 목표 매출에서 제외했습니다.</p>
+  </section>`;
+}
+
+function renderLicenseCalc() {
+  const node = document.getElementById('license-summary');
+  if (node) node.innerHTML = licenseSummaryMarkup();
+}
+
+/** 시트 수는 ISV 좌석 라이선스 계산과 공유한다. 두 곳에 따로 두면 값이 갈린다. */
+function setLicenseField(key, value) {
+  const meta = { ...(state.deal.customer_meta || {}) };
+  meta.sim = { ...(meta.sim || {}), [key]: Number(value) || 0 };
+  state.deal.customer_meta = meta;
+  renderLicenseCalc();
+  if (key === 'seats') {
+    const range = document.getElementById('deal-sim-seat-range');
+    const num = document.getElementById('deal-sim-seat-num');
+    if (range) range.value = Math.min(Number(range.max), Math.max(Number(range.min), meta.sim.seats));
+    if (num) num.value = meta.sim.seats;
+    renderDealSimulator();
+  }
+  scheduleSave({ customer_meta: meta });
 }
 
 function getDealSeats() {
@@ -1601,6 +1704,9 @@ function bindStageEvents() {
     scheduleSave({ isv_combo: state.deal.isv_combo }, true);
     saveAdoptionSnapshot();
     renderStage();
+  }));
+  $$('[data-license]').forEach((input) => input.addEventListener('input', () => {
+    setLicenseField(input.dataset.license, input.value);
   }));
   $('#catalog-search')?.addEventListener('input', (event) => {
     state.catalogQuery = event.target.value;

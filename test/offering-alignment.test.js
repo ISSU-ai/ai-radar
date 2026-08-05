@@ -393,3 +393,62 @@ test('035 — 화면·목업에 옛 패키지 id 가 없다', () => {
     }
   }
 });
+
+// ── STEP04 · OpenAI 라이선스 계산 ────────────────────────────────
+test('라이선스 계산 기본값이 기획안 Appendix D 표준 고객과 같다', () => {
+  // 100석 × $18 + 개발자 20% × $150 = 기업당 연 $57,600 (8,640만원).
+  // 기본값이 문서와 어긋나면 영업이 처음 여는 화면부터 틀린 숫자를 본다.
+  const hub = fs.readFileSync(path.join(root, 'hub.js'), 'utf8');
+  const block = hub.slice(hub.indexOf('const LICENSE_DEFAULTS'), hub.indexOf('function getDealSeats'));
+  const defaults = block.match(/LICENSE_DEFAULTS = Object\.freeze\((\{[^}]*\})\)/)[1];
+  assert.match(defaults, /seats:\s*100/);
+  assert.match(defaults, /seatPrice:\s*18/);
+  assert.match(defaults, /codexRatio:\s*20/);
+  assert.match(defaults, /codexPrice:\s*150/);
+
+  // 산식: (시트 × 단가 + 내림(시트 × 비율) × Codex단가) × 12 × 환율
+  assert.match(block, /Math\.floor\(input\.seats \* input\.codexRatio \/ 100\)/,
+    '개발자 수를 내림하지 않으면 0.6명에게 Credit 을 파는 계산이 된다');
+  assert.match(block, /monthly \* 12 \* fx/);
+  assert.match(block, /usd_krw\) \|\| 1500/, '환율은 설정값을 쓴다');
+});
+
+test('라이선스 계산에 API 를 넣지 않는다', () => {
+  // 기획안이 "사용량 변동성이 높은 API Consumption 은 기본 목표 매출에서 제외"
+  // 라고 못 박았다. 넣으면 확정 매출처럼 보인다.
+  const hub = fs.readFileSync(path.join(root, 'hub.js'), 'utf8');
+  const block = hub.slice(hub.indexOf('const LICENSE_DEFAULTS'), hub.indexOf('function getDealSeats'));
+  assert.ok(!/apiPrice|apiTokens|api_monthly/.test(block), '라이선스 계산에 API 가 들어갔다');
+  assert.match(block, /API 는 포함하지 않았습니다/, '왜 없는지 화면에 적어야 한다');
+  assert.match(block, /OpenAI 영업 협의사항/, 'Enterprise 가격을 확정처럼 보이면 안 된다');
+});
+
+test('입력 중 재렌더로 포커스를 잃지 않는다', () => {
+  // 계산 결과만 다시 그린다. 입력칸까지 갈아끼우면 한 글자마다 커서가 튄다.
+  const hub = fs.readFileSync(path.join(root, 'hub.js'), 'utf8');
+  const render = hub.slice(hub.indexOf('function renderLicenseCalc'), hub.indexOf('function setLicenseField'));
+  assert.match(render, /getElementById\('license-summary'\)/);
+  assert.ok(!/licenseMarkup\(\)/.test(render), '입력칸까지 다시 그린다');
+
+  const summary = hub.slice(hub.indexOf('function licenseSummaryMarkup'), hub.indexOf('function licenseMarkup'));
+  assert.ok(!/data-license/.test(summary), '요약 안에 입력칸이 있다');
+});
+
+test('시트 수는 ISV 시뮬레이터와 같은 값을 쓴다', () => {
+  // 두 곳에 따로 두면 같은 화면에서 좌석 수가 갈린다.
+  const hub = fs.readFileSync(path.join(root, 'hub.js'), 'utf8');
+  const setter = hub.slice(hub.indexOf('function setLicenseField'), hub.indexOf('function getDealSeats'));
+  assert.match(setter, /meta\.sim = \{ \.\.\.\(meta\.sim \|\| \{\}\), \[key\]: /);
+  assert.match(setter, /key === 'seats'[\s\S]{0,400}renderDealSimulator\(\)/);
+  assert.match(hub, /function getDealSeats[\s\S]{0,200}customer_meta\?\.sim\?\.seats/);
+});
+
+test('STEP04 가 라이선스·패키지·ISV 셋을 함께 보여준다', () => {
+  const hub = fs.readFileSync(path.join(root, 'hub.js'), 'utf8');
+  const at = hub.indexOf("stageHeader('04'");
+  const line = hub.slice(at, hub.indexOf('\n', at));
+  for (const part of ['licenseMarkup()', 'quoteEstimateMarkup()', 'dealSimMarkup()']) {
+    assert.ok(line.includes(part), `STEP04 에 ${part} 가 없다`);
+  }
+  assert.match(fs.readFileSync(path.join(root, 'hub.css'), 'utf8'), /\.license-calc/);
+});
