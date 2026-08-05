@@ -18,7 +18,9 @@ input::placeholder,textarea::placeholder { color:#9aabba; opacity:1; }
 .hero-copy,.hero-visual { position:relative; z-index:1; }
 .kicker { margin:0 0 18px; color:#5f91ef; font:700 11px var(--font-ui); letter-spacing:.16em; }
 .hero .kicker { color:#83aaf1; }
-.hero h1 { margin:0; font-size:clamp(43px,5.3vw,72px); line-height:1.08; letter-spacing:-.055em; }
+/* 5.3vw/72px 은 hero-copy(1440px 에서 596px)보다 컸다 — 어느 폭에서도 둘째 줄이
+   접혔다. 가장 긴 줄 "성공할 조건을 찾습니다."(≈11.5em)가 들어가는 한계가 52px 다. */
+.hero h1 { margin:0; font-size:clamp(32px,3.8vw,50px); line-height:1.12; letter-spacing:-.045em; }
 .hero h1 span { color:#8395aa; }
 .hero-lead { max-width:620px; margin:25px 0 0; color:#acbac9; font-size:16px; line-height:1.8; }
 .hero-actions { display:flex; align-items:center; gap:22px; margin-top:34px; }
@@ -57,8 +59,11 @@ input::placeholder,textarea::placeholder { color:#9aabba; opacity:1; }
 .approach-grid h3 { margin:0 0 12px; font-size:16px; }
 .approach-grid p { margin:0; color:var(--muted); font-size:13px; line-height:1.7; }
 .diagnosis { background:var(--paper); border-block:1px solid var(--line); }
-.diagnosis-wrap { display:grid; grid-template-columns:330px minmax(0,1fr); gap:80px; }
+.diagnosis-wrap { display:grid; grid-template-columns:360px minmax(0,1fr); gap:72px; }
 .diagnosis-intro { position:sticky; top:110px; align-self:start; }
+/* 공통 h2(최대 44px)는 이 좁은 컬럼에서 "우리 조직의 출발점을"(≈9.25em)이 넘친다.
+   여기만 따로 조인다 — 다른 h2 는 넓은 자리에 있어 그대로 둔다. */
+.diagnosis-intro h2 { font-size:clamp(26px,2.8vw,36px); }
 .diagnosis-intro > p { margin-top:24px; }
 .diagnosis-legend { display:grid; gap:10px; margin-top:36px; color:#59697b; font-size:13px; }
 .diagnosis-legend span { display:flex; align-items:center; gap:9px; }

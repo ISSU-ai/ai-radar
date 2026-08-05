@@ -12,7 +12,9 @@
 .rd-guide b { display: block; margin-bottom: 3px; font-size: 13px; }
 .rd-guide span { color: #66748a; font-size: 13px; line-height: 1.6; }
 
-.rd-area-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+/* 6대 영역은 3개씩 두 줄로. auto-fit 이면 넓은 화면에서 여섯이 한 줄로 늘어서
+   축 이름이 카드 폭에 눌린다. */
+.rd-area-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .rd-area-card { padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
 .rd-area-card b { display: block; color: var(--blue); font-size: 20px; font-weight: 900; }
 .rd-area-card strong { display: block; margin: 4px 0 2px; font-size: 14px; }
@@ -122,6 +124,9 @@
 .rd-banner { position: fixed; left: 50%; bottom: -100px; z-index: 60; display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 12px; background: #16233a; color: #fff; font-size: 13.5px; box-shadow: 0 18px 40px rgba(0,0,0,.24); transform: translateX(-50%); transition: bottom .3s ease; }
 .rd-banner.show { bottom: 26px; }
 .rd-banner button { border: 0; background: transparent; color: #9aa7b8; cursor: pointer; font-size: 14px; }
+
+@media (max-width: 760px) { .rd-area-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .rd-area-grid { grid-template-columns: 1fr; } }
 
 @media (max-width: 900px) {
   .rd-result-grid { grid-template-columns: 1fr; }

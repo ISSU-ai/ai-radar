@@ -452,3 +452,40 @@ test('034 — 화면·목업에 옛 트랙이 남지 않았다', () => {
     assert.ok(!/T-[ABCD]\b/.test(body), `${file} 에 옛 트랙이 남아 있다`);
   }
 });
+
+// ── 화면 문구·동작 ───────────────────────────────────────────────
+test('미응답 보정은 남은 것만 따라간다', () => {
+  // 다 채운 영역을 다시 훑게 하면 거기서 이탈한다.
+  const js = read('readiness.js');
+  assert.match(js, /function remainingFixes/);
+  assert.match(js, /state\.fixing\.filter\(\(code\) => !state\.scores\[code\]\)/);
+  assert.match(js, /function goToFix/);
+  // 다음 버튼이 보정 중에는 남은 미응답으로 간다
+  assert.match(js, /#next-area'\)\.addEventListener[\s\S]{0,300}goToFix\(left\[0\]\)/);
+  // 마지막 하나를 채우면 결과 확인으로 데려간다
+  assert.match(js, /remainingFixes\(\)\.length === 0[\s\S]{0,200}#finish'\)\?\.scrollIntoView/);
+  // 결과가 나오면 보정 모드를 끝낸다
+  assert.match(js, /state\.fixing = \[\];\s*\n\s*state\.result = result/);
+});
+
+test('고객에게 제품명을 묻지 않는다', () => {
+  // 보안 담당자가 아닌 사람도 답해야 한다.
+  const html = read('readiness.html');
+  const at = html.indexOf('name="securityStack"');
+  const block = html.slice(at, html.indexOf('</select>', at));
+  assert.ok(!/Zscaler|SWG/i.test(block), `고객 폼에 제품명이 있다: ${block}`);
+  assert.match(block, /value="existing"/);
+  assert.match(block, /value="managed"/);
+
+  // 영업 화면에는 제품 확정 선택지가 남는다
+  const hub = read('hub.js');
+  assert.match(hub, /value="zscaler"/);
+  assert.match(hub, /value="other-swg"/);
+  assert.match(hub, /value="existing"/, '고객이 답한 값이 허브에서 사라지면 안 된다');
+});
+
+test('모르는 보안 환경으로 후보를 거르지 않는다', () => {
+  // "장비는 있는데 무엇인지 모른다" 로 게이트웨이 후보를 빼면 조용히 틀린다.
+  const engine = read('lib/recommendation-engine.js');
+  assert.match(engine, /unknownStack = \['none', '없음', 'unknown', '미정', 'existing', 'managed'\]/);
+});

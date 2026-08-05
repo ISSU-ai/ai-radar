@@ -33,7 +33,13 @@ const MATURITY = Object.freeze([
   { level: 5, name: '최적화', range: '4.5 ~ 5.0', note: 'AI 선도 기업 수준 — 자율 진화·신사업 단계' }
 ]);
 
-const state = { areas: [], items: [], scores: {}, areaIndex: 0, result: null };
+const state = {
+  areas: [], items: [], scores: {}, areaIndex: 0, result: null,
+  // 미응답 보정 모드. 「결과 확인」을 눌렀는데 빠진 문항이 있으면 채워진다.
+  // 이 동안에는 영역을 순서대로 넘기지 않고 **남은 미응답만** 따라간다 —
+  // 이미 다 채운 영역을 다시 훑을 이유가 없다.
+  fixing: []
+};
 
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -123,14 +129,37 @@ function renderQuestions() {
   window.lucide?.createIcons();
 }
 
+/** 보정 모드에서 아직 안 고른 문항. 고른 것은 목록에서 빠진다. */
+function remainingFixes() {
+  return state.fixing.filter((code) => !state.scores[code]);
+}
+
 function updateProgress() {
   const done = totalAnswered();
   $('#answered-count').textContent = done;
   $('#progress-value').style.width = state.items.length ? `${done / state.items.length * 100}%` : '0%';
+
+  const next = $('#next-area');
+  const finish = $('#finish');
+  const prev = $('#prev-area');
+
+  if (state.fixing.length) {
+    // 보정 중이다. 남은 미응답이 있으면 그리로, 없으면 결과 확인으로.
+    const left = remainingFixes().length;
+    prev.classList.add('hidden');
+    next.classList.toggle('hidden', left === 0);
+    finish.classList.toggle('hidden', left > 0);
+    if (left > 0) {
+      next.innerHTML = `남은 미응답으로 <b>${left}개</b> <i data-lucide="arrow-right"></i>`;
+      window.lucide?.createIcons();
+    }
+    return;
+  }
+
   const last = state.areaIndex === state.areas.length - 1;
-  $('#prev-area').classList.toggle('hidden', state.areaIndex === 0);
-  $('#next-area').classList.toggle('hidden', last);
-  $('#finish').classList.toggle('hidden', !last);
+  prev.classList.toggle('hidden', state.areaIndex === 0);
+  next.classList.toggle('hidden', last);
+  finish.classList.toggle('hidden', !last);
 }
 
 function setScore(code, score) {
@@ -147,6 +176,13 @@ function setScore(code, score) {
   }
   renderAreaTabs();
   updateProgress();
+
+  // 보정 중이었고 방금 마지막 하나를 채웠다. 결과 확인 버튼까지 데려간다 —
+  // 어디를 눌러야 하는지 찾게 두면 여기서 이탈한다.
+  if (state.fixing.length && remainingFixes().length === 0) {
+    $$('.rd-question').forEach((entry) => entry.classList.remove('unanswered'));
+    setTimeout(() => $('#finish')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+  }
 }
 
 function goToArea(index) {
@@ -155,24 +191,32 @@ function goToArea(index) {
   $('#assessment').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-/** 미응답을 화면에서 짚어 준다. 개수만 알리면 어디인지 찾느라 이탈한다. */
-function showUnanswered(codes) {
-  $$('.rd-question').forEach((card) => card.classList.remove('unanswered'));
-  const first = codes[0];
-  const area = state.items.find((item) => item.code === first)?.area;
+/** 미응답 문항 하나로 이동해 짚어 준다. */
+function goToFix(code) {
+  const area = state.items.find((item) => item.code === code)?.area;
   const index = state.areas.findIndex((a) => a.id === area);
   if (index >= 0) { state.areaIndex = index; renderQuestions(); }
 
-  for (const code of codes) $(`#q-${CSS.escape(code)}`)?.classList.add('unanswered');
+  // 남은 미응답만 표시한다. 이미 고친 것에 빨간 테두리를 남기면 헷갈린다.
+  for (const left of remainingFixes()) $(`#q-${CSS.escape(left)}`)?.classList.add('unanswered');
+  setTimeout(() => $(`#q-${CSS.escape(code)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+}
+
+/** 미응답을 화면에서 짚어 준다. 개수만 알리면 어디인지 찾느라 이탈한다. */
+function showUnanswered(codes) {
+  $$('.rd-question').forEach((card) => card.classList.remove('unanswered'));
+  // 문항 순서대로 정렬해 둔다. 뒤에서 앞으로 튀면 어디까지 했는지 감을 잃는다.
+  const order = new Map(state.items.map((item, i) => [item.code, i]));
+  state.fixing = [...codes].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
 
   const banner = $('#unanswered-banner');
-  banner.innerHTML = `<span>⚠️ 선택하지 않은 문항이 <b>${codes.length}개</b> 있습니다. 표시된 문항을 모두 선택해주세요.</span>
+  banner.innerHTML = `<span>⚠️ 선택하지 않은 문항이 <b>${codes.length}개</b> 있습니다. 표시된 문항만 채우면 됩니다.</span>
     <button type="button" id="close-banner">✕</button>`;
   banner.classList.add('show');
   $('#close-banner').addEventListener('click', () => banner.classList.remove('show'));
   setTimeout(() => banner.classList.remove('show'), 6000);
 
-  setTimeout(() => $(`#q-${CSS.escape(first)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+  goToFix(state.fixing[0]);
 }
 
 // ── 결과 ──────────────────────────────────────────────────────────
@@ -184,6 +228,7 @@ async function calculate() {
       method: 'POST',
       body: JSON.stringify({ scores: state.scores })
     });
+    state.fixing = [];
     state.result = result;
     renderResult(result);
     $('#result').classList.remove('hidden');
@@ -502,7 +547,12 @@ async function init() {
 
   $('#start-button').addEventListener('click', startAssessment);
   $('#prev-area').addEventListener('click', () => goToArea(state.areaIndex - 1));
-  $('#next-area').addEventListener('click', () => goToArea(state.areaIndex + 1));
+  $('#next-area').addEventListener('click', () => {
+    // 보정 중이면 남은 미응답으로 간다. 다 채운 영역을 다시 훑을 이유가 없다.
+    const left = state.fixing.length ? remainingFixes() : [];
+    if (left.length) return goToFix(left[0]);
+    goToArea(state.areaIndex + 1);
+  });
   $('#finish').addEventListener('click', calculate);
 
   // 칩·탭은 다시 그려지므로 위임으로 받는다
