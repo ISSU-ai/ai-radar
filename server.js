@@ -218,14 +218,14 @@ async function persistSectionsInternal(executor, solutionId, value) {
 }
 
 /**
- * 추천 판정 필드(slot·fqa_coverage·prerequisites·red_flags·bundle_potential)를 반영한다.
+ * 추천 판정 필드(slot·assessment_coverage·assessment_prerequisites·red_flags·bundle_potential)를 반영한다.
  * 010 적용 전이면 해당 컬럼만 조용히 건너뛴다. 값이 undefined 면 손대지 않아,
  * 이 필드를 모르는 클라이언트가 저장해도 기존 판정 데이터가 날아가지 않는다.
  */
 const RECOMMENDATION_FIELDS = Object.freeze([
   { column: 'slot', json: false },
-  { column: 'fqa_coverage', json: true },
-  { column: 'prerequisites', json: true },
+  { column: 'assessment_coverage', json: true },
+  { column: 'assessment_prerequisites', json: true },
   { column: 'red_flags', json: true },
   { column: 'bundle_potential', json: false }
 ]);
@@ -997,8 +997,8 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, catalogEditorOnl
         layer: payload.layer,
         sections,
         slot: payload.slot ?? sol.slot,
-        fqa_coverage: payload.fqa_coverage ?? sol.fqa_coverage,
-        prerequisites: payload.prerequisites ?? sol.prerequisites,
+        assessment_coverage: payload.assessment_coverage ?? sol.assessment_coverage,
+        assessment_prerequisites: payload.assessment_prerequisites ?? sol.assessment_prerequisites,
         red_flags: payload.red_flags ?? sol.red_flags,
         bundle_potential: payload.bundle_potential ?? sol.bundle_potential
       };
@@ -1782,50 +1782,22 @@ app.post('/api/admin/suggest-edit', authenticateToken, catalogEditorOnly, async 
   }
 });
 
-const requireCompleteFqaScores = async (req, res, next) => {
-  // 42문항(/readiness)으로 들어온 리드는 여기를 건너뛴다. 두 진단은 문항집이 다르고,
-  // 21문항 점수는 030 bridge 가 서버에서 채운다 — 고객에게 두 번 묻지 않는다.
-  const readiness = req.body?.readiness_scores;
-  if (readiness && typeof readiness === 'object' && !Array.isArray(readiness)
-      && Object.keys(readiness).length) {
+/**
+ * 공개 리드는 42문항 진단을 거쳐 들어온다.
+ *
+ * 예전에는 21문항 전량을 요구했다. 판정 기준이 기획안 Appendix A 로 바뀌면서(036~038)
+ * 고객이 답하는 문항집은 42문항 하나뿐이고, 평가영역은 037 bridge 가 서버에서 채운다.
+ * 진단 없이 리드만 들어오면 영업이 맥락 없이 만나므로 응답을 요구한다.
+ */
+const requireReadinessScores = (req, res, next) => {
+  const scores = req.body?.readiness_scores;
+  if (scores && typeof scores === 'object' && !Array.isArray(scores) && Object.keys(scores).length) {
     return next();
   }
-
-  const rawScores = req.body?.fqa_scores;
-  if (!rawScores || typeof rawScores !== 'object' || Array.isArray(rawScores)) {
-    return res.status(400).json({ error: '모든 준비도 문항의 점수를 입력해주세요.' });
-  }
-
-  try {
-    const result = await pool.query(
-      "select no from fqa_items where status = 'active' order by no"
-    );
-    if (!result.rows.length) {
-      return res.status(503).json({ error: '준비도 진단 문항을 불러올 수 없습니다.' });
-    }
-
-    const expected = new Set(result.rows.map((item) => String(item.no)));
-    const provided = Object.keys(rawScores);
-    const hasUnknownQuestion = provided.some((no) => !expected.has(no));
-    const hasMissingOrInvalidScore = result.rows.some((item) => {
-      const score = rawScores[item.no] ?? rawScores[String(item.no)];
-      return typeof score !== 'number' || !Number.isInteger(score) || score < 1 || score > 5;
-    });
-
-    if (hasUnknownQuestion || hasMissingOrInvalidScore) {
-      return res.status(400).json({ error: '모든 준비도 문항에 1~5점으로 답해주세요.' });
-    }
-    return next();
-  } catch (error) {
-    console.error('FQA validation failed:', error.message);
-    return res.status(503).json({ error: '준비도 진단 문항을 확인하지 못했습니다.' });
-  }
+  return res.status(400).json({ error: '준비도 진단을 먼저 완료해주세요.' });
 };
 
-app.post([
-  '/api/hub/public/diagnose',
-  '/api/hub/public/leads'
-], requireCompleteFqaScores);
+app.post('/api/hub/public/leads', requireReadinessScores);
 
 const hubRouter = createHubRouter({
   pool,

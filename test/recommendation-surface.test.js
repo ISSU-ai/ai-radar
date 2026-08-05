@@ -33,10 +33,14 @@ test('스키마 미적용 환경에서는 503 으로 원인을 알린다', () =>
   assert.match(hubRoutes, /await hasColumn\('solutions', 'slot'\)/);
 });
 
-test('문항 단위 전제를 실제 문항 점수로 판정한다', () => {
-  // 카테고리 평균으로만 보면 A[보안 게이트웨이] 같은 개별 전제가 뭉개진다.
-  assert.match(hubRoutes, /itemScores\[item\.name\] = score/);
-  assert.match(hubRoutes, /itemScores,/);
+test('갭을 평가영역과 42축 두 어휘로 넘긴다', () => {
+  // 키가 겹치지 않아 솔루션은 평가영역으로, 패키지는 축으로 각자 맞물린다.
+  assert.match(hubRoutes, /buildGapTotals\(deal\.assessment_totals, deal\.readiness_totals\)/);
+  assert.match(hubRoutes, /categoryLabels: labels/, '이름표는 호출자가 넘긴다');
+  // 후보 선정과 선행 판정은 다른 어휘다. 한 필드에 두면 점수가 이중 계산된다.
+  assert.match(hubRoutes, /coverage: asCoverage\(row\.readiness_coverage, 'axis'\)/);
+  assert.match(hubRoutes, /enablerCoverage: asCoverage\(row\.assessment_coverage, 'area'\)/);
+  assert.match(hubRoutes, /coverage: asCoverage\(row\.assessment_coverage, 'area'\)/);
 });
 
 test('필터·가중치를 recommendation_config 에서 읽는다', () => {
@@ -118,7 +122,7 @@ test('판정 데이터가 없는 솔루션은 영업에게 감춘다', () => {
 });
 
 test('reference-data 가 판정 데이터 보유 여부를 함께 준다', () => {
-  assert.match(hubRoutes, /\$\{coverageColumn\} as fqa_coverage/);
-  // 010 미적용 환경에서 카탈로그가 통째로 사라지면 안 된다.
-  assert.match(hubRoutes, /hasCoverage \? 's\.fqa_coverage' : `'\[\{"legacy":true\}\]'::jsonb`/);
+  assert.match(hubRoutes, /\$\{coverageColumn\} as assessment_coverage/);
+  // 038 미적용 환경에서 카탈로그가 통째로 사라지면 안 된다.
+  assert.match(hubRoutes, /hasCoverage \? 's\.assessment_coverage' : `'\[\{"legacy":true\}\]'::jsonb`/);
 });

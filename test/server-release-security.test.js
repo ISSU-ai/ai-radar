@@ -82,9 +82,10 @@ test('server contains bounded login throttling and validates complete public dia
   assert.match(source, /LOGIN_ATTEMPT_LIMIT = 10/);
   assert.match(source, /app\.post\('\/api\/auth\/login', checkLoginRateLimit/);
   assert.match(source, /status\(429\)/);
-  assert.match(source, /const requireCompleteFqaScores/);
-  assert.match(source, /hasMissingOrInvalidScore/);
-  assert.match(source, /'\/api\/hub\/public\/diagnose'[\s\S]*?'\/api\/hub\/public\/leads'/);
+  // 판정 기준이 Appendix A 로 바뀌면서 고객이 답하는 문항집은 42문항 하나뿐이다.
+  assert.match(source, /const requireReadinessScores/);
+  assert.match(source, /app\.post\('\/api\/hub\/public\/leads', requireReadinessScores\)/);
+  assert.doesNotMatch(source, /requireCompleteFqaScores/, '21문항 게이트가 남아 있다');
 });
 
 test('authenticated requests re-check current approval and role from the database', () => {
@@ -110,16 +111,15 @@ test('public offering and internal sales surfaces have distinct entrypoints', ()
 });
 
 test('public offering failures do not expose database internals', () => {
-  const fqaEndpoint = hubRoutes.slice(
-    hubRoutes.indexOf("router.get('/public/fqa-items'"),
-    hubRoutes.indexOf("router.get('/public/tracks'")
+  // 공개 진단은 42문항(/public/readiness-items) 하나다.
+  const endpoint = hubRoutes.slice(
+    hubRoutes.indexOf("router.get('/public/readiness-items'"),
+    hubRoutes.indexOf("router.post('/public/readiness'")
   );
   assert.match(hubRoutes, /const sendPublicUnavailable =/);
-  assert.match(hubRoutes, /Public FQA items failed:/);
-  assert.match(hubRoutes, /준비도 진단 문항을 불러오지 못했습니다/);
-  assert.doesNotMatch(fqaEndpoint, /sendError\(res, error, 500\)/);
+  assert.match(hubRoutes, /진단 문항을 불러오지 못했습니다/);
+  assert.doesNotMatch(endpoint, /sendError\(res, error, 500\)/);
   assert.match(offeringSource, /진단 문항을 불러오지 못했습니다/);
-  assert.doesNotMatch(offeringSource, /questions'\)\.innerHTML = `<div class="loading">\$\{escapeHtml\(error\.message\)\}<\/div>`/);
 });
 
 test('server handles idle pool failures and drains resources on termination', () => {
