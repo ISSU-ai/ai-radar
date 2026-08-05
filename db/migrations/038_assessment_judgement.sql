@@ -46,6 +46,7 @@ begin;
 alter table solutions add column if not exists assessment_coverage      jsonb not null default '[]'::jsonb;
 alter table solutions add column if not exists assessment_prerequisites jsonb not null default '[]'::jsonb;
 alter table packages  add column if not exists readiness_coverage       jsonb not null default '[]'::jsonb;
+alter table packages  add column if not exists assessment_coverage      jsonb not null default '[]'::jsonb;
 alter table packages  add column if not exists assessment_lift          jsonb not null default '{}'::jsonb;
 
 comment on column solutions.assessment_coverage is
@@ -54,6 +55,8 @@ comment on column solutions.assessment_prerequisites is
   '도입 전제 [{kind:assessment|numeric|manual, area, min, blocking, label, enabled_by}]';
 comment on column packages.readiness_coverage is
   '이 패키지가 올려 주는 42문항 축 [{axis,strength}]. **후보 선정용** — 어느 고객에게 필요한가';
+comment on column packages.assessment_coverage is
+  '이 패키지가 덮는 평가영역 [{area,strength}]. **번들 선행 판정용** — 막힌 전제를 실제로 다루는지 본다';
 comment on column packages.assessment_lift is
   '이 패키지가 올려 주는 평가영역 상승폭 {"A03":1.5}. **번들 선행용** — 어떤 ISV 전제를 푸는가';
 
@@ -77,10 +80,12 @@ with mapping(category, item, area) as (values
   ('C', '변경·배포 관리',            'A06')
 ),
 exploded as (
+  -- ⚠ 콤마 조인과 명시적 join 을 섞으면 join 이 **바로 앞 항목에만** 묶여
+  --   e 를 ON 절에서 못 본다. cross join lateral 로 조인 트리에 제대로 올린다.
   select s.id as sid, m.area, max((e.value ->> 'strength')::int) as strength
-    from solutions s,
-         jsonb_array_elements(s.fqa_coverage) e,
-         jsonb_array_elements_text(coalesce(e.value -> 'items', '[]'::jsonb)) it
+    from solutions s
+    cross join lateral jsonb_array_elements(s.fqa_coverage) e
+    cross join lateral jsonb_array_elements_text(coalesce(e.value -> 'items', '[]'::jsonb)) it
     join mapping m on m.category = e.value ->> 'category' and m.item = it.value
    group by s.id, m.area
 )
@@ -220,10 +225,14 @@ select p.id, p.name,
   from packages p where p.status = 'active' order by p.sort_order;
 --
 -- 5) 존재하지 않는 평가영역을 가리키는가. **0건이어야 한다.**
-select 'solution' as 종류, s.slug as id, e ->> 'area' as "없는 영역"
-  from solutions s, jsonb_array_elements(s.assessment_coverage) e
-  left join assessment_areas a on a.id = e ->> 'area' where a.id is null
+select 'solution' as "종류", s.slug as id, e ->> 'area' as "없는 영역"
+  from solutions s
+  cross join lateral jsonb_array_elements(s.assessment_coverage) e
+  left join assessment_areas a on a.id = e ->> 'area'
+ where a.id is null
 union all
 select 'package', p.id, k
-  from packages p, jsonb_object_keys(p.assessment_lift) k
-  left join assessment_areas a on a.id = k where a.id is null;
+  from packages p
+  cross join lateral jsonb_object_keys(p.assessment_lift) k
+  left join assessment_areas a on a.id = k
+ where a.id is null;

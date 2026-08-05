@@ -159,3 +159,34 @@ test('036~038 이 1회성 시드로 표시돼 있다', () => {
       .includes(`'${name}_`), `${name} 가 자동 적용 목록에 있다`);
   }
 });
+
+// ── SQL 함정 ─────────────────────────────────────────────────────
+test('038 — 쓰는 컬럼을 전부 선언한다', () => {
+  // packages.assessment_coverage 를 선언 없이 쓰다가 적용에서 터졌다.
+  const added = new Set([...judgement.matchAll(/alter table (\w+)\s+add column if not exists (\w+)/g)]
+    .map((m) => `${m[1]}.${m[2]}`));
+  const written = new Set();
+  for (const m of judgement.matchAll(/update (\w+)(?: \w+)? set([\s\S]*?)(?=\n\s*where |\n\s*from )/g)) {
+    for (const c of m[2].matchAll(/(?:^|,)\s*(\w+) =/g)) written.add(`${m[1]}.${c[1]}`);
+  }
+  // 이전 마이그레이션에서 만든 것은 제외
+  const preexisting = ['solutions.fqa_coverage', 'packages.fqa_coverage', 'packages.readiness_lift'];
+  const missing = [...written].filter((w) => !added.has(w) && !preexisting.includes(w));
+  assert.deepEqual(missing, [], `선언 없이 쓰는 컬럼: ${missing.join(', ')}`);
+});
+
+test('마이그레이션이 콤마 조인과 명시적 join 을 섞지 않는다', () => {
+  // Postgres 는 join 을 **바로 앞 FROM 항목에만** 묶는다. `from a, b, c join d on b.x`
+  // 는 b 를 못 봐서 42P01 로 터진다. 적용해 봐야 알 수 있는 종류라 여기서 막는다.
+  const dir = path.join(root, 'db', 'migrations');
+  const offenders = [];
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.sql') && !f.startsWith('_'))) {
+    const sql = fs.readFileSync(path.join(dir, file), 'utf8')
+      .replace(/^\s*--.*$/gm, '')
+      .replace(/\(values[\s\S]*?\)\s+as\s+\w+\([^)]*\)/gi, ' VALUES_LIST ');  // values 목록의 콤마는 제외
+    for (const m of sql.matchAll(/\bfrom\s+[^;()]*?,[^;()]*?,[^;()]*?\n\s*(?:left\s+|inner\s+|right\s+)?join\s/gi)) {
+      offenders.push(`${file}: ${m[0].replace(/\s+/g, ' ').slice(0, 70)}`);
+    }
+  }
+  assert.deepEqual(offenders, [], offenders.join('\n'));
+});
