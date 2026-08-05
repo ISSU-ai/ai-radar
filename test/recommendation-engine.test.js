@@ -249,7 +249,9 @@ function loadSeeds() {
     red_flags: pick(m[1], 'red_flags')
   }))).filter((s) => s.fqa_coverage.length);
 
-  const offering = read('017_offering_v01.sql');
+  // 035 가 패키지를 기획안 5대 오퍼링으로 재편했다. 017 의 옛 6종을 읽으면
+  // 이미 DB 에 없는 것을 검사하게 된다.
+  const offering = read('035_offering_packages.sql');
   const lifts = new Map([...offering.matchAll(
     /readiness_lift = '(\{[\s\S]*?\})'::jsonb\s*\n\s*where id = '(\w+)'/g
   )].map((m) => [m[2], JSON.parse(m[1])]));
@@ -380,12 +382,15 @@ test('번들 사유의 수치는 enabler 가 실제로 푸는 전제를 가리�
   assert.doesNotMatch(numeric, /전제 4 충족/, '넘지도 못하는 임계값을 충족이라 말하면 안 된다');
 });
 
-test('실데이터 — 017 의 lift 가 근거 없는 수치를 만들지 않는다', () => {
-  // 017 이 014·016 의 판정 데이터를 대체한다. 값을 고치면 여기서 드러난다.
+test('실데이터 — 035 의 lift 가 근거 없는 수치를 만들지 않는다', () => {
+  // 035 가 판정 데이터를 5대 오퍼링 패키지로 옮겼다. 값을 고치면 여기서 드러난다.
   const { solutions, packages, lifts } = loadSeeds();
 
-  assert.equal(lifts.size, 6, '017 은 패키지 6종에 lift 를 넣는다');
-  assert.deepEqual(lifts.get('SECURITY'), { A: 1.5 }, 'SECURITY A +1.5 — 가장 자주 쓰이는 값');
+  assert.equal(lifts.size, 5, '035 는 P01~P05 다섯에 lift 를 넣는다');
+  assert.deepEqual(lifts.get('P02'), { A: 1.5 }, '02 OpenAI Ready 가 A 를 +1.5 — 가장 자주 쓰이는 값');
+  // POC+INTEGRATION 합본. lift 는 합산하지 않고 큰 값을 쓴다.
+  assert.deepEqual(lifts.get('P03'), { B: 1.5, A: 0.8, D: 0.8 },
+    '합쳤다고 상승폭이 더해지면 안 된다');
 
   // 네 축이 모두 낮은 고객. 번들이 가장 많이 나오는 조건이라 위반도 여기서 드러난다.
   const lowAll = {
@@ -442,7 +447,7 @@ test('실데이터 — 준비도 낮은 딜은 패키지가 먼저 나온다', (
   const { solutions, packages } = loadSeeds();
 
   assert.equal(solutions.length, 17, '012 의 9종 + 019 의 8종');
-  assert.equal(packages.length, 6, '017 은 패키지 6종을 심는다');
+  assert.equal(packages.length, 5, '035 는 기획안 5대 오퍼링으로 심는다');
 
   const lowAC = {
     ...lowSecurityDeal.fqa_totals,
@@ -457,8 +462,8 @@ test('실데이터 — 준비도 낮은 딜은 패키지가 먼저 나온다', (
   // A·C 가 미달인 고객에게는 그 두 축을 덮는 패키지가 나와야 한다.
   const names = out.eligible.map((x) => x.name);
   assert.ok(out.eligible.length > 0, '적합 후보가 하나도 없으면 안 된다');
-  assert.ok(names.includes('SECURITY'), `A 미달인데 SECURITY 가 없다: ${names.join(', ')}`);
-  assert.ok(names.includes('OPERATE'), `C 미달인데 OPERATE 가 없다: ${names.join(', ')}`);
+  assert.ok(names.includes('P02'), `A 미달인데 02 OpenAI Ready 가 없다: ${names.join(', ')}`);
+  assert.ok(names.includes('P05'), `C 미달인데 05 Billing & MS 가 없다: ${names.join(', ')}`);
 
   // 019 이후 New Relic 도 여기 들어온다. C(품질·장애·비용)를 덮고 그 전제(B 개발·테스트
   // 환경 3, C 운영 책임자 2)를 이 딜이 충족하기 때문이다 — 판정 데이터를 채운 효과다.
@@ -469,7 +474,7 @@ test('실데이터 — 준비도 낮은 딜은 패키지가 먼저 나온다', (
   assert.ok(out.bundles.length >= 3, `번들 후보가 너무 적다: ${out.bundles.length}`);
 });
 
-test('017 — 예산·구매 준비도를 덮는 패키지가 생겼다', () => {
+test('035 — 예산·구매 준비도를 덮는 패키지가 있다', () => {
   // 016 까지는 6종 중 아무도 이 문항을 못 덮어, 여기 막힌 ISV 는 선행 후보를 찾지
   // 못하고 전부 탈락했다. 기획안 01 의 "TCO 및 예산 시뮬레이션"이 그 구멍을 메운다.
   const { packages } = loadSeeds();
@@ -477,13 +482,13 @@ test('017 — 예산·구매 준비도를 덮는 패키지가 생겼다', () => 
     e.category === category && (e.items || []).includes(item));
 
   const budget = packages.filter((p) => covers(p, 'D', '예산·구매 준비도'));
-  assert.deepEqual(budget.map((p) => p.id), ['DISCOVERY'],
-    'TCO 를 산출물로 내는 DISCOVERY 만 이 문항을 덮어야 한다');
+  assert.deepEqual(budget.map((p) => p.id), ['P01'],
+    'TCO·예산 시뮬레이션을 내는 01 AI Consulting 만 이 문항을 덮어야 한다');
 
   // OPERATE 는 도입 후 비용 관리라 일부러 뺐다. 넣으면 "운영 패키지를 먼저 하면
   // 예산 준비가 된다"는 순서가 뒤집힌 제안이 나온다.
-  assert.ok(!covers(packages.find((p) => p.id === 'OPERATE'), 'D', '예산·구매 준비도'),
-    'OPERATE 는 도입 후 비용 관리다 — 도입 전 예산 확보와 섞으면 안 된다');
+  assert.ok(!covers(packages.find((p) => p.id === 'P05'), 'D', '예산·구매 준비도'),
+    '05 Billing & MS 는 도입 후 비용 관리다 — 도입 전 예산 확보와 섞으면 안 된다');
 
   // 실제로 막힌 ISV 가 번들로 살아나는지 끝까지 확인한다.
   const budgetGapTotals = {
@@ -510,19 +515,19 @@ test('017 — 예산·구매 준비도를 덮는 패키지가 생겼다', () => 
   });
 
   assert.equal(out.bundles.length, 1, '선행 패키지를 찾아 번들로 살아나야 한다');
-  assert.equal(out.bundles[0].enabler.slug, 'DISCOVERY');
+  assert.equal(out.bundles[0].enabler.slug, 'P01');
   assert.ok(out.bundles[0].reasons.some((r) => /D 2 → 3\.2 예상 \(전제 3 충족\)/.test(r)),
     out.bundles[0].reasons.join(' / '));
 });
 
-test('017 — 한 문항을 둘이 덮으면 더 깊게 다루는 쪽이 선행이 된다', () => {
-  // 017 이 03 AI-Ready Service 에 A(데이터 분류·접근권한, strength 2)를 더했다.
-  // 02 AI Trust 는 같은 문항을 strength 3 으로 다룬다. 목록 순서와 무관하게
-  // 02 가 이겨야 한다 — 아니면 3~4주 과업 자리에 6~10주 과업이 붙는다.
+test('035 — 한 문항을 둘이 덮으면 더 깊게 다루는 쪽이 선행이 된다', () => {
+  // 03 AIR Service 가 A(데이터 분류·접근권한)를 strength 2 로 다루고,
+  // 02 OpenAI Ready 는 같은 문항을 strength 3 으로 다룬다. 목록 순서와 무관하게
+  // 02 가 이겨야 한다 — 아니면 3~4주 과업 자리에 규모별 산정 과업이 붙는다.
   const { packages } = loadSeeds();
   const byId = (id) => packages.find((p) => p.id === id);
   const deal = {
-    track: 'T-B',
+    track: 'E-1',
     customer_meta: { industry: '금융/보험', targetUsers: '전사 2,000명', investment: '3억' },
     prereq_confirmations: {},
     fqa_totals: {
@@ -540,14 +545,14 @@ test('017 — 한 문항을 둘이 덮으면 더 깊게 다루는 쪽이 선행�
   };
 
   // 두 패키지 모두 전제를 넘긴다(2.4+1.5=3.9 / 2.4+0.8=3.2). 순서만 뒤집어 넣는다.
-  for (const order of [['INTEGRATION', 'SECURITY'], ['SECURITY', 'INTEGRATION']]) {
+  for (const order of [['P03', 'P02'], ['P02', 'P03']]) {
     const out = recommend({
       deal, slots, itemCountByCategory: ITEM_COUNTS, solutions: [isv],
       itemScores: itemScoresFromCategories(deal.fqa_totals),
       packages: order.map(byId)
     });
     assert.equal(out.bundles.length, 1, `순서 ${order.join('→')} 에서 번들이 없다`);
-    assert.equal(out.bundles[0].enabler.slug, 'SECURITY',
+    assert.equal(out.bundles[0].enabler.slug, 'P02',
       `순서 ${order.join('→')} 에서 얕게 다루는 쪽이 뽑혔다`);
   }
 });

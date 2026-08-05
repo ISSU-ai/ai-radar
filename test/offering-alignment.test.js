@@ -311,3 +311,85 @@ test('019 — ISV 확장 패키지 5종의 구성원이 실재하는 솔루션�
     assert.ok(members.some((m) => m[1] === id), `${id} 에 구성원이 없다`);
   }
 });
+
+// ── 035 · 딜사이징 단위를 기획안 5대 오퍼링으로 ──────────────────
+test('035 — 패키지가 기획안 5대 오퍼링 + STARTER 가 된다', () => {
+  const sql = read('035_offering_packages.sql');
+  for (const [id, offering, name] of [
+    ['P01', '01', 'AI Consulting'],
+    ['P02', '02', 'OpenAI Ready'],
+    ['P03', '03', 'AIR Service'],
+    ['P04', '04', 'AI Adoption & Change Management'],
+    ['P05', '05', 'Billing & Managed Service']
+  ]) {
+    assert.ok(sql.includes(`'${id}', '${offering}', '${name}'`), `${id} ${name} 이 없다`);
+  }
+  assert.match(sql, /delete from packages where id in \('DISCOVERY', 'POC', 'SECURITY', 'INTEGRATION', 'ADOPTION', 'OPERATE'\)/);
+  assert.ok(!/'STARTER'[\s\S]{0,40}delete/.test(sql), 'STARTER 를 지우면 안 된다');
+});
+
+test('035 — 딜을 옮긴 뒤에 옛 패키지를 지운다', () => {
+  // deals.packages 는 jsonb 라 FK 가 없다. 먼저 지우면 매핑 근거가 사라진다.
+  const sql = read('035_offering_packages.sql');
+  const updateAt = sql.indexOf('update deals d set packages');
+  const deleteAt = sql.indexOf('delete from packages where id in');
+  assert.ok(updateAt > 0 && updateAt < deleteAt, '딜 이관이 삭제보다 먼저여야 한다');
+  // 두 패키지가 하나로 합쳐지므로 조정 MD 를 더해야 한다
+  assert.match(sql, /when 'POC'\s*then 'P03'/);
+  assert.match(sql, /when 'INTEGRATION' then 'P03'/);
+  assert.match(sql, /sum\(x\.md\)/, 'md 를 합산하지 않으면 공수가 사라진다');
+  // 문자열 형태 ["POC"] 도 받아야 한다
+  assert.match(sql, /e #>> '\{\}'/);
+});
+
+test('035 — 없는 단가를 지어내지 않는다', () => {
+  // 기획안에 M/D 단가가 없다. AIR Unit 단가는 ISV BU 미정이다.
+  const sql = read('035_offering_packages.sql');
+  const block = sql.slice(sql.indexOf('insert into packages'), sql.indexOf('on conflict (id) do update'));
+  const flags = [...block.matchAll(/(true|false)\)/g)].map((m) => m[1]);
+  assert.equal(flags.length, 5);
+  assert.ok(flags.every((f) => f === 'true'), '단가가 확정된 것처럼 표시된다');
+});
+
+test('035 — 합본 패키지의 lift 를 합산하지 않는다', () => {
+  // 두 패키지를 합쳤다고 준비도 상승폭이 더해지지 않는다.
+  const sql = read('035_offering_packages.sql');
+  const at = sql.indexOf("where id = 'P03'");
+  const block = sql.slice(sql.lastIndexOf('update packages set', at), at);
+  const lift = JSON.parse(block.match(/readiness_lift = '(\{[\s\S]*?\})'::jsonb/)[1]);
+  assert.equal(lift.B, 1.5, 'POC 0.8 + INTEGRATION 1.5 를 더하면 2.3 이 된다');
+  assert.equal(lift.A, 0.8);
+  assert.equal(lift.D, 0.8);
+
+  // 깊이가 다른 문항은 항목을 나눠 둔다 — 합치면 얕은 문항이 깊은 strength 를 얻는다
+  const coverage = JSON.parse(block.match(/fqa_coverage = '(\[[\s\S]*?\])'::jsonb/)[1]);
+  const b = coverage.filter((c) => c.category === 'B');
+  assert.equal(b.length, 2, 'B 를 하나로 합치면 개발·테스트 환경이 strength 3 을 얻는다');
+  assert.deepEqual(b.map((c) => c.strength).sort(), [2, 3]);
+});
+
+test('035 — 제공 범위가 기획안 §5 문장이다', () => {
+  const sql = read('035_offering_packages.sql');
+  for (const phrase of [
+    'AI Readiness Assessment 및 주요 Gap 분석',
+    'SSO, 도메인, 보존정책 등 OpenAI Native 관리·보안 기능 설정',
+    '도메인/업무 목적별 AI Agent·Multi-Agent·Workflow 설계 및 구현',
+    'AI Champion 선발·육성, Community 및 내부 지원체계 운영',
+    '달러 사용료의 원화 환산·청구 및 정산 지원'
+  ]) {
+    assert.ok(sql.includes(phrase), `기획안 문장이 없다: ${phrase}`);
+  }
+  // 무상/유상 경계는 note 로 남긴다 — 견적에서 0원으로 나와야 할 항목이다
+  assert.match(sql, /'P01', 'note',[\s\S]{0,80}무상/);
+  assert.match(sql, /'P02', 'note',[\s\S]{0,80}무상/);
+});
+
+test('035 — 화면·목업에 옛 패키지 id 가 없다', () => {
+  const rootRead = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+  for (const file of ['hub.js', 'scripts/mock-ui-server.js']) {
+    const body = rootRead(file).replace(/^\s*\/\/.*$/gm, '');
+    for (const dead of ['DISCOVERY', 'INTEGRATION', 'ADOPTION']) {
+      assert.ok(!body.includes(dead), `${file} 에 옛 패키지 ${dead} 가 남아 있다`);
+    }
+  }
+});

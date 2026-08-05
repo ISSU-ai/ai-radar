@@ -22,10 +22,14 @@ const refs = {
     { category: 'C', no: 4, name: '운영 책임자 지정', detail: '운영 책임자가 지정되어 있나요?', weight: 5, threshold: 3 },
     { category: 'D', no: 5, name: '성과 KPI', detail: 'PoC 성공 KPI가 합의되어 있나요?', weight: 5, threshold: 3.5 }
   ],
+  // 기획안 5대 코어 오퍼링 = 딜사이징 단위 (035). 단가는 기획안에 없어 전부 미정이다.
   packages: [
-    { id: 'DISCOVERY', name: 'AI Opportunity Discovery', scale: 'S', period: '2주', target: '우선 과제와 성공 기준 확정', items: [{ label: '실행 로드맵' }] },
-    { id: 'POC', name: 'Enterprise AI PoC', scale: 'M', period: '4~6주', target: '핵심 업무 기술·가치 검증', items: [{ label: '평가 리포트' }] },
-    { id: 'OPERATE', name: 'Managed AI Operations', scale: 'O', period: '상시', target: '품질·비용 운영 체계', items: [{ label: '월간 운영 리포트' }] }
+    { id: 'STARTER', name: 'OpenAI Starter Package', scale: 'S', period: '3개월 (MS Light 기준)', target: '라이선스 도입부터 초기 설정·온보딩·운영관리까지 한 패키지로 시작', base_md: 0, unit_price: 0, price_is_placeholder: true, items: [{ label: 'AI Readiness Assessment 6대 영역 진단 리포트 (기본 제공)' }] },
+    { id: 'P01', name: 'AI Consulting', scale: 'S', period: '2주', target: '고객의 AI 준비 수준과 업무 목표를 진단하고 최적의 OpenAI 도입안 설계', base_md: 10, unit_price: 800000, price_is_placeholder: true, items: [{ label: 'AI Readiness Assessment 및 주요 Gap 분석' }, { label: 'Seat·Credit·API 사용량 및 TCO·예산 시뮬레이션' }] },
+    { id: 'P02', name: 'OpenAI Ready', scale: 'M', period: '3~4주', target: '기업용 OpenAI 제품을 공급하고 안전하게 사용할 수 있는 기본 환경 구성', base_md: 20, unit_price: 850000, price_is_placeholder: true, items: [{ label: 'Workspace·관리자·사용자·그룹·권한 설정' }, { label: 'SSO, 도메인, 보존정책 등 OpenAI Native 관리·보안 기능 설정' }] },
+    { id: 'P03', name: 'AIR Service', scale: 'L', period: '규모별 산정 (4~10주 기준)', target: '고객 데이터와 업무시스템을 연결하여 기업용 AI 서비스와 Agent 를 구축하는 전문서비스', base_md: 70, unit_price: 832143, price_is_placeholder: true, items: [{ label: '고객 업무와 데이터에 최적화된 RAG·Vector DB·Search 구축' }, { label: '도메인/업무 목적별 AI Agent·Multi-Agent·Workflow 설계 및 구현' }] },
+    { id: 'P04', name: 'AI Adoption & Change Management', scale: 'M', period: '4주', target: '사용자 정착과 조직 변화·전사 확산', base_md: 20, unit_price: 750000, price_is_placeholder: true, items: [{ label: 'AI Champion 선발·육성, Community 및 내부 지원체계 운영' }] },
+    { id: 'P05', name: 'Billing & Managed Service', scale: 'O', period: '상시', target: 'OpenAI 라이선스·사용량·비용·운영 관리', base_md: 10, unit_price: 900000, price_is_placeholder: true, items: [{ label: '달러 사용료의 원화 환산·청구 및 정산 지원' }, { label: '월간 사용량·비용·품질 리포트와 추가 최적화·확장 권고' }] }
   ],
   // slug 가 있어야 ISV 확장 패키지의 구성 제품이 카탈로그와 이어진다.
   // 번들 멤버로 쓰이는 것을 몇 종 섞어 둔다 — 없으면 「조합에 추가」 경로를 못 본다.
@@ -39,7 +43,7 @@ const refs = {
 };
 
 let deals = [
-  { id: 'd1', customer: '한빛금융', customer_meta: { industry: 'Finance', companySize: '1,000명 초과', targetUsers: '전사 1,200명', securityStack: 'zscaler' }, fqa_scores: { 1: 4, 2: 3, 3: 4, 4: 3, 5: 4 }, fqa_totals: { A: { score: 3.5, ready: true, answered: 2 }, B: { score: 4, ready: true, answered: 1 }, C: { score: 3, ready: true, answered: 1 }, D: { score: 4, ready: true, answered: 1 } }, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1', 's2'], packages: [{ id: 'POC', md: 28 }], stage: 2, source: 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() },
+  { id: 'd1', customer: '한빛금융', customer_meta: { industry: 'Finance', companySize: '1,000명 초과', targetUsers: '전사 1,200명', securityStack: 'zscaler' }, fqa_scores: { 1: 4, 2: 3, 3: 4, 4: 3, 5: 4 }, fqa_totals: { A: { score: 3.5, ready: true, answered: 2 }, B: { score: 4, ready: true, answered: 1 }, C: { score: 3, ready: true, answered: 1 }, D: { score: 4, ready: true, answered: 1 } }, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1', 's2'], packages: [{ id: 'P03', md: 28 }], stage: 2, source: 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() },
   // 포탈로 들어온 딜. 027 이후 담당자 이름·전화번호가 leads 에 남고 허브는 읽기 전용으로
   // 보여준다. 업종·규모는 taxonomy.js 어휘(SFDC 코드 · 진단기준 구간)로 저장된다.
   { id: 'd2', customer: '온누리제조',
@@ -50,7 +54,7 @@ let deals = [
     lead_contact_phone: '031-987-6543 (내선 12)',
     lead_message: '전사 문서 검색부터 검토 중입니다.',
     owner_id: null, owner_name: null, updated_at: new Date(Date.now() - 3600000).toISOString() },
-  { id: 'd3', customer: '다온커머스', customer_meta: { industry: '유통' }, fqa_scores: {}, fqa_totals: {}, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1'], packages: [{ id: 'DISCOVERY', md: 8 }], stage: 4, source: 'sheet', owner_id: user.id, owner_name: user.name, updated_at: new Date(Date.now() - 86400000).toISOString() }
+  { id: 'd3', customer: '다온커머스', customer_meta: { industry: '유통' }, fqa_scores: {}, fqa_totals: {}, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1'], packages: [{ id: 'P01', md: 8 }], stage: 4, source: 'sheet', owner_id: user.id, owner_name: user.name, updated_at: new Date(Date.now() - 86400000).toISOString() }
 ];
 
 app.get('/api/auth/me', (_req, res) => res.json({ user }));
