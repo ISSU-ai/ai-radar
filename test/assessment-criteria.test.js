@@ -190,3 +190,32 @@ test('마이그레이션이 콤마 조인과 명시적 join 을 섞지 않는다
   }
   assert.deepEqual(offenders, [], offenders.join('\n'));
 });
+
+// ── 040 을 돌려도 깨지지 않는가 ──────────────────────────────────
+test('040 이 지우는 것을 읽는 코드가 남아 있지 않다', () => {
+  // 040 은 되돌릴 수 없다. 읽는 곳이 하나라도 남아 있으면 적용 순간 깨진다.
+  // 실제로 세 곳이 남아 있었다 — apply-migrations 요약 쿼리(에러), 완성도 게이트
+  // (판정이 헐거워짐), 실사 라벨(영원히 "잠정").
+  const files = ['server.js', 'hub.js', 'admin.html', 'routes/hub.js',
+    'lib/recommendation-engine.js', 'lib/solution-completeness.js',
+    'lib/hub-domain.js', 'scripts/apply-migrations.js', 'scripts/mock-ui-server.js'];
+  const dropped = ['fqa_items', 'fqa_totals', 'fqa_reviewed_at',
+    'readiness_fqa_bridge', 'fqa_signal', 'readiness_lift'];
+
+  for (const file of files) {
+    // 주석은 뺀다 — "040 이 이걸 지운다" 는 설명은 오히려 남아야 한다.
+    const body = fs.readFileSync(path.join(root, file), 'utf8')
+      .replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\*.*$/gm, '').replace(/\/\/.*$/gm, '');
+    for (const target of dropped) {
+      assert.ok(!body.includes(target), `${file} 이 040 에서 지울 ${target} 를 읽는다`);
+    }
+    // fqa_coverage·prerequisites 는 solutions/packages 컬럼만 지운다.
+    // 엔진 내부의 prerequisites 는 정규화된 객체라 이름이 같아도 컬럼이 아니다.
+    assert.ok(!body.includes('fqa_coverage'), `${file} 이 fqa_coverage 를 읽는다`);
+  }
+
+  // leads.fqa_scores 만 남는다 — 접수 당시 기록이라 판정 데이터가 아니다.
+  const routes = fs.readFileSync(path.join(root, 'routes', 'hub.js'), 'utf8');
+  assert.match(routes, /leadColumns = \['customer', 'contact', 'fqa_scores'/);
+});

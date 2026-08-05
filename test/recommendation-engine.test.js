@@ -106,7 +106,7 @@ test('판정 데이터가 비면 제외 사유를 그렇게 밝힌다', () => {
   const out = run({
     solutions: [{ slug: 'empty', name: '미보강', slot: 'llm-platform', status: 'published', coverage: [] }]
   });
-  assert.match(out.excluded[0].excludedBy[0], /판정 데이터\(fqa_coverage\) 미입력/);
+  assert.match(out.excluded[0].excludedBy[0], /판정 데이터\(assessment_coverage\) 미입력/);
 });
 
 test('운영중단·미발행·게이트웨이 중복을 거른다', () => {
@@ -447,12 +447,15 @@ test('번들 사유의 수치는 enabler 가 실제로 푸는 전제를 가리�
 
 test('검토 여부에 따라 라벨이 달라진다', () => {
   assert.equal(run({ solutions: [] }).label, '고객 자가응답 기준 잠정 추천');
-  const reviewed = recommend({
-    deal: { ...lowSecurityDeal, fqa_reviewed_at: '2026-07-28T00:00:00Z' },
+
+  // 영업이 후보 옆에서 전제를 확인했으면 그 자체가 실사다. 040 이 별도 표시
+  // 컬럼(deals.fqa_reviewed_at)을 지우므로 확인 기록으로 판단한다.
+  const confirmed = recommend({
+    deal: { ...lowSecurityDeal, prereq_confirmations: { 'some-isv': { 'SSO 인프라': true } } },
     slots, totals: LOW_SECURITY_TOTALS, categoryLabels: LABELS, itemCountByCategory: AREA_COUNTS, solutions: []
   });
-  assert.equal(reviewed.label, '실사 반영 추천');
-  assert.equal(reviewed.reviewed, true);
+  assert.equal(confirmed.label, '실사 반영 추천');
+  assert.equal(confirmed.reviewed, true);
 });
 
 test('보조 파서 — 좌석·예산·규모', () => {

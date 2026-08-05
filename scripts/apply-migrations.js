@@ -78,9 +78,10 @@ async function main() {
 
   console.log('\nAll migrations applied. Verifying seeded rows...');
   const check = await client.query(
-    "select (select count(*) from fqa_items) as fqa_items,"
-    + " (select count(*) from packages) as packages,"
-    + " (select count(*) from tracks) as tracks"
+    "select (select count(*) from packages) as packages,"
+    + " (select count(*) from tracks) as tracks,"
+    // 040 이 fqa_items 를 지운다. 없는 표를 세면 여기서 통째로 에러가 난다.
+    + " (select count(*) from readiness_items) as readiness_items"
   );
   console.log(check.rows[0]);
   await client.end();

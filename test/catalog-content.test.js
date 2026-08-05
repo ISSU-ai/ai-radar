@@ -42,8 +42,8 @@ test('발행 게이트를 통과한다', () => {
     delivery: 'SaaS', synergy: '높음', category: 'AI 거버넌스·가시성 (AI TRiSM)',
     jtbd: '누가 어떤 AI를 얼마나 쓰는지 가시화', value_chain: 'AI Governance',
     sections, bundle_potential: 3,
-    fqa_coverage: [{ category: 'A', items: ['감사 로그와 추적성'], strength: 3 }],
-    prerequisites: [{ kind: 'fqa', category: 'A', item: '접근권한과 계정 체계', min: 3, blocking: true, label: '계정 체계' }],
+    assessment_coverage: [{ area: 'A05', strength: 3 }],
+    assessment_prerequisites: [{ kind: 'assessment', area: 'A03', min: 3, blocking: true, label: '계정 체계' }],
     red_flags: [{ signal: 'AI 사용 인원이 수십 명 규모', alternatives: [{ label: '벤더 관리자 콘솔' }] }]
   }, {
     slots: new Map([['ai-usage-governance', { id: 'ai-usage-governance', name: 'AI 사용 가시성·거버넌스', layer: 'L4' }]]),
@@ -106,8 +106,8 @@ test('023 — Cohere 8탭이 채워지고 발행 게이트를 통과한다', () 
     delivery: 'SaaS / VPC / On-prem', synergy: '높음',
     category: 'GenAI / 범용 LLM (데이터 주권형)', jtbd: '데이터 주권형 LLM',
     value_chain: 'AI Platform', sections: cohere, bundle_potential: 3,
-    fqa_coverage: [{ category: 'B', items: ['지식 소스 품질'], strength: 3 }],
-    prerequisites: [{ kind: 'manual', label: '배포 형태 확정', blocking: true }],
+    assessment_coverage: [{ area: 'A07', strength: 3 }],
+    assessment_prerequisites: [{ kind: 'manual', label: '배포 형태 확정', blocking: true }],
     red_flags: [{ signal: '반출 제약 없음', alternatives: [{ slug: 'openai-enterprise', label: 'OpenAI' }] }]
   }, {
     slots: new Map([['llm-platform', { id: 'llm-platform', name: '범용 LLM 플랫폼', layer: 'L1' }]]),

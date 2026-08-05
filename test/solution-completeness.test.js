@@ -34,7 +34,7 @@ function loadCatalog() {
 /** 슬롯·커버리지는 채워진 것으로 두고 콘텐츠 결함만 본다. */
 function contentOnly(solution, catalog) {
   return evaluateCompleteness(
-    { ...solution, slot: 'x', layer: 'L1', fqa_coverage: [{ category: 'A', strength: 3 }] },
+    { ...solution, slot: 'x', layer: 'L1', assessment_coverage: [{ category: 'A', strength: 3 }] },
     {
       slots: new Map([['x', { layer: 'L1' }]]),
       knownSlugs: new Set(catalog.map((s) => s.slug)),
@@ -92,7 +92,7 @@ test('한두 줄 우연한 일치는 경고로만 남는다', () => {
   const a = { slug: 'a', name: 'A', sections: { 1: `${line}\n고유 문장 A 입니다.` } };
   const b = { slug: 'b', name: 'B', sections: { 1: `${line}\n고유 문장 B 입니다.` } };
   const verdict = evaluateCompleteness(
-    { ...a, slot: 'x', layer: 'L1', fqa_coverage: [{ category: 'A' }] },
+    { ...a, slot: 'x', layer: 'L1', assessment_coverage: [{ category: 'A' }] },
     { slots: new Map([['x', { layer: 'L1' }]]), knownSlugs: new Set(['a', 'b']), otherSolutions: [b] }
   );
   assert.ok(!verdict.blocking.some((x) => x.code === 'duplicated_copy'));
@@ -108,18 +108,18 @@ test('추천 후보 최소 조건을 막는다 — 슬롯·커버리지·레이�
   assert.ok(noSlot.blocking.some((b) => b.code === 'coverage_missing'));
 
   const badLayer = evaluateCompleteness(
-    { ...base, slot: 's', fqa_coverage: [{ category: 'A' }] }, { slots });
+    { ...base, slot: 's', assessment_coverage: [{ category: 'A' }] }, { slots });
   assert.ok(badLayer.blocking.some((b) => b.code === 'layer_mismatch'));
 
   const unknownSlot = evaluateCompleteness(
-    { ...base, slot: 'nope', fqa_coverage: [{ category: 'A' }] }, { slots });
+    { ...base, slot: 'nope', assessment_coverage: [{ category: 'A' }] }, { slots });
   assert.ok(unknownSlot.blocking.some((b) => b.code === 'slot_unknown'));
 });
 
 test('red_flags 무결성을 막는다 — 대안 없음·깨진 슬러그', () => {
   const base = {
     slug: 'x', name: 'X', layer: 'L1', slot: 's', sections: {},
-    fqa_coverage: [{ category: 'A' }]
+    assessment_coverage: [{ category: 'A' }]
   };
   const ctx = { slots: new Map([['s', { layer: 'L1' }]]), knownSlugs: new Set(['x', 'real']) };
 
