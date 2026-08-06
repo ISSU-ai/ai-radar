@@ -472,8 +472,14 @@ const isvSections = (() => {
 })();
 
 app.get('/api/solutions/:slug', (req, res) => {
-  const found = mockSolutions.find((s) => s.slug === req.params.slug);
+  // 카탈로그 픽스처(mockSolutions)와 허브 참조(refs.solutions)가 목업에선 딴 목록이다.
+  // 실제 서버는 같은 테이블이라, 참조에 있는 slug 가 여기서 404 나면 **로컬에서만**
+  // 피치 부록이 비어 보인다. 참조 쪽으로도 찾는다.
+  const found = mockSolutions.find((s) => s.slug === req.params.slug)
+    || refs.solutions.find((s) => s.slug === req.params.slug);
   if (!found) return res.status(404).json({ error: 'not found' });
+  // 본문이 없는 솔루션은 sections 가 비어서 나간다 — 실제로 개요만 찬 것들이 있고,
+  // 부록이 그 줄만 빼고 카드를 내는지 확인하려면 그 상태 그대로 보여야 한다.
   const sections = isvSections.get(req.params.slug) || found.sections || {};
   // 실제 서버는 non-admin 에게만 걸러 준다. 목업 사용자는 admin 이라 그대로 간다 —
   // 피치 부록이 라벨로 한 번 더 거르는지를 로컬에서 확인할 수 있어야 한다.
