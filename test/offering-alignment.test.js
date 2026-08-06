@@ -436,11 +436,14 @@ test('입력 중 재렌더로 포커스를 잃지 않는다', () => {
 
 test('시트 수는 ISV 시뮬레이터와 같은 값을 쓴다', () => {
   // 두 곳에 따로 두면 같은 화면에서 좌석 수가 갈린다.
+  // 화면이 실제로 따라오는지는 아래 「시뮬레이터 바를 옮기면…」 두 건이 본다.
   const hub = fs.readFileSync(path.join(root, 'hub.js'), 'utf8');
   const setter = hub.slice(hub.indexOf('function setLicenseField'), hub.indexOf('function getDealSeats'));
   assert.match(setter, /meta\.sim = \{ \.\.\.\(meta\.sim \|\| \{\}\), \[key\]: /);
-  assert.match(setter, /key === 'seats'[\s\S]{0,400}renderDealSimulator\(\)/);
   assert.match(hub, /function getDealSeats[\s\S]{0,200}customer_meta\?\.sim\?\.seats/);
+  // 좌석을 바꾸는 경로가 둘인데 갱신을 각자 하면 한쪽이 빠진다. 한 곳으로 모은다.
+  const sync = (hub.match(/syncSeatInputs\(/g) || []).length;
+  assert.ok(sync >= 3, `좌석 갱신이 한 곳에 안 모였다 (${sync}회)`);
 });
 
 test('STEP04 가 라이선스·패키지·ISV 셋을 함께 보여준다', () => {
@@ -574,4 +577,75 @@ test('부록이 실패해도 본문은 나온다', () => {
   assert.match(loader, /catch \(error\)[\s\S]{0,200}strengths: \[\], talkTracks: \[\]/);
   assert.match(loader, /\/api\/solutions\//, '기존 엔드포인트를 재사용한다');
   assert.match(loader, /missing\.length/, '이미 받은 것은 다시 안 부른다');
+});
+
+// ── STEP04 좌석 수 ─────────────────────────────────────────────
+/**
+ * hub.js 를 vm 으로 그대로 돌린다. 화면 코드를 베껴 검사하면 "고쳤다" 가 거짓말이 된다.
+ * 최소 DOM 만 세운다 — 좌석 입력 세 칸과 두 요약 영역.
+ */
+function hubWithSeatDom() {
+  const vm = require('node:vm');
+  const nodes = {
+    'deal-sim-seat-range': { value: '100', min: '10', max: '3000' },
+    'deal-sim-seat-num': { value: '100' },
+    'license-summary': { innerHTML: '' },
+    'deal-sim-summary': { innerHTML: '' }
+  };
+  const licenseInput = { value: '100' };
+  const sandbox = {
+    console: { error() {}, warn() {} }, setTimeout, clearTimeout, JSON, Math, Date, Intl,
+    fetch: () => Promise.reject(new Error('네트워크를 타면 안 된다')),
+    EventSource: class { close() {} },
+    document: {
+      addEventListener() {},
+      getElementById: (id) => nodes[id] || null,
+      querySelector: (sel) => (sel === '[data-license="seats"]' ? licenseInput : null),
+      querySelectorAll: () => []
+    }
+  };
+  sandbox.window = sandbox; sandbox.self = sandbox; sandbox.top = sandbox;
+  sandbox.window.location = { origin: 'http://x', href: '' };
+  const ctx = vm.createContext(sandbox);
+  vm.runInContext(
+    `${fs.readFileSync(path.join(root, 'hub.js'), 'utf8')}\n;var __hub = { state, setDealSeats, setLicenseField };`,
+    ctx, { filename: 'hub.js' }
+  );
+  const hub = sandbox.__hub;
+  // isOwner() 가 false 라 scheduleSave 가 바로 돌아온다 — 검사가 네트워크를 안 탄다.
+  hub.state.user = { id: 'u1', role: 'viewer' };
+  hub.state.deal = { id: 'd1', owner_id: 'other', customer_meta: { sim: { seats: 100 } }, isv_combo: [] };
+  hub.state.refs.settings = { usd_krw: 1500 };
+  return { hub, nodes, licenseInput };
+}
+
+test('시뮬레이터 바를 옮기면 라이선스 표도 같이 간다', () => {
+  // 한쪽만 갱신하면 저장은 됐는데 눈에 안 보인다 — 그 상태로 PDF 를 뽑으면
+  // 화면 금액과 문서 금액이 갈린다.
+  const { hub, nodes, licenseInput } = hubWithSeatDom();
+  hub.setDealSeats(800, 'range');
+  assert.equal(hub.state.deal.customer_meta.sim.seats, 800);
+  assert.equal(licenseInput.value, 800, '라이선스 입력칸이 안 따라왔다');
+  assert.match(nodes['license-summary'].innerHTML, /800석/, '라이선스 표가 안 다시 그려졌다');
+  assert.equal(nodes['deal-sim-seat-num'].value, 800);
+  // 지금 만지고 있는 칸은 되쓰지 않는다 — 커서가 튄다
+  assert.equal(nodes['deal-sim-seat-range'].value, '100', 'source 칸을 되썼다');
+});
+
+test('라이선스 칸을 고치면 시뮬레이터도 같이 간다', () => {
+  const { hub, nodes, licenseInput } = hubWithSeatDom();
+  hub.setLicenseField('seats', 250);
+  assert.equal(nodes['deal-sim-seat-range'].value, 250);
+  assert.equal(nodes['deal-sim-seat-num'].value, 250);
+  assert.equal(licenseInput.value, '100', 'source 칸을 되썼다');
+  assert.match(nodes['license-summary'].innerHTML, /250석/);
+  assert.notEqual(nodes['deal-sim-summary'].innerHTML, '', '시뮬레이터가 안 다시 그려졌다');
+});
+
+test('좌석 아닌 라이선스 값은 시뮬레이터를 건드리지 않는다', () => {
+  // 시트 단가는 OpenAI 라이선스만의 값이다. ISV 좌석 견적과 무관하다.
+  const { hub, nodes } = hubWithSeatDom();
+  hub.setLicenseField('seatPrice', 25);
+  assert.equal(nodes['deal-sim-seat-num'].value, '100');
+  assert.match(nodes['license-summary'].innerHTML, /\$25/);
 });

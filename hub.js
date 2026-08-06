@@ -1301,19 +1301,34 @@ function renderLicenseCalc() {
   if (node) node.innerHTML = licenseSummaryMarkup();
 }
 
+/**
+ * 좌석 수를 화면 세 곳에 한꺼번에 반영한다.
+ *
+ * 라이선스 입력칸 · 시뮬레이터 바 · 시뮬레이터 숫자칸이 전부 같은
+ * `customer_meta.sim.seats` 를 읽는다. **한 곳만 갱신하면 저장은 됐는데 눈에는
+ * 안 보인다** — 그 상태로 PDF 를 뽑으면 화면에서 본 금액과 문서 금액이 갈린다.
+ * 갱신을 부르는 쪽에 맡기지 않고 여기 한 곳에 모은다.
+ *
+ * `source` 는 지금 사람이 만지고 있는 칸이다. 그 칸의 value 를 되쓰면 커서가 튄다.
+ */
+function syncSeatInputs(seats, source) {
+  const range = document.getElementById('deal-sim-seat-range');
+  const num = document.getElementById('deal-sim-seat-num');
+  const licenseInput = $('[data-license="seats"]');
+  if (source !== 'range' && range) range.value = Math.min(Number(range.max), Math.max(Number(range.min), seats));
+  if (source !== 'num' && num) num.value = seats;
+  if (source !== 'license' && licenseInput) licenseInput.value = seats;
+  renderLicenseCalc();
+  renderDealSimulator();
+}
+
 /** 시트 수는 ISV 좌석 라이선스 계산과 공유한다. 두 곳에 따로 두면 값이 갈린다. */
 function setLicenseField(key, value) {
   const meta = { ...(state.deal.customer_meta || {}) };
   meta.sim = { ...(meta.sim || {}), [key]: Number(value) || 0 };
   state.deal.customer_meta = meta;
-  renderLicenseCalc();
-  if (key === 'seats') {
-    const range = document.getElementById('deal-sim-seat-range');
-    const num = document.getElementById('deal-sim-seat-num');
-    if (range) range.value = Math.min(Number(range.max), Math.max(Number(range.min), meta.sim.seats));
-    if (num) num.value = meta.sim.seats;
-    renderDealSimulator();
-  }
+  if (key === 'seats') syncSeatInputs(meta.sim.seats, 'license');
+  else renderLicenseCalc();
   scheduleSave({ customer_meta: meta });
 }
 
@@ -1437,11 +1452,7 @@ function setDealSeats(value, source) {
   const meta = { ...(state.deal.customer_meta || {}) };
   meta.sim = { ...(meta.sim || {}), seats };
   state.deal.customer_meta = meta;
-  const range = document.getElementById('deal-sim-seat-range');
-  const num = document.getElementById('deal-sim-seat-num');
-  if (source !== 'range' && range) range.value = Math.min(Number(range.max), Math.max(Number(range.min), seats));
-  if (source !== 'num' && num) num.value = seats;
-  renderDealSimulator();
+  syncSeatInputs(seats, source);
   scheduleSave({ customer_meta: meta });
 }
 
