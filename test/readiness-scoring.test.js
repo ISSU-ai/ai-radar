@@ -170,3 +170,21 @@ test('목업이 029 시드를 직접 읽는다', () => {
   assert.match(mock, /029_readiness_items\.sql/);
   assert.match(mock, /scoreReadiness/, '목업도 실제 채점 함수를 써야 한다');
 });
+
+test('레이더차트가 숨겨진 상태에서도 정상 크기로 그려진다', () => {
+  // #result 는 hidden 으로 시작한다. 그 상태에서 그리면 offsetWidth 가 0 인데
+  // 예전 식 `Math.min(0 - 16, 320) || 320` 은 **-16 이 truthy 라 폴백이 안 먹었다.**
+  // 반지름이 음수가 되어 도형이 뒤집힌 채 작게 그려졌다.
+  const js = read('readiness.js');
+  const open = js.indexOf('function drawRadar');
+  const body = js.slice(open, js.indexOf('function buildMarkdown', open));
+
+  assert.match(body, /available > 0 \?/, '0·음수를 걸러야 한다');
+  assert.ok(!/offsetWidth - 16, 320\) \|\| 320/.test(body), '옛 폴백이 남아 있다');
+
+  // 그리기 전에 보이게 한다 — 캔버스는 레이아웃이 잡힌 뒤에야 부모 폭을 안다
+  const at = js.indexOf('state.fixing = [];');
+  const calc = js.slice(at, js.indexOf('$(\'#contact\')', at));
+  assert.ok(calc.indexOf("$('#result').classList.remove('hidden')") < calc.indexOf('renderResult(result)'),
+    'renderResult 가 unhide 보다 먼저면 0 폭으로 계산된다');
+});

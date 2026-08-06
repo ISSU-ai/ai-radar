@@ -230,8 +230,10 @@ async function calculate() {
     });
     state.fixing = [];
     state.result = result;
-    renderResult(result);
+    // 먼저 보이게 한다. 캔버스는 레이아웃이 잡힌 뒤에야 부모 폭을 알 수 있다 —
+    // 숨긴 채로 그리면 0 폭으로 계산된다.
     $('#result').classList.remove('hidden');
+    renderResult(result);
     // 결과를 본 뒤에만 상담 폼을 연다. 진단 없이 리드만 받으면 영업이 맥락 없이 만난다.
     $('#contact').classList.remove('hidden');
     $('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -292,7 +294,11 @@ function drawRadar(areas) {
   const canvas = $('#radar');
   if (!canvas || !areas.length) return;
   const dpr = window.devicePixelRatio || 1;
-  const size = Math.min(canvas.parentElement.offsetWidth - 16, 320) || 320;
+  // 숨겨진(display:none) 상태에서 부르면 offsetWidth 가 0 이다. 예전 식은
+  // `Math.min(0 - 16, 320) || 320` 이라 **-16 이 truthy 라서 폴백이 안 먹었고**,
+  // 반지름이 음수가 되어 도형이 뒤집힌 채 작게 그려졌다.
+  const available = canvas.parentElement?.offsetWidth || 0;
+  const size = available > 0 ? Math.max(200, Math.min(available - 16, 320)) : 320;
   canvas.width = size * dpr; canvas.height = size * dpr;
   canvas.style.width = `${size}px`; canvas.style.height = `${size}px`;
   const ctx = canvas.getContext('2d');
