@@ -22,6 +22,7 @@ const PRIVACY_NOTICE = Object.freeze({
 const { recommend } = require('../lib/recommendation-engine');
 const { scoreReadiness } = require('../lib/readiness-scoring');
 const { scoreAssessment, bridgeAssessmentScores, buildGapTotals } = require('../lib/assessment-scoring');
+const { INTERNAL_BULLET_LABELS } = require('../lib/section-privacy');
 
 function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColumn }) {
   // 009 는 수동 적용이라 컬럼이 아직 없을 수 있다. 없으면 "미확정(true)"으로 본다 —
@@ -826,6 +827,10 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         // 036 미적용 구간에는 빈 배열로 간다. STEP03 확인 목록이 안 뜰 뿐이다.
         assessmentDomains: assessment?.domains || [],
         assessmentAreas: assessment?.areas || [],
+        // 세일즈 피치 부록이 쓴다. admin 은 카탈로그에서 내부 불릿을 봐야 하지만
+        // **피치 문서에는 어느 역할이든 들어가면 안 된다** — 그 PDF 가 고객에게 간다.
+        // 목록을 화면에 또 적으면 갈라지므로 단일 출처(section-privacy)에서 내려보낸다.
+        internalBulletLabels: INTERNAL_BULLET_LABELS,
         isvBundles
       });
     } catch (error) {

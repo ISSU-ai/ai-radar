@@ -504,3 +504,74 @@ test('목업이 트랙·패키지 커버리지를 시드에서 읽는다', () =>
   assert.match(mock, /packageAssessmentCoverage/);
   assert.match(mock, /ask: JSON\.parse/);
 });
+
+// ── 피치 부록 (솔루션별 이야기할 거리) ──────────────────────────
+const hubJs = () => fs.readFileSync(path.join(root, 'hub.js'), 'utf8');
+const pitchParsers = () => {
+  const src = hubJs();
+  const body = src.slice(src.indexOf('const PITCH_SOURCE_LIMIT'), src.indexOf('async function loadPitchSources'));
+  return new Function('asArray', 'state', `${body}; return { parseStrengths, parseTalkTracks };`)(
+    (v) => (Array.isArray(v) ? v : []),
+    { refs: { internalBulletLabels: ['마진 확보 전략', '딜 사이즈 극대화', 'MZC 시너지 번들링'] } }
+  );
+};
+
+test('강점 파싱이 두 시드 형식을 다 받는다', () => {
+  const { parseStrengths } = pitchParsers();
+  // 012 계열 — "① 라벨: 설명"
+  const a = parseStrengths('- **차별적 비즈니스 가치 (5가지)**:\n  - ① 빠른 추론: 복잡한 분석을 자동화 (참고 1위)\n  - ② 친숙도: 교육 없이 투입');
+  assert.deepEqual(a, ['① 빠른 추론 — 복잡한 분석을 자동화', '② 친숙도 — 교육 없이 투입']);
+  // 022 계열 — 콜론 없이 첫 문장이 라벨
+  const b = parseStrengths('차별적 비즈니스 가치\n  - ① **한눈에 본다.** 외부 목적지를 분석해 잡아냅니다. 두 번째 문장은 버린다.');
+  assert.deepEqual(b, ['① 한눈에 본다 — 외부 목적지를 분석해 잡아냅니다']);
+  // 최대 3개
+  assert.equal(parseStrengths('차별적 비즈니스 가치\n' +
+    [1, 2, 3, 4, 5].map((n) => `  - ${'①②③④⑤'[n - 1]} 라벨${n}: 설명${n}`).join('\n')).length, 3);
+  // 본문이 없으면 빈 배열 — "정보 없음" 껍데기를 넣지 않는다
+  assert.deepEqual(parseStrengths(''), []);
+  assert.deepEqual(parseStrengths('개요만 있는 본문입니다.'), []);
+});
+
+test('화법에서 내부 불릿이 역할과 무관하게 빠진다', () => {
+  // stripInternalSections 는 admin·curator 에게 일부러 내부 문단을 보내 준다.
+  // 피치는 PDF 로 내려받혀 고객에게 갈 수 있어 **역할과 무관하게** 빠져야 한다.
+  const { parseTalkTracks } = pitchParsers();
+  const out = parseTalkTracks('### 8.1 세일즈 핏치\n'
+    + '- **보안 조직 설득 화법**: "그림자 IT 가 만연합니다."\n'
+    + '- **마진 확보 전략**: 딜 사이즈를 3배로 키우십시오.\n'
+    + '- **ROI 제시법**: 변화관리 프로젝트임을 어필하십시오.\n'
+    + '### 8.2 FAQ\n- **Q1. 학습되나요?**\n  - A: 아닙니다.');
+  assert.equal(out.length, 2, '최대 2개');
+  assert.ok(!out.some((t) => t.label.includes('마진')), '내부 불릿이 새어 나왔다');
+  assert.deepEqual(out.map((t) => t.label), ['보안 조직 설득 화법', 'ROI 제시법']);
+  assert.ok(!out.some((t) => /8\.2|FAQ/.test(t.body)), '8.2 는 이번 범위가 아니다');
+});
+
+test('내부 라벨 목록을 화면에 또 적지 않는다', () => {
+  // 단일 출처는 lib/section-privacy.js 다.
+  const hub = hubJs();
+  assert.match(hub, /state\.refs\.internalBulletLabels/);
+  assert.ok(!/'마진 확보 전략'/.test(hub), 'hub.js 가 목록을 다시 적고 있다');
+  const routes = fs.readFileSync(path.join(root, 'routes', 'hub.js'), 'utf8');
+  assert.match(routes, /internalBulletLabels: INTERNAL_BULLET_LABELS/);
+  assert.match(fs.readFileSync(path.join(root, 'scripts', 'mock-ui-server.js'), 'utf8'),
+    /internalBulletLabels: INTERNAL_BULLET_LABELS/, '목업이 안 내려보내면 로컬에서만 새어 나온다');
+});
+
+test('요약은 맨 위, 부록은 본문 아래', () => {
+  const hub = hubJs();
+  const body = hub.slice(hub.indexOf('function buildPitch'), hub.indexOf('const STAGE_REPORT_TITLES'));
+  assert.match(body, /\[head, summary, opening, context, proposal, size, risk, next\]/);
+  assert.match(body, /\+ appendix/, '부록은 맨 뒤에 붙는다');
+  assert.match(body, /내부 준비용입니다/, '문서 성격을 머리에 박는다');
+  // 요약은 본문에서 이미 계산한 값을 쓴다 — 따로 계산하면 위아래가 갈라진다
+  assert.match(body, /const summary = block\('요약'[\s\S]{0,900}lic\.annualKrw/);
+});
+
+test('부록이 실패해도 본문은 나온다', () => {
+  const hub = hubJs();
+  const loader = hub.slice(hub.indexOf('async function loadPitchSources'), hub.indexOf('function buildPitch'));
+  assert.match(loader, /catch \(error\)[\s\S]{0,200}strengths: \[\], talkTracks: \[\]/);
+  assert.match(loader, /\/api\/solutions\//, '기존 엔드포인트를 재사용한다');
+  assert.match(loader, /missing\.length/, '이미 받은 것은 다시 안 부른다');
+});

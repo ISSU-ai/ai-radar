@@ -170,8 +170,13 @@ const assessment = (() => {
   return { domains, areas };
 })();
 
+const { INTERNAL_BULLET_LABELS } = require('../lib/section-privacy');
+
 app.get('/api/hub/reference-data', (_req, res) => res.json({
   ...refs,
+  // 피치 부록이 역할과 무관하게 내부 불릿을 거르는 데 쓴다. 안 내려보내면
+  // 로컬에서만 마진 문구가 새어 나온다.
+  internalBulletLabels: INTERNAL_BULLET_LABELS,
   packages: refs.packages.map((pkg) => ({
     ...pkg, assessment_coverage: packageAssessmentCoverage.get(pkg.id) || []
   })), readinessAreas: readiness.areas, readinessItems: readiness.items,
@@ -452,9 +457,27 @@ app.patch('/api/admin/solutions/:id/visibility', (req, res) => {
     message: `${sol.name} — ${sol.is_hidden ? '숨김' : '노출'} 처리했습니다(목업).`
   });
 });
+/**
+ * 8탭 본문. isv_data.js 원본을 이름으로 이어 붙인다.
+ *
+ * 손으로 쓴 픽스처만 두면 피치 부록이 **로컬에서만 비어 보인다** — 이번 판에서
+ * 같은 종류로 두 번 데였다(sendError 의 unanswered, 트랙 ask).
+ */
+const isvSections = (() => {
+  const src = require('fs').readFileSync(path.join(__dirname, '..', 'isv_data.js'), 'utf8');
+  // eslint-disable-next-line no-eval
+  const rows = eval(`${src}; isvData`);
+  const slugify = (name) => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return new Map(rows.map((row) => [slugify(row.name), row.sections || {}]));
+})();
+
 app.get('/api/solutions/:slug', (req, res) => {
   const found = mockSolutions.find((s) => s.slug === req.params.slug);
-  return found ? res.json(found) : res.status(404).json({ error: 'not found' });
+  if (!found) return res.status(404).json({ error: 'not found' });
+  const sections = isvSections.get(req.params.slug) || found.sections || {};
+  // 실제 서버는 non-admin 에게만 걸러 준다. 목업 사용자는 admin 이라 그대로 간다 —
+  // 피치 부록이 라벨로 한 번 더 거르는지를 로컬에서 확인할 수 있어야 한다.
+  res.json({ ...found, sections });
 });
 app.get('/api/admin/solutions/:id/versions', (_req, res) => res.json([]));
 app.get('/api/admin/solutions/:id/completeness', (req, res) => {

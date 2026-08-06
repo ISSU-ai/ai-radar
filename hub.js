@@ -8,6 +8,8 @@ const state = {
   user: null,
   deals: [],
   refs: { stages: [], tracks: [], readinessAreas: [], readinessItems: [], assessmentAreas: [], assessmentDomains: [], isvBundles: [], packages: [], solutions: [] },
+  // 피치 부록에 쓸 8탭 발췌. slug 로 캐시해 같은 딜에서 다시 그릴 때 재요청하지 않는다.
+  pitchSources: {},
   deal: null,
   reco: null,
   activeStage: 0,
@@ -94,6 +96,7 @@ async function init() {
     $('#rail-user-avatar').title = userLabel;
     $('#admin-mode-button').classList.toggle('hidden', me.user.role !== 'admin');
     state.refs = await api('/api/hub/reference-data');
+    state.pitchSources = {};
     bindGlobalEvents();
     await loadDeals();
     connectEvents();
@@ -1443,6 +1446,104 @@ function setDealSeats(value, source) {
 }
 
 /**
+ * 카탈로그 8탭에서 피치에 쓸 것만 뽑는다.
+ *
+ * 파싱 규칙을 여기 한곳에 둔다 — 시드 형식이 바뀌면 한 군데만 고친다.
+ * 본문이 없거나(개요만 채운 솔루션이 셋 있다) 형식이 어긋나면 **빈 배열을 낸다.**
+ * "정보 없음" 같은 빈 껍데기를 문서에 넣지 않는다.
+ */
+const PITCH_SOURCE_LIMIT = Object.freeze({ strengths: 3, talkTracks: 2 });
+
+/** §1 의 「차별적 비즈니스 가치」 ①~⑤. 라벨과 첫 문장만 쓴다 — 원문은 100자를 넘는다. */
+function parseStrengths(section1) {
+  const text = String(section1 || '');
+  const at = text.indexOf('차별적 비즈니스 가치');
+  if (at < 0) return [];
+  return text.slice(at).split('\n')
+    .filter((line) => /^\s*-\s*[①②③④⑤⑥⑦⑧⑨]/.test(line))
+    .map((line) => {
+      // 평문 문서라 마크다운 강조는 걷는다. 시드마다 ** 사용 여부가 다르다.
+      const body = line.replace(/^\s*-\s*/, '').replace(/\*\*/g, '').trim();
+      // 두 형식이 섞여 있다.
+      //   "① 라벨: 설명"        012 계열
+      //   "① 라벨이다. 설명…"   022·023 계열 (콜론 없이 첫 문장이 곧 라벨)
+      const colon = body.indexOf(':');
+      const stop = body.search(/(?<=[다요])\.\s/);
+      const cut = colon >= 0 && (stop < 0 || colon < stop) ? colon : stop;
+      if (cut < 0) return body;
+      const label = body.slice(0, cut).trim();
+      const rest = body.slice(cut + 1).trim();
+      // 첫 문장만. 괄호 보충설명(예: "(국내 사용량 1위)")은 떼어 낸다.
+      const first = rest.split(/(?<=[다요])\.\s|\. /)[0].replace(/\s*\([^)]*\)\s*$/, '').trim();
+      return first ? `${label} — ${first}` : label;
+    })
+    .slice(0, PITCH_SOURCE_LIMIT.strengths);
+}
+
+/**
+ * §8.1 의 설득 화법.
+ *
+ * ⚠ 내부 불릿(마진 확보 전략·딜 사이즈 극대화 등)을 **여기서도 거른다.**
+ *   서버의 stripInternalSections 는 역할로 가르는데, admin·curator 에게는 일부러
+ *   내부 문단을 보내 준다(카탈로그에서 봐야 하니까). 하지만 피치는 PDF·Word 로
+ *   내려받혀 고객에게 갈 수 있는 문서라 **역할과 무관하게** 빠져야 한다.
+ *
+ *   라벨 목록은 서버가 내려보낸 것(`refs.internalBulletLabels`)을 쓴다. 화면에
+ *   또 적으면 단일 출처가 깨진다.
+ */
+function parseTalkTracks(section8) {
+  const text = String(section8 || '');
+  const head = text.split('8.2')[0];
+  return head.split('\n')
+    .filter((line) => /^\s*-\s*\*\*/.test(line))
+    .map((line) => {
+      const label = (line.match(/\*\*(.+?)\*\*/) || [])[1] || '';
+      const body = line.replace(/^\s*-\s*\*\*.+?\*\*\s*:?\s*/, '').replace(/\*\*/g, '').trim();
+      return { label: label.trim(), body };
+    })
+    .filter((entry) => entry.body)
+    .filter((entry) => !asArray(state.refs.internalBulletLabels)
+      .some((label) => entry.label.includes(label)))
+    .slice(0, PITCH_SOURCE_LIMIT.talkTracks);
+}
+
+/**
+ * 선택한 ISV 의 본문을 가져온다.
+ *
+ * reference-data 에 sections 를 싣지 않는 이유는 17종 본문을 허브 열 때마다
+ * 내려보내게 되기 때문이다. 기존 `/api/solutions/:slug` 를 재사용한다 — 이미 인증을
+ * 거치고 내부 문단을 걸러 준다.
+ *
+ * **실패해도 본문은 그대로 나온다.** 카탈로그를 못 불러왔다고 대화 가이드 전체가
+ * 막히면 안 된다.
+ */
+async function loadPitchSources() {
+  const slugs = state.refs.solutions
+    .filter((s2) => asArray(state.deal?.isv_combo).includes(s2.id))
+    .map((s2) => s2.slug).filter(Boolean);
+  const missing = slugs.filter((slug) => !(slug in state.pitchSources));
+  if (!missing.length) return;
+
+  await Promise.all(missing.map(async (slug) => {
+    try {
+      const row = await api(`/api/solutions/${encodeURIComponent(slug)}`);
+      state.pitchSources[slug] = {
+        strengths: parseStrengths(row?.sections?.['1']),
+        talkTracks: parseTalkTracks(row?.sections?.['8'])
+      };
+    } catch (error) {
+      console.error(`Pitch source failed (${slug}):`, error.message);
+      state.pitchSources[slug] = { strengths: [], talkTracks: [] };
+    }
+  }));
+
+  if (state.activeStage === 4) {
+    const node = document.getElementById('pitch-content');
+    if (node) node.textContent = buildPitch();
+  }
+}
+
+/**
  * 세일즈 대화 가이드.
  *
  * 영업이 고객 앞에서 **그대로 읽고 쓸 수 있는** 문서다. 그래서 두 가지를 지킨다.
@@ -1479,7 +1580,10 @@ function buildPitch() {
       new Date().toISOString().slice(0, 10),
       track ? `${track.id} ${track.name}` : '트랙 미정',
       Number.isFinite(avg) ? `AI 준비도 ${avg.toFixed(2)} (${totals.maturity?.name || ''} 단계)` : '진단 미실시'
-    ].join('  ·  ')
+    ].join('  ·  '),
+    // PDF·Word 로 내려받히므로 성격을 문서 안에 박아 둔다. 아래 화법은 영업이
+    // 말하는 대본이라 고객이 그대로 읽으면 어색하다.
+    '⚠ 내부 준비용입니다. 고객에게 그대로 전달하지 마세요.'
   ].join('\n');
 
   // ── 1. 이 미팅에서 확인할 것 ──────────────────────────────────
@@ -1602,7 +1706,52 @@ function buildPitch() {
     ])
   ].filter(Boolean).join('\n'));
 
-  return [head, opening, context, proposal, size, risk, next].join('\n');
+  // ── 요약 ──────────────────────────────────────────────────────
+  // 본문에서 이미 계산한 값을 다시 쓴다. 따로 계산하면 위아래 숫자가 갈라진다.
+  const weakest = asArray(totals.areas)
+    .filter((a2) => Number.isFinite(Number(a2.score)))
+    .sort((a2, b2) => a2.score - b2.score)[0];
+  const summary = block('요약', [
+    line('고객   ', [meta.industry, meta.companySize, meta.targetUsers].filter(Boolean).join(' · ')),
+    line('현재   ', Number.isFinite(avg)
+      ? `${totals.maturity?.name || ''} 단계 ${avg.toFixed(2)}`
+        + (weakest ? ` — ${weakest.name} ${Number(weakest.score).toFixed(1)} 이 가장 낮다` : '')
+      : '진단 미실시'),
+    line('목표   ', track?.name ? `${track.name} — ${asArray(track.ask)[0] || ''}` : null),
+    line('제안   ', [
+      selectedPackages.map((pkg) => pkg.name).join(' + '),
+      selectedSolutions.map((s2) => s2.name).join(' · ')
+    ].filter(Boolean).join('  |  ') || '구성 미선택'),
+    line('규모   ', `라이선스 연 ${formatKRWCompact(lic.annualKrw)}`
+      + (quote.rows.length
+        ? ` · 서비스 ${quote.rows.reduce((sum, r) => sum + r.totalMd, 0)}MD`
+          + (quote.hasPlaceholder ? ' (별도협의)' : ` ${formatKRWCompact(quote.total)}`)
+        : ''))
+  ].filter(Boolean).join('\n'));
+
+  // ── 부록. 솔루션별 이야기할 거리 ──────────────────────────────
+  const cards = selectedSolutions.map((s2) => {
+    const src = state.pitchSources[s2.slug] || {};
+    const why = recoReason.get(s2.slug) || recoReason.get(s2.id) || s2.jtbd;
+    const rows = [
+      `${s2.name}${s2.category ? `  ·  ${s2.category}` : ''}`,
+      why ? `  왜 이 고객에  ${why}` : '',
+      asArray(src.strengths).length
+        ? `  강점          ${src.strengths.join('\n                ')}` : '',
+      asArray(src.talkTracks).length
+        ? asArray(src.talkTracks)
+          .map((t, i) => `  ${i === 0 ? '화법        ' : '            '}  ${t.label ? `[${t.label}] ` : ''}${t.body}`)
+          .join('\n') : ''
+    ];
+    return rows.filter(Boolean).join('\n');
+  });
+
+  const appendix = cards.length
+    ? `\n\n${'─'.repeat(56)}\n아래는 참고 자료입니다. 고객이 물을 때 펼쳐 보세요.\n`
+      + block('부록. 솔루션별 이야기할 거리', cards.join('\n\n'))
+    : '';
+
+  return [head, summary, opening, context, proposal, size, risk, next].join('\n') + appendix;
 }
 
 /**
@@ -1882,6 +2031,8 @@ function bindStageEvents() {
   }));
   $('#deal-sim-seat-range')?.addEventListener('input', (event) => setDealSeats(event.target.value, 'range'));
   $('#deal-sim-seat-num')?.addEventListener('input', (event) => setDealSeats(event.target.value, 'num'));
+  // STEP05 에 들어오면 선택한 ISV 의 8탭을 가져온다. 이미 받은 것은 다시 안 부른다.
+  if (state.activeStage === 4) void loadPitchSources();
   $('#copy-pitch')?.addEventListener('click', async () => {
     await navigator.clipboard.writeText(buildPitch());
     toast('피치 가이드를 복사했습니다.');
