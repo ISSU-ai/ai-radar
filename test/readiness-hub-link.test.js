@@ -489,3 +489,19 @@ test('모르는 보안 환경으로 후보를 거르지 않는다', () => {
   const engine = read('lib/recommendation-engine.js');
   assert.match(engine, /unknownStack = \['none', '없음', 'unknown', '미정', 'existing', 'managed'\]/);
 });
+
+test('미응답 오류에 대상 목록이 같이 내려간다', () => {
+  // sendError 가 메시지만 담아 화면이 어디를 고쳐야 할지 몰랐다. 목업은 내려보내서
+  // 로컬에서만 정상으로 보였다 — 프로덕션에서만 나는 종류다.
+  const routes = read('routes/hub.js');
+  const open = routes.indexOf('const sendError = (res, error');
+  const body = routes.slice(open, routes.indexOf('const sendPublicUnavailable', open));
+  assert.match(body, /Array\.isArray\(error\?\.unanswered\)/);
+  // 에러 객체를 통째로 직렬화하면 스택·쿼리가 공개 응답에 섞인다
+  assert.ok(!/\.\.\.error/.test(body), '화이트리스트여야 한다');
+
+  // 화면이 그 목록으로 이동한다
+  const js = read('readiness.js');
+  assert.match(js, /error\.payload\?\.unanswered/);
+  assert.match(js, /showUnanswered\(codes\)/);
+});

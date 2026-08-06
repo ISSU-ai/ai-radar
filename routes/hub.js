@@ -36,9 +36,21 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
   let dealNotificationHandler = null;
   let dealListenerErrorHandler = null;
 
+  /**
+   * 화면이 고쳐야 할 대상을 알아야 하는 오류는 목록도 같이 내려보낸다.
+   *
+   * 미응답 42문항이 그렇다 — 개수만 알리면 어디인지 찾느라 이탈한다. `unanswered`
+   * 를 떨어뜨렸더니 화면이 배너만 띄우고 문항으로 이동하지 못했다(목업은 내려보내서
+   * 로컬에서만 정상으로 보였다).
+   *
+   * 메시지 밖의 필드는 **화이트리스트로만** 통과시킨다. 에러 객체를 통째로 직렬화하면
+   * 스택·쿼리·컬럼명이 공개 응답에 섞인다.
+   */
   const sendError = (res, error, status = 400) => {
     const message = error instanceof Error ? error.message : '요청을 처리할 수 없습니다.';
-    return res.status(status).json({ error: message });
+    const body = { error: message };
+    if (Array.isArray(error?.unanswered)) body.unanswered = error.unanswered;
+    return res.status(status).json(body);
   };
 
   const sendPublicUnavailable = (res, message = '준비도 진단 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.') => (
