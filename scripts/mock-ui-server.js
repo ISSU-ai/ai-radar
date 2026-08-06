@@ -7,16 +7,42 @@ const app = express();
 app.use(express.json());
 
 const user = { id: '00000000-0000-0000-0000-000000000001', name: '김영업', email: 'sales@issu.ai', role: 'admin' };
+/** 038 이 심은 패키지별 평가영역 커버리지. 베껴 두면 피치의 「대응」이 거짓말이 된다. */
+const packageAssessmentCoverage = (() => {
+  const sql = require('fs').readFileSync(
+    path.join(__dirname, '..', 'db', 'migrations', '038_assessment_judgement.sql'), 'utf8');
+  const map = new Map();
+  for (const m of sql.matchAll(
+    /assessment_coverage = '(\[[\s\S]*?\])'::jsonb[\s\S]{0,240}?where id = '(\w+)'/g
+  )) map.set(m[2], JSON.parse(m[1]));
+  for (const m of sql.matchAll(/assessment_coverage = '\[\]'::jsonb[\s\S]{0,80}?where id in \(([^)]*)\)/g)) {
+    for (const id of m[1].matchAll(/'(\w+)'/g)) map.set(id[1], []);
+  }
+  return map;
+})();
+
 const refs = {
   stages: ['들어온 데이터', 'AI 준비도 진단', 'ISV 조합 추천', '딜 사이즈', '피치 준비'],
-  // 기획안 §7 고객 진입 시나리오 (034). 보안 환경이 아니라 구매 동기로 갈린다.
-  tracks: [
-    { id: 'E-1', name: '빠른 도입형', why: '기존 업무환경을 활용해 단기간 내 생산성 효과를 확인하는 딜입니다. Business 시트 + 환경 설정 + 사용자 교육으로 시작합니다.', warn: '02 OpenAI Ready 의 표준 구축은 무상입니다. 심화 교육·맞춤 연계·PoC 는 별도 산정이므로 범위를 먼저 고정하세요.' },
-    { id: 'E-2', name: '개발 생산성형', why: '개발조직 KPI 를 기준으로 코드·테스트 자동화의 Codex 효과를 검증하는 딜입니다.', warn: 'Codex 는 Workspace Credit 종량제입니다. 개발자별 월 한도를 먼저 정하지 않으면 비용이 튑니다.' },
-    { id: 'E-3', name: '서비스 개발형', why: 'API 기반 고객·사내 서비스를 PoC 후 상용화하고 유지 관리하는 딜입니다.', warn: 'API 사용량은 변동성이 큽니다. 상용 전환 전에 사용량·비용 한도와 운영 이관 주체를 확정하세요.' }
-  ],
+  // 034 시드에서 직접 읽는다. ask·warn 을 베껴 두면 세일즈 피치의 「확인할 것」이
+  // 로컬에서만 비어 보인다 — 실제와 다른 목업은 화면 확인을 거짓말로 만든다.
+  tracks: (() => {
+    const sql = require('fs').readFileSync(
+      require('path').join(__dirname, '..', 'db', 'migrations', '034_entry_scenarios.sql'), 'utf8');
+    const body = sql.slice(sql.indexOf('insert into tracks'));
+    return [...body.matchAll(
+      /\('(E-\d)', '([^']+)',\s*\n\s*'((?:[^']|'')*)'(?:\s*\n?\s*\|\| '((?:[^']|'')*)')?,\s*\n\s*'((?:[^']|'')*)'(?:\s*\n?\s*\|\| '((?:[^']|'')*)')?,\s*\n\s*'(\[[^\]]*\])'\)/g
+    )].map((m) => ({
+      id: m[1], name: m[2],
+      why: ((m[3] || '') + (m[4] || '')).replace(/''/g, "'"),
+      warn: ((m[5] || '') + (m[6] || '')).replace(/''/g, "'"),
+      ask: JSON.parse(m[7])
+    }));
+  })(),
+
 
   // 기획안 5대 코어 오퍼링 = 딜사이징 단위 (035). 단가는 기획안에 없어 전부 미정이다.
+  // assessment_coverage 는 038 에서 읽어 붙인다(아래 attachCoverage) — 세일즈 피치가
+  // "이 평가영역을 어느 패키지가 덮는가" 를 대조한다.
   packages: [
     { id: 'STARTER', name: 'OpenAI Starter Package', scale: 'S', period: '3개월 (MS Light 기준)', target: '라이선스 도입부터 초기 설정·온보딩·운영관리까지 한 패키지로 시작', base_md: 0, unit_price: 0, price_is_placeholder: true, items: [{ label: 'AI Readiness Assessment 6대 영역 진단 리포트 (기본 제공)' }] },
     { id: 'P01', name: 'AI Consulting', scale: 'S', period: '2주', target: '고객의 AI 준비 수준과 업무 목표를 진단하고 최적의 OpenAI 도입안 설계', base_md: 10, unit_price: 800000, price_is_placeholder: true, items: [{ label: 'AI Readiness Assessment 및 주요 Gap 분석' }, { label: 'Seat·Credit·API 사용량 및 TCO·예산 시뮬레이션' }] },
@@ -145,7 +171,10 @@ const assessment = (() => {
 })();
 
 app.get('/api/hub/reference-data', (_req, res) => res.json({
-  ...refs, readinessAreas: readiness.areas, readinessItems: readiness.items,
+  ...refs,
+  packages: refs.packages.map((pkg) => ({
+    ...pkg, assessment_coverage: packageAssessmentCoverage.get(pkg.id) || []
+  })), readinessAreas: readiness.areas, readinessItems: readiness.items,
   assessmentDomains: assessment.domains, assessmentAreas: assessment.areas, isvBundles
 }));
 app.get('/api/hub/public/packages', (_req, res) => res.json(refs.packages.map(({ scale, ...pkg }) => pkg)));

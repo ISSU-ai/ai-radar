@@ -1442,32 +1442,167 @@ function setDealSeats(value, source) {
   scheduleSave({ customer_meta: meta });
 }
 
+/**
+ * 세일즈 대화 가이드.
+ *
+ * 영업이 고객 앞에서 **그대로 읽고 쓸 수 있는** 문서다. 그래서 두 가지를 지킨다.
+ *
+ *   ① 고객이 직접 고른 문장을 인용한다. "D2 가 2점입니다" 는 반박당하지만
+ *      "품질 관리가 전혀 없고 수작업으로만 정제한다고 답하셨다" 는 반박이 어렵다.
+ *   ② 없는 것을 지어내지 않는다. 진단이 없으면 없다고 쓰고, 단가가 미정이면
+ *      「별도협의」로 쓴다. 고객 앞에서 못 지킬 말을 문서가 먼저 하면 안 된다.
+ *
+ * 근거는 전부 기획안에서 온다 — 트랙 확인 질문·함정(§7), 평가영역의 주요 우려사항
+ * (Appendix A), 무상/유상 경계(§5), 라이선스 산식(Appendix C·D).
+ */
 function buildPitch() {
-  const meta = state.deal.customer_meta || {};
-  const selectedSolutions = state.refs.solutions.filter((solution) => (asArray(state.deal.isv_combo)).includes(solution.id));
+  const deal = state.deal;
+  const meta = deal.customer_meta || {};
+  const totals = deal.readiness_totals || {};
+  const track = state.refs.tracks.find((item) => item.id === deal.track);
+  const areaById = new Map(asArray(state.refs.assessmentAreas).map((a) => [a.id, a]));
+
+  const selectedSolutions = state.refs.solutions.filter((s2) => asArray(deal.isv_combo).includes(s2.id));
   const packageMap = new Map(state.refs.packages.map((pkg) => [pkg.id, pkg]));
-  const selectedPackages = (asArray(state.deal.packages)).map((item) => packageMap.get(typeof item === 'string' ? item : item.id)).filter(Boolean);
-  const track = state.refs.tracks.find((item) => item.id === state.deal.track);
-  // 42문항 기준으로 바꾼다. A/B/C/D 는 영업 내부 게이트라 고객 앞에서 쓸 말이 아니다.
-  const totals = state.deal.readiness_totals || {};
-  const weak = asArray(totals.areas).filter((area) => Number(area.score) < 3).map((area) => area.name);
-  return `${state.deal.customer} 제안 대화 가이드
+  const selectedPackages = asArray(deal.packages)
+    .map((item) => packageMap.get(typeof item === 'string' ? item : item.id)).filter(Boolean);
 
-1. 고객 상황
-${meta.industry ? `${meta.industry} 업종의 ` : ''}${state.deal.customer}는 ${meta.targetUsers || '핵심 사용자'}를 대상으로 Enterprise AI 도입을 검토하고 있습니다. ${meta.notes || '현재 업무 문제와 PoC 성공 기준을 먼저 합의합니다.'}
+  const line = (label, value) => (value ? `${label}  ${value}` : null);
+  const block = (title, body) => `\n━━ ${title}\n\n${body}`;
+  const bullet = (list) => list.filter(Boolean).map((t) => `· ${t}`).join('\n');
 
-2. 권고 접근
-${track ? `${track.name}: ${track.why}` : '진단 결과에 맞춰 도입 트랙을 확정합니다.'}
-${weak.length ? `AI 준비도 진단에서 ${weak.join(', ')} 영역이 3점 미만이므로, 이 영역을 PoC 선행 과제로 둡니다.` : Number.isFinite(Number(totals.average)) ? `AI 준비도 종합 ${Number(totals.average).toFixed(2)}점(${totals.maturity?.name || ''} 단계)으로 6대 영역 모두 3점 이상입니다.` : '진단을 먼저 완료해 우선 보완 영역을 확정합니다.'}
+  // ── 머리말 ────────────────────────────────────────────────────
+  const avg = Number(totals.average);
+  const head = [
+    `${deal.customer} — 세일즈 대화 가이드`,
+    [
+      new Date().toISOString().slice(0, 10),
+      track ? `${track.id} ${track.name}` : '트랙 미정',
+      Number.isFinite(avg) ? `AI 준비도 ${avg.toFixed(2)} (${totals.maturity?.name || ''} 단계)` : '진단 미실시'
+    ].join('  ·  ')
+  ].join('\n');
 
-3. 권고 조합
-${selectedSolutions.length ? selectedSolutions.map((solution) => `• ${solution.name} — ${solution.jtbd || '핵심 요구 대응'}`).join('\n') : '• ISV 조합을 ③ 단계에서 선택해주세요.'}
+  // ── 1. 이 미팅에서 확인할 것 ──────────────────────────────────
+  const asks = asArray(track?.ask);
+  const opening = block('1. 이 미팅에서 확인할 것', [
+    asks.length ? bullet(asks) : '· 트랙을 STEP 02 에서 확정하면 확인 질문이 나옵니다.',
+    track?.warn ? `\n⚠ ${track.warn}` : ''
+  ].filter(Boolean).join('\n'));
 
-4. 실행 패키지
-${selectedPackages.length ? selectedPackages.map((pkg) => `• ${pkg.name} (${pkg.period || '기간 협의'}) — ${pkg.target || ''}`).join('\n') : '• 서비스 패키지를 ④ 단계에서 선택해주세요.'}
+  // ── 2. 고객이 직접 답한 것 ────────────────────────────────────
+  // 인용이 대화의 출발점이다. 숫자만 들이밀면 "그건 해석이죠" 로 끝난다.
+  const priorities = asArray(totals.priorities).filter((p) => Number(p.score) < 3);
+  const quotes = priorities.length
+    ? priorities.map((p) => {
+      const items = asArray(p.items).filter((i) => i.rubric).slice(0, 3);
+      return [`${p.name} — ${Number(p.score).toFixed(2)} / 5`,
+        items.map((i) => `   · ${i.text}\n     → "${i.rubric}" (${i.score}점)`).join('\n')]
+        .filter(Boolean).join('\n');
+    }).join('\n\n')
+    : Number.isFinite(avg)
+      ? '6대 영역 모두 3점 이상입니다. 보완이 아니라 확산 관점에서 대화를 엽니다.'
+      : '진단이 아직 없습니다. STEP 02 에서 채우면 고객이 고른 문장이 여기 인용됩니다.';
 
-5. 다음 합의
-의사결정자·현업 오너와 PoC 성공 KPI, 보안 검토 범위, 일정과 예산을 확정합니다. 최종 제안 전 기술 제약과 포컬 배정을 다시 확인합니다.`;
+  const context = block('2. 고객이 직접 답한 것 — 대화의 출발점', [
+    [
+      line('업종', meta.industry), line('규모', meta.companySize),
+      line('도입 대상', meta.targetUsers)
+    ].filter(Boolean).join('   ·   '),
+    meta.notes || deal.lead_message ? `\n메모: ${meta.notes || deal.lead_message}` : '',
+    `\n${quotes}`,
+    totals.insight ? `\n${totals.insight}` : '',
+    '\n화법 — "진단에서 이렇게 답해주셨는데, 그 부분부터 보겠습니다." 로 연다.\n'
+    + '      고객이 고른 문장을 그대로 읽는 것이 가장 반박이 어렵다.'
+  ].filter(Boolean).join('\n'));
+
+  // ── 3. 권고 구성 ──────────────────────────────────────────────
+  const recoReason = new Map(
+    ['prepare', 'adopt', 'operate', 'unclassified']
+      .flatMap((key) => asArray(state.reco?.proposal?.[key]))
+      .concat(asArray(state.reco?.bundles))
+      .map((item) => [item.slug || item.id, asArray(item.reasons)[0]])
+  );
+
+  const isv = selectedSolutions.length
+    ? bullet(selectedSolutions.map((s2) => {
+      const why = recoReason.get(s2.slug) || recoReason.get(s2.id) || s2.jtbd;
+      return `${s2.name}${why ? ` — ${why}` : ''}`;
+    }))
+    : '· ISV 조합을 STEP 03 에서 선택하면 추천 근거와 함께 들어갑니다.';
+
+  const freeNote = selectedPackages.flatMap((pkg) => asArray(pkg.items)
+    .filter((i) => i.type === 'note' && /무상/.test(i.label))
+    .map((i) => `${pkg.name}: ${i.label}`));
+
+  const pkgs = selectedPackages.length
+    ? bullet(selectedPackages.map((pkg) =>
+      `${pkg.name} (${pkg.period || '기간 협의'}) — ${pkg.target || ''}`))
+    : '· 서비스 패키지를 STEP 04 에서 선택해주세요.';
+
+  const proposal = block('3. 권고 구성', [
+    track ? `접근  ${track.why}` : '',
+    `\n[ISV 조합]\n${isv}`,
+    `\n[실행 패키지]\n${pkgs}`,
+    freeNote.length ? `\n무상 범위 — ${freeNote.join(' / ')}` : ''
+  ].filter(Boolean).join('\n'));
+
+  // ── 4. 예상 딜 규모 ───────────────────────────────────────────
+  const lic = computeLicense();
+  const quote = computeQuote();
+  const size = block('4. 예상 딜 규모 (내부 참고)', [
+    `라이선스  ChatGPT ${lic.seats}석 × $${lic.seatPrice} + Codex ${lic.codexSeats}명 × $${lic.codexPrice}`,
+    `          연 $${Math.round(lic.annualUsd).toLocaleString('en-US')} · ${formatKRW(lic.annualKrw)} (1 USD = ${lic.fx.toLocaleString('ko-KR')}원)`,
+    quote.rows.length
+      ? `서비스    ${quote.rows.reduce((sum, r) => sum + r.totalMd, 0)} MD · `
+        + (quote.hasPlaceholder ? '단가 미확정으로 별도협의' : formatKRW(quote.total))
+      : '서비스    패키지 미선택',
+    '',
+    '⚠ Enterprise 가격·최소 시트는 OpenAI 영업 협의사항입니다. 확정 금액으로 제시하지 마세요.',
+    '⚠ 사용량 변동이 큰 API 는 포함하지 않았습니다.'
+  ].join('\n'));
+
+  // ── 5. 예상 질문과 대응 ───────────────────────────────────────
+  // 기획안 Appendix A 의 「주요 우려사항」이 곧 고객이 실제로 묻는 것이다.
+  const failing = asArray(totals.areas).length
+    ? asArray(deal.assessment_totals?.areas).filter((a) => a.answered && a.ready === false)
+    : [];
+  const covers = (areaId) => selectedPackages
+    .filter((pkg) => asArray(pkg.assessment_coverage).some((e) => e.area === areaId))
+    .map((pkg) => pkg.name);
+
+  const objections = failing.length
+    ? failing.slice(0, 5).map((a) => {
+      const ref = areaById.get(a.area);
+      const by = covers(a.area);
+      return [`Q. ${ref?.concerns || a.name}`,
+        `   확인할 것 — ${ref?.checkpoints || '—'}`,
+        `   대응 — ${by.length ? `${by.join(' · ')} 범위에서 다룹니다.` : '현재 선택한 구성으로는 안 덮습니다. 별도 과업으로 잡거나 구성을 바꿔야 합니다.'}`]
+        .join('\n');
+    }).join('\n\n')
+    : '평가영역 미충족 항목이 없거나 아직 판정되지 않았습니다.';
+
+  const pending = [...new Set(
+    ['prepare', 'adopt', 'operate']
+      .flatMap((key) => asArray(state.reco?.proposal?.[key]))
+      .concat(asArray(state.reco?.needsConfirmation))
+      .flatMap((item) => asArray(item.prerequisites?.pendingManual).map((p) => p.label))
+  )];
+
+  const risk = block('5. 예상 질문과 대응', objections);
+
+  // ── 6. 다음 단계 ──────────────────────────────────────────────
+  const next = block('6. 다음 단계', [
+    pending.length ? `확인 필요 (미확정 전제)\n${bullet(pending)}\n` : '',
+    bullet([
+      '의사결정자·현업 오너 확인',
+      'PoC 성공 KPI 와 측정 방법 합의',
+      '보안·법무 검토 범위와 일정 확정',
+      selectedPackages.length ? '패키지 공수·일정 확정 후 견적 확정' : '패키지 구성 확정',
+      '기술 제약과 포컬 배정 재확인'
+    ])
+  ].filter(Boolean).join('\n'));
+
+  return [head, opening, context, proposal, size, risk, next].join('\n');
 }
 
 /**

@@ -783,6 +783,9 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       // 020 미적용이면 조건을 빼서 "숨김 없음"으로 동작한다.
       const refHiddenFilter = (hasColumn && await hasColumn('solutions', 'is_hidden'))
         ? 'and s.is_hidden = false' : '';
+      // 세일즈 피치가 "이 평가영역을 어느 패키지가 덮는가" 를 대조한다.
+      const hasPackageCoverage = hasColumn
+        ? await hasColumn('packages', 'assessment_coverage') : false;
 
       const [assessment, readiness, isvBundles, tracks, packages, solutions, settings] = await Promise.all([
         loadAssessment(),
@@ -790,8 +793,11 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         loadIsvBundles(),
         pool.query('select id, name, why, warn, ask from tracks order by id').then((r) => r.rows),
         pool.query(
+          // assessment_coverage 는 세일즈 피치가 쓴다 — 고객이 물을 만한 평가영역을
+          // 어느 패키지가 실제로 다루는지 대조해야 "그건 안 덮습니다" 를 말할 수 있다.
           `select p.id, p.name, p.scale, p.period, p.target, p.sort_order,
                   p.base_md, p.unit_price, ${packagePlaceholder} as price_is_placeholder,
+                  ${hasPackageCoverage ? 'p.assessment_coverage' : `'[]'::jsonb as assessment_coverage`},
                   coalesce(json_agg(json_build_object('type', pi.type, 'label', pi.label)
                     order by pi.sort_order) filter (where pi.id is not null), '[]') as items
            from packages p left join package_items pi on pi.package_id = p.id

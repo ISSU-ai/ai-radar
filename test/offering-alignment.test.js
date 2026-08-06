@@ -452,3 +452,55 @@ test('STEP04 가 라이선스·패키지·ISV 셋을 함께 보여준다', () =>
   }
   assert.match(fs.readFileSync(path.join(root, 'hub.css'), 'utf8'), /\.license-calc/);
 });
+
+// ── 세일즈 대화 가이드 ───────────────────────────────────────────
+test('피치가 고객이 고른 문장을 인용한다', () => {
+  // "D2 가 2점입니다" 는 반박당하지만 "품질 관리를 안 한다고 답하셨다" 는 어렵다.
+  const hub = fs.readFileSync(path.join(root, 'hub.js'), 'utf8');
+  const body = hub.slice(hub.indexOf('function buildPitch'), hub.indexOf('const STAGE_REPORT_TITLES'));
+
+  assert.match(body, /totals\.priorities/);
+  assert.match(body, /i\.rubric/, '고른 루브릭 문장이 인용돼야 한다');
+  assert.match(body, /Number\(p\.score\) < 3/, '미흡 축만 다룬다');
+  assert.match(body, /화법 —/, '어떻게 말할지까지 있어야 영업이 그대로 쓴다');
+});
+
+test('피치가 예상 질문을 기획안 우려사항에서 가져온다', () => {
+  // Appendix A 의 「주요 우려사항」이 곧 고객이 실제로 묻는 것이다.
+  const hub = fs.readFileSync(path.join(root, 'hub.js'), 'utf8');
+  const body = hub.slice(hub.indexOf('function buildPitch'), hub.indexOf('const STAGE_REPORT_TITLES'));
+
+  assert.match(body, /assessmentAreas/);
+  assert.match(body, /ref\?\.concerns/, '우려사항이 질문이 된다');
+  assert.match(body, /ref\?\.checkpoints/, '확인사항이 같이 나와야 답할 수 있다');
+  // 안 덮으면 덮는다고 하지 않는다 — 못 지킬 약속을 문서가 먼저 하면 안 된다
+  assert.match(body, /안 덮습니다/);
+  assert.match(body, /assessment_coverage/, '실제 커버리지로 대조해야 한다');
+});
+
+test('피치가 없는 숫자를 지어내지 않는다', () => {
+  const hub = fs.readFileSync(path.join(root, 'hub.js'), 'utf8');
+  const body = hub.slice(hub.indexOf('function buildPitch'), hub.indexOf('const STAGE_REPORT_TITLES'));
+  assert.match(body, /hasPlaceholder \? '단가 미확정으로 별도협의'/);
+  assert.match(body, /OpenAI 영업 협의사항/);
+  assert.match(body, /API 는 포함하지 않았습니다/);
+  // 진단·구성이 없으면 없다고 쓴다
+  assert.match(body, /진단이 아직 없습니다/);
+  assert.match(body, /STEP 03 에서 선택하면/);
+});
+
+test('reference-data 가 피치에 필요한 것을 싣는다', () => {
+  const routes = fs.readFileSync(path.join(root, 'routes', 'hub.js'), 'utf8');
+  assert.match(routes, /select id, name, why, warn, ask from tracks/, '확인 질문이 있어야 한다');
+  assert.match(routes, /hasPackageCoverage \? 'p\.assessment_coverage'/);
+  assert.match(routes, /assessmentAreas: assessment\?\.areas \|\| \[\]/);
+});
+
+test('목업이 트랙·패키지 커버리지를 시드에서 읽는다', () => {
+  // 베껴 두면 「확인할 것」이 비고 「대응」이 전부 "안 덮습니다" 가 된다 —
+  // 로컬에서만 그렇게 보여서 못 잡는다.
+  const mock = fs.readFileSync(path.join(root, 'scripts', 'mock-ui-server.js'), 'utf8');
+  assert.match(mock, /034_entry_scenarios\.sql/);
+  assert.match(mock, /packageAssessmentCoverage/);
+  assert.match(mock, /ask: JSON\.parse/);
+});
