@@ -12,7 +12,7 @@
 </head>
 <body>
   <header class="site-head">
-    <a class="offering-brand" href="/"><span>ISSU</span><small>ENTERPRISE AI</small></a>
+    <a class="offering-brand" href="/"><img class="brand-logo" src="/assets/megazone-cloud.png" alt="MEGAZONE CLOUD" width="550" height="500"><small>ENTERPRISE AI</small></a>
     <nav><a href="/">홈</a><a href="#intro">진단 안내</a><a href="#assessment">진단 수행</a><a class="nav-cta" id="nav-contact" href="#contact">상담 요청</a></nav>
   </header>
 
@@ -57,6 +57,12 @@
         <button id="next-area" class="button primary" type="button">다음 영역 <i data-lucide="arrow-right"></i></button>
         <button id="finish" class="button primary hidden" type="button">결과 확인 <i data-lucide="sparkles"></i></button>
       </div>
+
+      <!-- 문항의 출처. 고객이 "이 질문들 어디서 온 겁니까" 를 묻는 자리라 문항 바로
+           아래 둔다. 결과 화면의 참고용 고지(.result-note)와 다른 이야기다. -->
+      <div class="result-note rd-source"><i data-lucide="book-open"></i>
+        <p>본 진단 항목은 기업의 AI 성숙도를 정밀 측정하기 위해 메가존클라우드 AI 전문가 그룹이 구축한
+          AIR-N(AI Readiness Navigator) 지표를 준용합니다.</p></div>
     </section>
 
     <!-- ── 결과 ─────────────────────────────────────────────── -->
@@ -128,7 +134,7 @@
 
   <div id="unanswered-banner" class="rd-banner" role="alert"></div>
 
-  <footer><div class="offering-brand"><span>ISSU</span><small>ENTERPRISE AI</small></div><p>Enterprise AI, built for how your business actually works.</p><small>© 2026 ISSU. All rights reserved.</small></footer>
+  <footer><div class="offering-brand"><img class="brand-logo" src="/assets/megazone-cloud.png" alt="MEGAZONE CLOUD" width="550" height="500"><small>ENTERPRISE AI</small></div><p>Enterprise AI, built for how your business actually works.</p><small>© 2026 ISSU. All rights reserved.</small></footer>
 
   <script src="/taxonomy.js" defer></script>
   <script src="/report.js" defer></script>

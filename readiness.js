@@ -289,16 +289,25 @@ function renderResult(result) {
   window.lucide?.createIcons();
 }
 
-/** 라이브러리 없이 canvas 로 그린다. CDN 을 늘릴 이유가 없다. */
-function drawRadar(areas) {
+/** 인쇄는 종이 폭으로 다시 배치된다. 화면에서 잰 값을 쓰면 어긋나니 고정한다. */
+const PRINT_RADAR_SIZE = 300;
+
+/**
+ * 라이브러리 없이 canvas 로 그린다. CDN 을 늘릴 이유가 없다.
+ *
+ * `fixedSize` 를 주면 부모 폭을 재지 않는다 — 인쇄용이다. 캔버스는 **그리는
+ * 순간의 스냅샷**이라 나중에 레이아웃이 바뀌어도 비트맵은 그대로다.
+ */
+function drawRadar(areas, fixedSize) {
   const canvas = $('#radar');
   if (!canvas || !areas.length) return;
   const dpr = window.devicePixelRatio || 1;
   // 숨겨진(display:none) 상태에서 부르면 offsetWidth 가 0 이다. 예전 식은
   // `Math.min(0 - 16, 320) || 320` 이라 **-16 이 truthy 라서 폴백이 안 먹었고**,
   // 반지름이 음수가 되어 도형이 뒤집힌 채 작게 그려졌다.
-  const available = canvas.parentElement?.offsetWidth || 0;
-  const size = available > 0 ? Math.max(200, Math.min(available - 16, 320)) : 320;
+  const available = fixedSize ? 0 : (canvas.parentElement?.offsetWidth || 0);
+  const size = fixedSize
+    || (available > 0 ? Math.max(200, Math.min(available - 16, 320)) : 320);
   canvas.width = size * dpr; canvas.height = size * dpr;
   canvas.style.width = `${size}px`; canvas.style.height = `${size}px`;
   const ctx = canvas.getContext('2d');
@@ -571,6 +580,16 @@ async function init() {
     if (tab) goToArea(Number(tab.dataset.areaIndex));
   });
   window.addEventListener('resize', () => { if (state.result) drawRadar(state.result.areas); });
+
+  // 인쇄는 화면과 다른 폭으로 다시 배치되는데 캔버스 비트맵은 안 따라온다.
+  // 그래서 종이에서 차트만 크기가 어긋나 한쪽으로 쏠려 보였다. 인쇄 직전에
+  // 고정 크기로 다시 그리고, 끝나면 화면 기준으로 되돌린다.
+  window.addEventListener('beforeprint', () => {
+    if (state.result) drawRadar(state.result.areas, PRINT_RADAR_SIZE);
+  });
+  window.addEventListener('afterprint', () => {
+    if (state.result) drawRadar(state.result.areas);
+  });
 
   try {
     const data = await getJson('/api/hub/public/readiness-items');

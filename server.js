@@ -1825,7 +1825,9 @@ const publicFrontendAssets = Object.freeze({
   '/taxonomy.js': 'taxonomy.js',
   // AI 준비도 42문항 진단. 비로그인 고객 화면이다.
   '/readiness.css': 'readiness.css',
-  '/readiness.js': 'readiness.js'
+  '/readiness.js': 'readiness.js',
+  // 브랜드 로고. 랜딩·진단의 머리와 꼬리에 들어간다.
+  '/assets/megazone-cloud.png': 'assets/megazone-cloud.png'
 });
 
 // 사내 자산. app.js/hub.js 에는 내부 영업 로직(딜사이즈 계산, 벤더 추천 매핑,

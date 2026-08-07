@@ -6,9 +6,14 @@ button,input,select,textarea { font-family:var(--font-ui); }
 input::placeholder,textarea::placeholder { color:#9aabba; opacity:1; }
 .hidden { display:none!important; }
 .site-head { position:absolute; z-index:10; top:0; left:0; right:0; max-width:1280px; height:78px; margin:auto; padding:0 32px; display:flex; align-items:center; justify-content:space-between; }
-.offering-brand { color:#fff; text-decoration:none; }
+.offering-brand { display:flex; align-items:center; gap:12px; color:#fff; text-decoration:none; }
 .offering-brand span { display:block; font-size:15px; font-weight:800; letter-spacing:.18em; }
-.offering-brand small { display:block; margin-top:3px; color:#a3b2c3; font:600 10px var(--font-ui); letter-spacing:.14em; }
+/* 원본은 배경이 투명한 검정 스택형 로고다. 머리·꼬리 모두 어두운 바탕이라
+   그대로 얹으면 안 보인다. brightness(0) 로 색을 죽인 뒤 흰색으로 뒤집는다. */
+.brand-logo { display:block; width:auto; height:46px; filter:brightness(0) invert(1); }
+/* 로고와 서비스명을 세로선으로 가른다. 붙여 두면 ENTERPRISE AI 가 로고의
+   일부처럼 읽힌다 — 남의 상표에 우리 말을 붙이는 꼴이 된다. */
+.offering-brand small { display:block; padding-left:12px; border-left:1px solid rgba(255,255,255,.22); color:#a3b2c3; font:600 10px var(--font-ui); letter-spacing:.14em; }
 .site-head nav { display:flex; align-items:center; gap:28px; }
 .site-head nav a { color:#b8c5d3; text-decoration:none; font-size:14px; font-weight:600; }
 .site-head nav a:hover { color:#fff; }
@@ -140,6 +145,7 @@ input::placeholder,textarea::placeholder { color:#9aabba; opacity:1; }
 .lead-success { align-self:center; padding:50px; text-align:center; border:1px solid #2e465c; border-radius:16px; background:#172535; }.lead-success svg { width:38px; color:#71c7a6; }.lead-success h3 { margin:18px 0 8px; }.lead-success p { color:#8fa2b5; font-size:11px; }
 footer { padding:40px max(32px,calc((100vw - 1216px)/2)); display:grid; grid-template-columns:1fr auto auto; gap:40px; align-items:center; color:#8e9cac; background:#0c141d; font-size:12px; }
 footer p { margin:0; } footer > small { color:#526170; }
+footer .brand-logo { height:38px; }
 @media(max-width:900px){.hero{grid-template-columns:1fr;min-height:auto;padding-top:150px}.hero-visual{min-height:360px}.section-heading{grid-template-columns:1fr}.approach-grid{grid-template-columns:1fr 1fr}.approach-grid article:nth-child(2){border-right:0}.diagnosis-wrap{grid-template-columns:1fr}.diagnosis-intro{position:static}.result-grid{grid-template-columns:1fr 1fr}.package-list{grid-template-columns:1fr 1fr}.contact{grid-template-columns:1fr;gap:45px;margin-inline:20px}.site-head nav a:not(.nav-cta){display:none}}
 @media(max-width:620px){.site-head{padding:0 20px}.hero{padding:130px 20px 80px}.hero-actions,.trust-row{align-items:flex-start;flex-direction:column}.hero-visual{min-height:310px}.main-signal{inset:40px 0 30px 25px;padding:26px}.section-wrap{padding:76px 20px}.approach-grid,.result-grid,.package-list{grid-template-columns:1fr}.approach-grid article{border-right:0;border-bottom:1px solid var(--line)}.diagnosis-wrap{gap:42px}.diagnosis-panel{padding:16px}.category-tabs{grid-template-columns:1fr 1fr}.category-tab{padding:9px}.question{grid-template-columns:30px 1fr}.score-options{grid-column:2}.diagnosis-progress{align-items:stretch;flex-direction:column;gap:12px}.diagnosis-progress>div:first-child{min-width:0}.diagnosis-actions,.result-head{align-items:stretch;flex-direction:column}.step-actions{width:100%;margin-left:0}.step-actions .button{flex:1}.form-row{grid-template-columns:1fr}.contact{padding:58px 24px;margin-bottom:70px}footer{grid-template-columns:1fr;gap:14px}}
 

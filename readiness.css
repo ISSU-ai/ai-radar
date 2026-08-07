@@ -73,6 +73,8 @@
 .rd-chip.picked span { color: #16233a; font-weight: 600; }
 
 .rd-nav { display: flex; gap: 10px; justify-content: flex-end; margin-top: 26px; }
+/* 문항 출처. 버튼과 붙으면 안내가 아니라 경고처럼 읽혀 한 칸 띄운다. */
+.rd-source { margin-top: 28px; align-items: center; }
 
 /* 결과 */
 .rd-result-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
@@ -136,14 +138,16 @@
 }
 
 /* 상담 요청 — 결과를 본 뒤에만 열린다 */
-.rd-contact { display: grid; gap: 34px; grid-template-columns: 380px 1fr; align-items: start; margin-top: 40px; padding: 40px; border-radius: 20px; background: #16233a; color: #fff; }
+/* 아래 여백은 랜딩의 .contact(110px)와 맞춘다. 두 화면이 같은 푸터를 쓰는데
+   간격이 다르면 한쪽만 푸터에 눌린 것처럼 보인다. */
+.rd-contact { display: grid; gap: 34px; grid-template-columns: 380px 1fr; align-items: start; margin-top: 40px; margin-bottom: 110px; padding: 40px; border-radius: 20px; background: #16233a; color: #fff; }
 .rd-contact .kicker { color: #7ea6f0; }
 .rd-contact h2 { margin: 8px 0 12px; color: #fff; font-size: 26px; line-height: 1.35; }
 .rd-contact-copy p { color: #a8b6cc; font-size: 14px; line-height: 1.7; }
 .rd-contact .lead-form label { color: #cdd8e8; }
 .rd-contact .privacy-notice { color: #a8b6cc; }
 .rd-contact .privacy-notice strong { color: #fff; }
-@media (max-width: 900px) { .rd-contact { grid-template-columns: 1fr; padding: 28px 22px; } }
+@media (max-width: 900px) { .rd-contact { grid-template-columns: 1fr; margin-bottom: 70px; padding: 28px 22px; } }
 
 /* 홈으로 — 좁은 화면에서는 상단 nav 링크가 숨어서 본문에도 둔다 */
 .rd-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 18px; color: #56617a; font-size: 13px; font-weight: 600; text-decoration: none; }
@@ -155,3 +159,27 @@
 .lead-redirect b { color: #fff; }
 .lead-redirect button { padding: 5px 12px; border: 1px solid rgba(255, 255, 255, .22); border-radius: 7px; background: none; color: #cdd8e8; font-size: 12px; cursor: pointer; }
 .lead-redirect button:hover { border-color: rgba(255, 255, 255, .45); color: #fff; }
+
+/* ── 인쇄 ──────────────────────────────────────────────────────────
+   인쇄 스타일이 없으면 종이 폭(A4 ≒ 718px)에서 900px 미디어쿼리가 걸린 채로
+   찍힌다. 그러면 레이더차트 칸이 한 줄로 펴지는데 캔버스 비트맵은 화면에서 잰
+   크기 그대로라 종이에서 한쪽으로 쏠려 보인다. 크기는 JS 가 beforeprint 에
+   다시 그려 맞추고, 여기서는 배치와 페이지 나눔을 잡는다. */
+@media print {
+  .site-head, .rd-nav, .rd-banner, .report-actions, .rd-back, #contact, footer { display: none !important; }
+  .readiness-main { padding-top: 0; }
+  .rd-progress-bar { position: static; background: none; backdrop-filter: none; }
+
+  /* 좌표를 그리드에 맡기지 않는다. 한 줄로 펴지면 칸이 넓어지는데 캔버스는
+     제 크기를 유지하므로 auto 마진으로 직접 가운데에 둔다. */
+  .rd-result-grid { grid-template-columns: 1fr; }
+  .rd-radar-wrap { border: 0; padding: 0; }
+  #radar { display: block; margin: 0 auto; }
+
+  /* 페이지 경계가 도형이나 문단 한가운데를 지나면 잘린 채로 찍힌다. */
+  .rd-result-grid, .rd-radar-wrap, .rd-priority, .rd-insight, .rd-question,
+  .rd-area-card, .rd-maturity-card, .result-note { break-inside: avoid; page-break-inside: avoid; }
+
+  /* 배경색은 기본적으로 인쇄되지 않아 흰 글씨가 사라진다. */
+  .rd-source { border: 1px solid #ddd; color: #444; }
+}
