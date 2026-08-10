@@ -202,7 +202,7 @@ test('목업이 실제 서버처럼 목록에서 개인정보를 벗긴다', () 
     assert.ok(!block.includes(field), `목업 목록에 ${field} 가 실린다`);
   }
   assert.match(block, /industry:[\s\S]{0,120}companySize:[\s\S]{0,120}targetUsers:/);
-  assert.match(block, /!deal\.deleted_at/);
+  assert.match(block, /deal\.deleted_at/, '지운 딜이 목업 목록에 남는다');
   assert.match(mock, /app\.delete\('\/api\/hub\/deals\/:id'/, '목업에 삭제가 없으면 화면 확인을 못 한다');
   assert.match(mock, /patch\.stage !== deals\[index\]\.stage[\s\S]{0,120}stage_changed_at/);
 });
@@ -310,4 +310,20 @@ test('정체 칩이 마우스오버로 자기 판정 기준을 말한다', () =>
   assert.match(body, /title="\$\{escapeHtml\(/);
   // 문의 시점이 없으면 그 사실을 설명에 밝힌다
   assert.match(body, /문의 시점 미입력/);
+});
+
+test('목업 딜 목록이 실제 라우트와 같은 조건·정렬을 쓴다', () => {
+  // 파라미터를 무시하면 검색과 「내 딜」 필터가 로컬에서만 아무 반응이 없다.
+  // 기능이 멀쩡한데 안 되는 것처럼 보이는 쪽이라 더 나쁘다.
+  const block = mock.slice(mock.indexOf("app.get('/api/hub/deals'"), mock.indexOf("app.post('/api/hub/deals'"));
+  assert.match(block, /req\.query/, '파라미터를 안 읽는다');
+  for (const param of ['q', 'stage', 'track', 'mine']) {
+    assert.match(block, new RegExp(`\\b${param}\\b`), `${param} 를 안 본다`);
+  }
+  assert.match(block, /mine === 'true' && deal\.owner_id !== user\.id/);
+  // 정렬도 같아야 한다 — 임자 없는 신규 리드가 맨 위
+  assert.match(block, /source === 'portal' && !d\.owner_id/);
+  // 실제 라우트가 지원하는 파라미터와 목업이 어긋나지 않는지 대조
+  const real = routes.slice(routes.indexOf("router.get('/deals'"), routes.indexOf("router.post('/deals'"));
+  assert.match(real, /const \{ q = '', stage = '', track = '', mine = '' \} = req\.query/);
 });

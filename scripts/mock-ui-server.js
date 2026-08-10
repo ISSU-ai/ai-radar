@@ -249,8 +249,25 @@ const DEAL_LIST_FIELDS = ['id', 'customer', 'track', 'track_name', 'stage', 'sou
   'owner_id', 'owner_name', 'updated_at', 'created_at',
   'msp_status', 'inquiry_date', 'stage_changed_at'];
 
-app.get('/api/hub/deals', (_req, res) => res.json(
-  deals.filter((deal) => !deal.deleted_at).map((deal) => {
+app.get('/api/hub/deals', (req, res) => {
+  // 실제 라우트와 같은 조건을 건다. 파라미터를 무시하면 사이드바의 검색과
+  // 「내 딜」 필터가 **로컬에서만 아무 반응이 없다** — 기능이 멀쩡한데 안 되는
+  // 것처럼 보이는 쪽이라 더 나쁘다.
+  const { q = '', stage = '', track = '', mine = '' } = req.query;
+  const matched = deals.filter((deal) => {
+    if (deal.deleted_at) return false;
+    if (q.trim() && !deal.customer.toLowerCase().includes(q.trim().toLowerCase())) return false;
+    if (stage !== '' && Number.isInteger(Number(stage)) && deal.stage !== Number(stage)) return false;
+    if (track && deal.track !== track) return false;
+    if (mine === 'true' && deal.owner_id !== user.id) return false;
+    return true;
+  });
+  // 임자 없는 신규 리드가 항상 맨 위, 그다음 최근 갱신순.
+  matched.sort((a, b) => {
+    const rank = (d) => (d.source === 'portal' && !d.owner_id ? 0 : 1);
+    return rank(a) - rank(b) || String(b.updated_at).localeCompare(String(a.updated_at));
+  });
+  res.json(matched.map((deal) => {
     const row = {};
     for (const key of DEAL_LIST_FIELDS) row[key] = deal[key] ?? null;
     const meta = deal.customer_meta || {};
@@ -260,8 +277,8 @@ app.get('/api/hub/deals', (_req, res) => res.json(
       targetUsers: meta.targetUsers ?? null
     };
     return row;
-  })
-));
+  }));
+});
 app.post('/api/hub/deals', (req, res) => {
   const now = new Date().toISOString();
   // 041 의 DB 기본값을 그대로 흉내 낸다. 빠뜨리면 새로 만든 딜이 로컬에서만
