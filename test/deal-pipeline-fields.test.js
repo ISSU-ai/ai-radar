@@ -342,3 +342,19 @@ test('솔루션 목록이 노출 상태로 묶여 정렬된다', () => {
   const toggle = admin.slice(admin.indexOf('async function toggleSolutionVisibility'), admin.indexOf('function renderSolutionsMenu'));
   assert.match(toggle, /renderSolutionsMenu\(\)/);
 });
+
+test('솔루션 조사 서식이 admin 폼·마이그레이션에서 항목을 직접 읽는다', () => {
+  // 서식에 항목을 손으로 적으면 화면이 바뀌었을 때 서식만 옛말을 한다.
+  const gen = read('scripts/build-solution-survey.py');
+  assert.match(gen, /admin\.html/);
+  assert.match(gen, /011_slot_taxonomy_and_layer_fixes\.sql/, '슬롯을 손으로 적었다');
+  assert.match(gen, /036_assessment_criteria\.sql/, '평가영역을 손으로 적었다');
+  assert.match(gen, /simulatorOptionsConfig/);
+  // 선택지 목록을 파이썬 쪽에 다시 적지 않았는지
+  assert.ok(!/'매우 높음'|'L1 \(/.test(gen), '드롭다운 값을 서식 쪽에 다시 적었다');
+  // 엑셀 인라인 목록은 쉼표로 값을 가른다 — 값에 쉼표가 있으면 조용히 쪼개진다
+  assert.match(gen, /if any\(',' in c for c in choices\)/);
+  // 조사자에게 JSON 을 쓰게 하지 않는다
+  assert.match(gen, /평문으로/);
+  assert.ok(!/kind":"fqa|"signal":/.test(gen), 'JSON 예시를 조사 서식에 넣었다');
+});
