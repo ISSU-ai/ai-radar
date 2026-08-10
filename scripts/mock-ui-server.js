@@ -62,10 +62,23 @@ const refs = {
   ]
 };
 
+// 041 이 심는 딜 확장 필드. 세 딜에 MSP 세 상태와 정체 양쪽 상태를 다 깔아
+// 배지·필터·색 전환을 로컬에서 전부 볼 수 있게 한다. 하나만 채워 두면 "안 뜨는 것"
+// 인지 "그 상태가 아닌 것" 인지 화면에서 구분이 안 된다.
+const daysAgo = (n) => new Date(Date.now() - n * 86400000);
+const dateOnly = (n) => daysAgo(n).toISOString().slice(0, 10);
+
 let deals = [
-  { id: 'd1', customer: '한빛금융', customer_meta: { industry: 'Finance', companySize: '1,000명 초과', targetUsers: '전사 1,200명', securityStack: 'zscaler' }, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1', 's2'], packages: [{ id: 'P03', md: 28 }], stage: 2, source: 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() },
+  { id: 'd1', customer: '한빛금융', customer_meta: { industry: 'Finance', companySize: '1,000명 초과', targetUsers: '전사 1,200명', securityStack: 'zscaler' }, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1', 's2'], packages: [{ id: 'P03', md: 28 }], stage: 2, source: 'manual', owner_id: user.id, owner_name: user.name,
+    mzc_sales: '정코어', msp_status: 'yes', inquiry_date: dateOnly(72),
+    customer_contact_name: '김디지털', customer_contact_dept: '디지털혁신본부', customer_contact_title: '상무', customer_contact_email: 'kim@hanbit.co.kr',
+    inquiry_products: ['s1', 's3'],
+    // 유입 72일 · 단계 40일 — 양쪽 다 late
+    stage_changed_at: daysAgo(40).toISOString(),
+    created_at: daysAgo(72).toISOString(), updated_at: new Date().toISOString() },
   // 포탈로 들어온 딜. 027 이후 담당자 이름·전화번호가 leads 에 남고 허브는 읽기 전용으로
   // 보여준다. 업종·규모는 taxonomy.js 어휘(SFDC 코드 · 진단기준 구간)로 저장된다.
+  // 영업이 아직 아무것도 안 채운 상태 — 「확인 필요」와 단계 시계 없음을 이걸로 본다.
   { id: 'd2', customer: '온누리제조',
     customer_meta: { industry: 'Manufacturing', companySize: '501~1,000명', securityStack: 'none' },
     track: 'E-3', track_name: '서비스 개발형',
@@ -73,8 +86,18 @@ let deals = [
     lead_contact: 'park@onnuri.co.kr', lead_contact_name: '박담당',
     lead_contact_phone: '031-987-6543 (내선 12)',
     lead_message: '전사 문서 검색부터 검토 중입니다.',
+    mzc_sales: null, msp_status: 'unknown', inquiry_date: dateOnly(3),
+    customer_contact_name: null, customer_contact_dept: null, customer_contact_title: null, customer_contact_email: null,
+    inquiry_products: [], stage_changed_at: null,
+    created_at: daysAgo(3).toISOString(),
     owner_id: null, owner_name: null, updated_at: new Date(Date.now() - 3600000).toISOString() },
-  { id: 'd3', customer: '다온커머스', customer_meta: { industry: '유통' }, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1'], packages: [{ id: 'P01', md: 8 }], stage: 4, source: 'sheet', owner_id: user.id, owner_name: user.name, updated_at: new Date(Date.now() - 86400000).toISOString() }
+  { id: 'd3', customer: '다온커머스', customer_meta: { industry: '유통' }, track: 'E-1', track_name: '빠른 도입형', isv_combo: ['s1'], packages: [{ id: 'P01', md: 8 }], stage: 4, source: 'sheet', owner_id: user.id, owner_name: user.name,
+    mzc_sales: '박코어', msp_status: 'no', inquiry_date: dateOnly(35),
+    customer_contact_name: '이현업', customer_contact_dept: '이커머스팀', customer_contact_title: '팀장', customer_contact_email: 'lee@daon.co.kr',
+    inquiry_products: ['s5'],
+    // 유입 35일(warn) · 단계 5일(정상)
+    stage_changed_at: daysAgo(5).toISOString(),
+    created_at: daysAgo(35).toISOString(), updated_at: new Date(Date.now() - 86400000).toISOString() }
 ];
 
 app.get('/api/auth/me', (_req, res) => res.json({ user }));
@@ -215,19 +238,47 @@ app.post('/api/hub/public/leads', (req, res) => {
 });
 // 저장된 리드 확인용. 실제 서버에는 없는 목업 전용 경로다.
 app.get('/api/hub/public/_leads', (_req, res) => res.json(mockLeads));
-app.get('/api/hub/deals', (_req, res) => res.json(deals.map(({ assessment_scores, assessment_totals, isv_combo, packages, ...deal }) => deal)));
+/**
+ * 실제 라우트(routes/hub.js 의 GET /deals)와 같이 **화이트리스트로** 내보낸다.
+ *
+ * 목록은 소유자 게이트가 없어 승인된 전 직원이 본다. 그래서 실제 서버는 컬럼을
+ * 명시 열거하고 customer_meta 도 3키만 뽑는다. 목업이 딜 객체를 통째로 주면
+ * **개인정보 누출을 로컬에서 영영 못 본다** — 이 저장소가 이미 여러 번 데인 종류다.
+ */
+const DEAL_LIST_FIELDS = ['id', 'customer', 'track', 'track_name', 'stage', 'source',
+  'owner_id', 'owner_name', 'updated_at', 'created_at',
+  'msp_status', 'inquiry_date', 'stage_changed_at'];
+
+app.get('/api/hub/deals', (_req, res) => res.json(
+  deals.filter((deal) => !deal.deleted_at).map((deal) => {
+    const row = {};
+    for (const key of DEAL_LIST_FIELDS) row[key] = deal[key] ?? null;
+    const meta = deal.customer_meta || {};
+    row.customer_meta = {
+      industry: meta.industry ?? null,
+      companySize: meta.companySize ?? null,
+      targetUsers: meta.targetUsers ?? null
+    };
+    return row;
+  })
+));
 app.post('/api/hub/deals', (req, res) => {
   const deal = { id: `d${deals.length + 1}`, customer: req.body.customer, customer_meta: req.body.customer_meta || {}, track: null, isv_combo: [], packages: [], stage: 0, source: req.body.source || 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() };
   deals.unshift(deal); res.status(201).json(deal);
 });
 app.get('/api/hub/deals/:id', (req, res) => {
-  const deal = deals.find((item) => item.id === req.params.id);
-  deal ? res.json(deal) : res.status(404).json({ error: 'not found' });
+  const deal = deals.find((item) => item.id === req.params.id && !item.deleted_at);
+  deal ? res.json(deal) : res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
 });
 app.patch('/api/hub/deals/:id', (req, res) => {
-  const index = deals.findIndex((item) => item.id === req.params.id);
-  if (index < 0) return res.status(404).json({ error: 'not found' });
+  const index = deals.findIndex((item) => item.id === req.params.id && !item.deleted_at);
+  if (index < 0) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
   const patch = { ...req.body };
+  // 단계가 실제로 바뀔 때만 정체 시계를 리셋한다. 실제 라우트와 같은 조건이라야
+  // 「메모만 고쳤는데 정체가 풀렸다」를 로컬에서 잡을 수 있다.
+  if (Object.prototype.hasOwnProperty.call(patch, 'stage') && patch.stage !== deals[index].stage) {
+    patch.stage_changed_at = new Date().toISOString();
+  }
   // 실제 서버와 같이 다시 채점하고 평가영역을 다시 채운다. 목업이 그냥 저장만 하면
   // 축 점수가 안 바뀌어 화면 확인이 거짓말이 된다.
   if (patch.readiness_scores) {
@@ -245,8 +296,25 @@ app.patch('/api/hub/deals/:id', (req, res) => {
   res.json(deals[index]);
 });
 app.post('/api/hub/deals/:id/claim', (req, res) => {
-  const deal = deals.find((item) => item.id === req.params.id);
+  const deal = deals.find((item) => item.id === req.params.id && !item.deleted_at);
+  if (!deal) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
   Object.assign(deal, { owner_id: user.id, owner_name: user.name }); res.json(deal);
+});
+/**
+ * 딜 삭제. 실제 서버와 같이 soft delete 이고 **개인정보 4종은 함께 지운다** —
+ * 아무 화면에도 안 보이는 행에 이름·이메일을 영구 보관하는 쪽이 더 나쁘다.
+ * 목업 사용자는 admin 이라 권한 분기는 재현하지 않는다.
+ */
+app.delete('/api/hub/deals/:id', (req, res) => {
+  const deal = deals.find((item) => item.id === req.params.id && !item.deleted_at);
+  if (!deal) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
+  Object.assign(deal, {
+    deleted_at: new Date().toISOString(), deleted_by: user.id,
+    customer_contact_name: null, customer_contact_dept: null,
+    customer_contact_title: null, customer_contact_email: null,
+    updated_at: new Date().toISOString()
+  });
+  res.json({ message: '딜을 삭제했습니다.' });
 });
 app.get('/api/hub/events', (_req, res) => {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });

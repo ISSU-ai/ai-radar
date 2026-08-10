@@ -11,6 +11,14 @@ const {
 /** jsonb 컬럼이 null·잘못된 모양으로 와도 map/filter 가 터지지 않게 한다. */
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
+/**
+ * 041 이 심는 딜 컬럼. 컬럼이 아직 없는 구간에 저장 요청이 오면 503 으로 막는다 —
+ * 그냥 UPDATE 하면 42703 으로 patch 전체가 실패해 같이 실린 메모·단계까지 날아간다.
+ */
+const PIPELINE_FIELDS_041 = new Set(['mzc_sales', 'msp_status', 'inquiry_date',
+  'customer_contact_name', 'customer_contact_dept', 'customer_contact_title',
+  'customer_contact_email', 'inquiry_products']);
+
 const STALE_RATE_LIMIT_MS = 15 * 60 * 1000;
 const PUBLIC_LEAD_LIMIT = 8;
 const PRIVACY_NOTICE = Object.freeze({
@@ -47,6 +55,17 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
    * 메시지 밖의 필드는 **화이트리스트로만** 통과시킨다. 에러 객체를 통째로 직렬화하면
    * 스택·쿼리·컬럼명이 공개 응답에 섞인다.
    */
+  /**
+   * 삭제된 딜을 거르는 조건 조각.
+   *
+   * 041 미적용 구간에는 빈 문자열이 되어 조건이 빠진다 — 쿼리가 깨지는 것보다 낫다.
+   * 딜을 읽거나 고치는 **모든** 쿼리에 붙여야 한다. 하나만 빠지면 지운 딜이 그
+   * 경로에서만 되살아나는데 화면에는 티가 안 난다.
+   */
+  const liveDeal = async (alias = 'd') => (
+    (hasColumn && await hasColumn('deals', 'deleted_at')) ? ` and ${alias}.deleted_at is null` : ''
+  );
+
   const sendError = (res, error, status = 400) => {
     const message = error instanceof Error ? error.message : '요청을 처리할 수 없습니다.';
     const body = { error: message };
@@ -389,12 +408,22 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         params.push(req.user.id);
         conditions.push(`d.owner_id = $${params.length}`);
       }
+      // 이 목록에는 소유자 게이트가 없다 — 승인된 전 직원이 본다. 아래 컬럼 열거와
+      // customer_meta 3키 화이트리스트가 그래서 있다.
+      const has041 = hasColumn ? await hasColumn('deals', 'deleted_at') : false;
+      if (has041) conditions.push('d.deleted_at is null');
       const where = conditions.length ? `where ${conditions.join(' and ')}` : '';
+      // 카드가 쓰는 것만 싣는다. 041 이전에는 null 로 내려보내 배지·필터가 조용히 꺼진다.
+      // ⚠ customer_contact_* 는 **절대 여기 넣지 않는다.** 목록은 전 직원이 본다.
+      const pipelineCols = has041
+        ? 'd.msp_status, d.inquiry_date, d.stage_changed_at'
+        : `null::text as msp_status, null::date as inquiry_date, null::timestamptz as stage_changed_at`;
       // 사이드바 카드는 업종·규모·대상만 쓴다. customer_meta 를 통째로 내보내면
       // 연락처·상담 메모 같은 고객 PII 가 목록 응답에 실린다.
       const result = await pool.query(
         `select d.id, d.customer, d.track, d.stage, d.source,
                 d.owner_id, d.updated_at, d.created_at,
+                ${pipelineCols},
                 jsonb_build_object(
                   'industry',    d.customer_meta -> 'industry',
                   'companySize', d.customer_meta -> 'companySize',
@@ -460,7 +489,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
            where l.promoted_deal = d.id order by l.created_at desc limit 1
          ) lead on true
          where d.id = $1
-           and ($2 = 'admin' or d.owner_id is null or d.owner_id = $3)`,
+           and ($2 = 'admin' or d.owner_id is null or d.owner_id = $3)${await liveDeal()}`,
         [req.params.id, req.user.role, req.user.id]
       );
       if (!result.rows[0]) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
@@ -485,7 +514,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     try {
       const dealResult = await pool.query(
         `select d.* from deals d
-          where d.id = $1 and ($2 = 'admin' or d.owner_id is null or d.owner_id = $3)`,
+          where d.id = $1 and ($2 = 'admin' or d.owner_id is null or d.owner_id = $3)${await liveDeal()}`,
         [req.params.id, req.user.role, req.user.id]
       );
       const deal = dealResult.rows[0];
@@ -606,7 +635,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       const result = await pool.query(
         `update deals
             set recommendation_snapshot = coalesce(recommendation_snapshot, '{}'::jsonb) || $1::jsonb
-          where id = $2 and ($3 = 'admin' or owner_id = $4)
+          where id = $2 and ($3 = 'admin' or owner_id = $4)${await liveDeal('deals')}
           returning id`,
         [JSON.stringify(patch), req.params.id, req.user.role, req.user.id]
       );
@@ -630,8 +659,26 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       const currentResult = await pool.query('select * from deals where id = $1', [req.params.id]);
       const current = currentResult.rows[0];
       if (!current) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
+      // 지운 딜에 잔여 PATCH 가 들어오면 updated_at 이 갱신되고 SSE 가 다른 브라우저를
+      // 깨워 「삭제됨」 상태가 흔들린다. 화면이 타이머를 못 비웠을 때 실제로 온다.
+      if (current.deleted_at) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
       if (req.user.role !== 'admin' && current.owner_id !== req.user.id) {
         return res.status(403).json({ error: '담당자만 이 딜을 수정할 수 있습니다.' });
+      }
+
+      // 041 이 아직 안 돌았는데 새 컬럼을 UPDATE 하면 42703 으로 **저장 전체가**
+      // 실패한다 — 같은 patch 에 실린 메모·단계까지 같이 날아간다. 조용히 버리지도
+      // 않는다. 값이 안 들어갔는데 「자동 저장됨」이 뜨는 쪽이 더 나쁘다.
+      const has041 = hasColumn ? await hasColumn('deals', 'stage_changed_at') : false;
+      const pending041 = Object.keys(patch).filter((field) => PIPELINE_FIELDS_041.has(field));
+      if (!has041 && pending041.length) {
+        return res.status(503).json({ error: '딜 확장 컬럼이 없습니다. 041 마이그레이션을 확인하세요.' });
+      }
+
+      // 단계가 **실제로 바뀔 때만** 정체 시계를 리셋한다. updated_at 은 메모 한 글자에도
+      // 갱신되므로 정체를 못 잰다 — 그래서 이 컬럼이 따로 있다.
+      if (has041 && Object.prototype.hasOwnProperty.call(patch, 'stage') && patch.stage !== current.stage) {
+        patch.stage_changed_at = new Date().toISOString();
       }
 
       // 영업이 STEP02 에서 42문항을 고쳤다. 다시 채점하고 평가영역을 다시 채운다.
@@ -681,7 +728,8 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       // "invalid input syntax for type json" — so stringify these explicitly.
       const JSONB_DEAL_FIELDS = new Set(['isv_combo', 'packages', 'customer_meta',
         'assessment_scores', 'assessment_totals',
-        'readiness_scores', 'readiness_totals', 'prereq_confirmations']);
+        'readiness_scores', 'readiness_totals', 'prereq_confirmations',
+        'inquiry_products']);
       const fields = Object.keys(patch);
       const values = fields.map((field) => (JSONB_DEAL_FIELDS.has(field) ? JSON.stringify(patch[field]) : patch[field]));
       values.push(req.params.id);
@@ -702,11 +750,67 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     }
   });
 
+  /**
+   * 딜 삭제.
+   *
+   * **soft delete 다.** leads.promoted_deal 이 on delete 절 없이 NO ACTION 이라 포탈
+   * 딜을 실제로 지우면 23503 으로 실패한다. 리드를 고아로 만들거나 같이 지우면 동의
+   * 이력이 깨진다 — 둘 다 더 나쁘다.
+   *
+   * **다만 고객 담당자 4종은 함께 지운다.** soft delete 만 하면 「지웠다」고 했는데
+   * 이름·이메일이 아무 화면에도 안 보이는 행에 영구히 남는다. 보유기간 파기 절차가
+   * 없는 이 시스템에서는 그게 가장 나쁜 형태다.
+   *
+   * 권한은 쓰기 게이트(담당자·admin)와 같지만 **선조회 + JS 검사**를 쓴다. 한 방
+   * 쿼리는 「남의 딜」과 「미배정 딜」을 똑같이 404 로 만드는데, 미배정 딜은 「담당하기
+   * 후 삭제」라고 읽을 수 있게 답해야 한다.
+   *
+   * SSE 는 따로 쏘지 않는다 — trg_deals_notify 가 UPDATE 에 붙어 있어 자동으로 나간다.
+   */
+  router.delete('/deals/:id', async (req, res) => {
+    try {
+      if (!(hasColumn && await hasColumn('deals', 'deleted_at'))) {
+        return res.status(503).json({ error: '삭제 컬럼이 없습니다. 041 마이그레이션을 확인하세요.' });
+      }
+      const currentResult = await pool.query(
+        'select * from deals where id = $1 and deleted_at is null', [req.params.id]
+      );
+      const current = currentResult.rows[0];
+      if (!current) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
+
+      if (req.user.role !== 'admin') {
+        if (!current.owner_id) {
+          return res.status(403).json({ error: '미배정 딜입니다. 「담당하기」 후 삭제할 수 있습니다.' });
+        }
+        if (current.owner_id !== req.user.id) {
+          return res.status(403).json({ error: '담당자만 이 딜을 삭제할 수 있습니다.' });
+        }
+      }
+
+      await pool.query(
+        `update deals
+            set deleted_at = now(), deleted_by = $1,
+                customer_contact_name = null, customer_contact_dept = null,
+                customer_contact_title = null, customer_contact_email = null
+          where id = $2`,
+        [req.user.id, req.params.id]
+      );
+
+      // 고객 담당자 정보는 넣지 않는다. Slack 채널은 보존기간 관리 밖이다.
+      void slackNotify(`🗑 딜 삭제: ${current.customer} · ${req.user.name}`);
+      auditLog(req.user.id, 'delete', `deal:${req.params.id}`, current.customer);
+      res.json({ message: '딜을 삭제했습니다.' });
+    } catch (error) {
+      console.error(error);
+      sendError(res, error, 500);
+    }
+  });
+
   router.post('/deals/:id/claim', async (req, res) => {
     try {
       const result = await pool.query(
         `update deals set owner_id = $1
-         where id = $2 and (owner_id is null or $3 = true)
+         where id = $2 and (owner_id is null or $3 = true)${await liveDeal('deals')}
          returning *`,
         [req.user.id, req.params.id, req.user.role === 'admin']
       );
@@ -726,7 +830,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     const ownerId = req.body?.owner_id || null;
     try {
       const result = await pool.query(
-        `update deals set owner_id = $1 where id = $2 returning *`,
+        `update deals set owner_id = $1 where id = $2${await liveDeal('deals')} returning *`,
         [ownerId, req.params.id]
       );
       if (!result.rows[0]) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });

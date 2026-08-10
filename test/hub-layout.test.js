@@ -167,7 +167,37 @@ test('asynchronous list, claim, and live-update responses cannot overwrite newer
   assert.match(js, /if \(requestId !== state\.dealListSequence\) return/);
   assert.match(js, /const dealId = state\.deal\?\.id[\s\S]*?if \(state\.deal\?\.id === dealId\)/);
   assert.match(js, /refreshed = await api[\s\S]*?if \(state\.deal\?\.id !== change\.id \|\| stillHasLocalSave\) return/);
-  // 열어둔 딜을 남이 claim 하면 상세가 404 로 닫힌다. 던지지 말고 워크스페이스를 비운다.
-  assert.match(js, /refreshed = await api\(`\/api\/hub\/deals\/\$\{change\.id\}`\);\s*\} catch \(error\) \{[\s\S]*?state\.deal = null/);
+  // 열어둔 딜이 404 로 닫힌다. 던지지 말고 워크스페이스를 비운다.
+  assert.match(js, /refreshed = await api\(`\/api\/hub\/deals\/\$\{change\.id\}`\);\s*\} catch \(error\) \{[\s\S]*?closeWorkspace\(/);
   assert.match(js, /if \(state\.mode === 'deals'\) renderWorkspace\(\)/);
+});
+
+test('딜을 닫는 정리는 한 곳에 모여 있고 대기 중인 저장을 비운다', () => {
+  // 흩어져 있으면 반드시 어긋난다 — 실제로 SSE 분기에는 pendingPatch 정리가 빠져 있어
+  // 딜이 닫힌 뒤 700ms 타이머가 사라진 딜에 PATCH 를 쏘는 잠복 결함이 있었다.
+  const body = js.slice(js.indexOf('function closeWorkspace'), js.indexOf('async function deleteDeal'));
+  assert.match(body, /state\.deal = null/);
+  assert.match(body, /state\.pendingPatch = \{\}/, '대기 중인 저장을 안 비운다');
+  assert.match(body, /state\.pendingDealId = null/);
+  assert.match(body, /clearTimeout\(state\.saveTimer\)/);
+  assert.match(body, /history\.replaceState[\s\S]{0,120}'\/hub'/, '?deal= 을 남기면 새로고침 때 없는 딜을 연다');
+  // 삭제와 SSE 분기가 둘 다 이 함수를 쓴다
+  assert.ok((js.match(/closeWorkspace\(/g) || []).length >= 3, '정리 경로가 다시 흩어졌다');
+});
+
+test('삭제는 요청 전에 대기 중인 저장을 비운다', () => {
+  const body = js.slice(js.indexOf('async function deleteDeal'), js.indexOf('function switchToDeals'));
+  // flushSave 가 먼저 와야 한다 — 지운 뒤 타이머가 터지면 404 PATCH 가 나간다.
+  assert.match(body, /await flushSave\(\)[\s\S]*?state\.pendingPatch = \{\}[\s\S]*?method: 'DELETE'/);
+  assert.match(body, /closeWorkspace\(/);
+  // 실패는 토스트가 아니라 다이얼로그 안에 남긴다 — 창이 닫히면 메시지도 사라진다.
+  assert.match(body, /#delete-deal-error/);
+});
+
+test('SSE 는 operation 이 아니라 목록 존재 여부로 삭제를 가른다', () => {
+  // soft delete 는 DB 상 UPDATE 라 operation 으로 구분이 안 된다.
+  assert.match(js, /const stillListed = state\.deals\.some/);
+  assert.match(js, /stillListed \? '이 딜은 다른 담당자가 맡았습니다\.' : '이 딜은 삭제되었습니다\.'/);
+  // 주석으로 「읽지 마라」를 적어 두는 것은 괜찮다. 실제로 값을 보는 것만 막는다.
+  assert.ok(!/change\.operation\s*[=!)?.[]/.test(js), 'operation 을 실제로 읽고 있다');
 });

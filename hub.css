@@ -68,7 +68,7 @@ input::placeholder, textarea::placeholder { color: #768596; opacity: 1; }
 .sidebar-search svg { position: absolute; z-index: 1; left: 12px; top: 50%; width: 15px; color: var(--faint); transform: translateY(-50%); }
 .sidebar-search input { width: 100%; height: 44px; padding: 0 12px 0 36px; color: var(--ink); border: 1px solid var(--line); border-radius: 9px; outline: 0; background: var(--surface2); font-size: 18px; }
 .sidebar-search input:focus { border-color: rgba(212, 164, 56, .62); box-shadow: 0 0 0 3px rgba(212, 164, 56, .08); }
-.deal-segments { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: #121921; }
+.deal-segments { display: grid; grid-template-columns: repeat(4, 1fr); padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: #121921; }
 .deal-segments button { min-width: 0; height: 31px; padding: 0 5px; color: var(--faint); border: 0; border-radius: 6px; background: transparent; font-size: 13px; font-weight: 700; cursor: pointer; }
 .deal-segments button:hover { color: var(--dim); }
 .deal-segments button.active { color: var(--ink); background: var(--raised); box-shadow: 0 1px 5px rgba(0, 0, 0, .2); }
@@ -506,3 +506,43 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 .lic-total b { color: var(--text); font: 700 22px var(--font-mono); }
 .lic-total small { color: var(--faint); font: 600 11px var(--font-mono); }
 .prereq-check span small { display: block; margin-top: 2px; color: var(--faint); font-size: 10px; line-height: 1.45; }
+
+/* ── 041 딜 확장 ────────────────────────────────────────────────
+   STEP01 이 9칸에서 16칸이 됐다. 그룹 제목으로 끊지 않으면 어디까지가 고객
+   정보이고 어디부터가 우리 관리 정보인지 안 보인다. */
+.field-group { margin-top: 22px; }
+.field-group:first-child { margin-top: 0; }
+.field-group > h3 { margin: 0 0 12px; padding-bottom: 7px; border-bottom: 1px solid var(--card-border);
+  color: var(--text-secondary); font-size: .78rem; font-weight: 700; letter-spacing: .04em; }
+.field-note { grid-column: 1 / -1; margin: -2px 0 2px; color: var(--text-secondary); font-size: .74rem; line-height: 1.6; }
+
+/* 정체 표시 — 계산 결과라 입력칸과 분리해 이 컨테이너만 다시 그린다 */
+.stall-summary { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.stall-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px;
+  background: var(--surface-muted); color: var(--text-secondary); font-size: .74rem; font-weight: 600; }
+.stall-chip.warn { background: rgba(245,165,36,.14); color: #f5a524; }
+.stall-chip.late { background: rgba(229,72,77,.14); color: #e5484d; }
+
+/* 문의 제품 — 카탈로그가 수십 종이라 접어 둔다. 열려 있으면 다른 칸을 다 밀어낸다 */
+.inquiry-products { grid-column: 1 / -1; padding: 10px 12px; border: 1px solid var(--card-border); border-radius: 8px; }
+.inquiry-products > summary { cursor: pointer; color: var(--text-secondary); font-size: .8rem; font-weight: 600; }
+.inquiry-products > summary::marker { color: var(--text-secondary); }
+.inquiry-picks { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 10px; }
+.inquiry-picks label { display: inline-flex; align-items: center; gap: 5px; font-size: .78rem; cursor: pointer; }
+.inquiry-chip { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 20px;
+  background: rgba(76,154,255,.14); color: var(--accent-blue); font-size: .72rem; font-weight: 600; }
+.inquiry-chip.unknown { background: var(--surface-muted); color: var(--text-secondary); }
+
+/* 딜 카드 배지 */
+.deal-card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
+.msp-tag { padding: 1px 7px; border-radius: 20px; background: rgba(21,163,91,.16); color: #15a35b; font-size: .68rem; font-weight: 800; }
+
+/* 위험한 동작 — 이 화면에 처음 생긴다 */
+.ghost-button.danger { color: #e5484d; }
+.ghost-button.danger:hover { background: rgba(229,72,77,.1); }
+.danger-button { padding: 9px 18px; border: 0; border-radius: 8px; background: #e5484d; color: #fff;
+  font-size: .85rem; font-weight: 700; cursor: pointer; }
+.danger-button:hover { background: #cf3438; }
+.dialog-lead { margin: 4px 0 10px; font-size: .88rem; }
+.dialog-warn { margin: 0 0 14px; padding-left: 18px; display: grid; gap: 6px;
+  color: var(--text-secondary); font-size: .78rem; line-height: 1.6; }

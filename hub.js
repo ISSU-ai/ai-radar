@@ -124,6 +124,16 @@ function bindGlobalEvents() {
     requestAnimationFrame(() => $('#new-customer').focus());
   });
   $$('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => $('#new-deal-dialog').close()));
+  // 삭제 창은 닫기 속성이 다르다. 위 위임이 #new-deal-dialog 를 하드코딩해 닫으므로
+  // 같은 속성을 쓰면 취소 버튼이 엉뚱한 창을 닫는다.
+  $$('[data-close-delete-dialog]').forEach((button) => button.addEventListener('click', () => $('#delete-deal-dialog').close()));
+  $('#delete-deal-button').addEventListener('click', () => {
+    if (!state.deal) return;
+    $('#delete-deal-customer').textContent = state.deal.customer;
+    $('#delete-deal-error').textContent = '';
+    $('#delete-deal-dialog').showModal();
+  });
+  $('#confirm-delete-deal').addEventListener('click', () => void deleteDeal());
   $('#new-deal-form').addEventListener('submit', createDeal);
   $('#list-toggle').addEventListener('click', toggleDealList);
   $('#reference-list-toggle').addEventListener('click', toggleDealList);
@@ -176,9 +186,14 @@ async function loadDeals() {
   try {
     const deals = await api(`/api/hub/deals?${params}`);
     if (requestId !== state.dealListSequence) return;
-    state.deals = state.dealFilter === 'new'
-      ? deals.filter((deal) => deal.source === 'portal' && !deal.owner_id)
-      : deals;
+    // new·msp 는 클라이언트 필터다. 목록에 LIMIT 이 없고 배지 때문에 어차피
+    // msp_status 가 응답에 실려 있어서 서버 필터가 얻는 게 없다.
+    const clientFilters = {
+      new: (deal) => deal.source === 'portal' && !deal.owner_id,
+      msp: (deal) => deal.msp_status === 'yes'
+    };
+    const clientFilter = clientFilters[state.dealFilter];
+    state.deals = clientFilter ? deals.filter(clientFilter) : deals;
     renderMetrics();
     renderDealList();
   } catch (error) {
@@ -207,9 +222,12 @@ function renderDealList() {
     const sub = [meta.industry, meta.companySize || meta.targetUsers].filter(Boolean).join(' · ') || sourceNames[deal.source] || '고객 정보 확인 중';
     const selected = state.deal?.id === deal.id;
     const dots = state.refs.stages.map((_, index) => `<i class="${index < deal.stage ? 'done' : ''} ${index === deal.stage ? 'current' : ''}"></i>`).join('');
+    // MSP 는 yes 일 때만 띄운다. 「확인 필요」를 전 딜에 띄우면 소음이 되어 아무도 안 본다.
+    const tags = (deal.msp_status === 'yes' ? '<span class="msp-tag">MSP</span>' : '') + stallChipsMarkup(deal);
     return `<button class="deal-card ${selected ? 'selected' : ''}" type="button" data-deal-id="${deal.id}" aria-current="${selected ? 'true' : 'false'}">
       <span class="deal-card-head"><span class="deal-card-customer"><strong>${escapeHtml(deal.customer)}</strong>${isNew ? '<span class="new-tag">신규</span>' : ''}</span><span class="track-badge" data-track="${escapeHtml(deal.track || '')}">${escapeHtml(deal.track || '미정')}</span></span>
       <span class="deal-card-sub">${escapeHtml(sub)}</span>
+      ${tags ? `<span class="deal-card-tags">${tags}</span>` : ''}
       <span class="deal-card-foot"><span class="deal-stage-summary"><span class="stage-dots">${dots}</span><span class="deal-stage-label">${deal.stage + 1} · ${escapeHtml(stageLabel)}</span></span><span class="deal-owner">${escapeHtml(deal.owner_name || '미배정')}</span></span>
     </button>`;
   }).join('');
@@ -352,6 +370,54 @@ function toggleDealList() {
   }
   state.userCollapsed = !state.userCollapsed;
   updateLayoutState();
+}
+
+/**
+ * 열어 둔 딜을 닫고 목록 화면으로 돌린다.
+ *
+ * 이 정리가 여러 곳에 흩어져 있으면 반드시 어긋난다 — 실제로 SSE 분기에는
+ * **대기 중인 저장을 비우는 코드가 빠져 있었다.** 그 상태로 딜이 닫히면 700ms 뒤
+ * 타이머가 사라진 딜에 PATCH 를 쏜다.
+ */
+function closeWorkspace(message) {
+  state.deal = null;
+  state.reco = null;
+  clearTimeout(state.saveTimer);
+  state.saveTimer = null;
+  state.pendingPatch = {};
+  state.pendingDealId = null;
+  $('#workspace').classList.add('hidden');
+  $('#empty-workspace').classList.remove('hidden');
+  // ?deal= 을 남겨 두면 새로고침할 때 없는 딜을 다시 연다.
+  history.replaceState({ hubList: true, hubDetail: false, dealId: null }, '', '/hub');
+  syncDealSelection();
+  if (message) toast(message);
+}
+
+/**
+ * 딜 삭제. 서버는 soft delete 이고 고객 담당자 4종은 함께 지운다.
+ *
+ * 요청 **전에** 대기 중인 저장을 비운다. 안 그러면 지운 뒤 타이머가 터져 404 PATCH 가
+ * 나가고 "딜을 찾을 수 없습니다" 토스트가 뜬금없이 뜬다.
+ */
+async function deleteDeal() {
+  const dealId = state.deal?.id;
+  if (!dealId) return;
+  try { await flushSave(); } catch (_error) { /* 어차피 지울 딜이다 */ }
+  clearTimeout(state.saveTimer);
+  state.saveTimer = null;
+  state.pendingPatch = {};
+  state.pendingDealId = null;
+
+  $('#delete-deal-error').textContent = '';
+  try {
+    const result = await api(`/api/hub/deals/${dealId}`, { method: 'DELETE' });
+    $('#delete-deal-dialog').close();
+    closeWorkspace(result?.message || '딜을 삭제했습니다.');
+    await loadDeals();
+  } catch (error) {
+    $('#delete-deal-error').textContent = error.message;
+  }
 }
 
 function switchToDeals() {
@@ -512,7 +578,14 @@ function renderWorkspace() {
   $('#context-track').textContent = deal.track ? `${deal.track} · ${deal.track_name || ''}` : '미정';
   $('#context-source').textContent = sourceNames[deal.source] || deal.source;
   $('#context-updated').textContent = formatDate(deal.updated_at);
+  $('#context-mzc-sales').textContent = deal.mzc_sales || '—';
+  $('#context-msp').textContent = MSP_LABELS[deal.msp_status] || MSP_LABELS.unknown;
+  // 직함은 여기서 보여준다. 목록(GET /deals)에는 안 싣는다 — 그 응답은 담당자가
+  // 아닌 전 직원이 보고, 「고객사 · CTO」는 사실상 특정 개인을 가리킨다.
+  $('#context-contact').textContent = [deal.customer_contact_name, deal.customer_contact_title,
+    deal.customer_contact_dept].filter(Boolean).join(' · ') || '—';
   $('#claim-button').classList.toggle('hidden', Boolean(deal.owner_id));
+  $('#delete-deal-button').classList.toggle('hidden', !isOwner());
   renderStageRail();
   renderStage();
   renderReadiness();
@@ -614,29 +687,159 @@ function companySizeOptions(current) {
  * 포탈로 들어온 담당자 정보. leads 에만 있고 customer_meta 에는 없다 —
  * 개인정보라 동의 이력과 같은 표에 두고 딜로 복사하지 않는다(027).
  * 그래서 편집 불가 표시로만 보여준다. 영업이 고쳐야 할 값이 아니라 고객이 남긴 값이다.
+ *
+ * 이메일까지 여기서 보여준다. 예전에는 편집 가능한 「고객 연락처」 칸이 리드 이메일을
+ * 미리 채워 놓아서, 영업이 한 글자만 건드리면 개인정보가 customer_meta 로 복사됐다.
  */
 function portalContactMarkup() {
-  const name = state.deal.lead_contact_name;
-  const phone = state.deal.lead_contact_phone;
-  if (!name && !phone) return '';
-  return `<div class="field"><label>포탈 담당자 <small>(고객 입력)</small></label>
-    <div class="readonly-value">${escapeHtml([name, phone].filter(Boolean).join(' · '))}</div></div>`;
+  const parts = [state.deal.lead_contact_name, state.deal.lead_contact_phone, state.deal.lead_contact];
+  if (!parts.some(Boolean)) return '';
+  return `<div class="field full"><label>포탈 담당자 <small>(고객 입력 · 편집 불가)</small></label>
+    <div class="readonly-value">${escapeHtml(parts.filter(Boolean).join(' · '))}</div></div>
+    <p class="field-note">고객이 동의와 함께 남긴 원본이라 딜로 복사하지 않습니다. 영업이 확인한 담당자는 아래에 직접 입력합니다.</p>`;
+}
+
+/**
+ * 041 이전에 customer_meta.contact 로 저장된 값 중 이메일이 아니어서 못 옮긴 것.
+ * 전화번호나 "내선 301" 이 들어 있어 어느 칸으로 가야 할지 우리가 모른다.
+ * 눈앞에서 사라지지 않게 읽기 전용으로 남긴다. 0건이 되면 이 함수를 지운다.
+ */
+function legacyContactMarkup(meta) {
+  if (!meta.contact) return '';
+  return `<div class="field"><label>이전 연락처 <small>(이관 대상)</small></label>
+    <div class="readonly-value">${escapeHtml(meta.contact)}</div></div>`;
+}
+
+/** 정체 판정 기준일. 영업 리더 확정 전 잠정값이라 여기 한 곳만 고치면 된다. */
+const STALL_DAYS = Object.freeze({ inflowWarn: 30, inflowLate: 60, stageWarn: 14, stageLate: 30 });
+
+/**
+ * F/U 가 필요한 딜인가. 시계가 **두 개**다 — 요청 원문이 둘 다 말한다.
+ * "유입된 지 오래됐는데 단계에서 너무 오래 안 넘어가면".
+ *
+ * updated_at 은 쓰지 않는다. 메모 한 글자에도 갱신되므로 모든 딜이 늘 신선해 보인다.
+ * inquiry_date 가 없으면 created_at 을 쓰되 **라벨을 「등록」으로 바꾼다** — 없는 것을
+ * 있는 척하면 안 된다. stage_changed_at 이 없으면(041 이전 딜) 단계 시계는 안 그린다.
+ */
+function stallState(deal) {
+  const days = (value) => {
+    if (!value) return null;
+    const at = new Date(value).getTime();
+    return Number.isFinite(at) ? Math.floor((Date.now() - at) / 86400000) : null;
+  };
+  const inflowFrom = deal?.inquiry_date || deal?.created_at;
+  const inflowDays = days(deal?.inquiry_date ? `${deal.inquiry_date}T00:00:00` : deal?.created_at);
+  const stageDays = days(deal?.stage_changed_at);
+  const rank = (value, warn, late) =>
+    (value == null ? 0 : value >= late ? 2 : value >= warn ? 1 : 0);
+  return {
+    inflowDays,
+    inflowLabel: deal?.inquiry_date ? '유입' : '등록',
+    inflowLevel: rank(inflowDays, STALL_DAYS.inflowWarn, STALL_DAYS.inflowLate),
+    stageDays,
+    stageLevel: rank(stageDays, STALL_DAYS.stageWarn, STALL_DAYS.stageLate),
+    known: Boolean(inflowFrom)
+  };
+}
+
+const STALL_CLASS = ['', 'warn', 'late'];
+
+function stallChipsMarkup(deal) {
+  const stall = stallState(deal);
+  const chips = [];
+  if (stall.inflowDays != null) {
+    chips.push(`<span class="stall-chip ${STALL_CLASS[stall.inflowLevel]}">${stall.inflowLabel} ${stall.inflowDays}일</span>`);
+  }
+  if (stall.stageDays != null) {
+    chips.push(`<span class="stall-chip ${STALL_CLASS[stall.stageLevel]}">단계 ${stall.stageDays}일</span>`);
+  }
+  return chips.join('');
+}
+
+/** 계산 결과만. 입력칸과 분리해야 문의 시점을 고칠 때 포커스를 잃지 않는다. */
+function stallSummaryMarkup() {
+  const chips = stallChipsMarkup(state.deal);
+  if (!chips) return '<span class="stall-chip">문의 시점을 넣으면 F/U 시점이 계산됩니다.</span>';
+  const stall = stallState(state.deal);
+  const note = stall.stageDays == null
+    ? ' <span class="stall-chip">단계 이동 기록은 다음 이동부터 쌓입니다.</span>' : '';
+  return chips + note;
+}
+
+function renderStallSummary() {
+  const node = document.getElementById('stall-summary');
+  if (node) node.innerHTML = stallSummaryMarkup();
+}
+
+const MSP_LABELS = Object.freeze({ yes: 'MSP 운영 중', no: '미운영', unknown: '확인 필요' });
+
+/** 문의 제품 선택 칩. 카탈로그에서 내려간 id 도 조용히 감추지 않는다. */
+function inquiryProductChipsMarkup() {
+  const picked = asArray(state.deal?.inquiry_products);
+  if (!picked.length) return '<span class="inquiry-chip unknown">선택 안 함</span>';
+  const byId = new Map(state.refs.solutions.map((item) => [item.id, item]));
+  return picked.map((id) => (byId.has(id)
+    ? `<span class="inquiry-chip">${escapeHtml(byId.get(id).name)}</span>`
+    : '<span class="inquiry-chip unknown">카탈로그에 없는 제품</span>')).join('');
+}
+
+/**
+ * 문의 제품 체크박스. STEP03 의 후보 카드를 재사용하지 않는다 —
+ * 거기는 판정 데이터 없는 솔루션을 감추는데, 문의 제품에는 그 규칙이 **틀리다.**
+ * 고객이 판정 데이터 없는 제품을 물어본 것 자체가 카탈로그 보강 신호다.
+ */
+function inquiryProductsMarkup() {
+  const picked = new Set(asArray(state.deal?.inquiry_products));
+  const boxes = state.refs.solutions.map((item) => `<label><input type="checkbox"
+    data-inquiry-product="${escapeHtml(item.id)}" ${picked.has(item.id) ? 'checked' : ''} ${disabledAttr()}>${escapeHtml(item.name)}</label>`).join('');
+  return `<details class="inquiry-products">
+    <summary>문의 제품 <span id="inquiry-product-chips">${inquiryProductChipsMarkup()}</span></summary>
+    <div class="inquiry-picks">${boxes || '<span class="field-note">카탈로그를 불러오는 중입니다.</span>'}</div>
+  </details>`;
+}
+
+/** 요약만 갈아끼운다. renderStage() 를 부르면 <details> 가 접히고 스크롤이 튄다. */
+function renderInquiryProductChips() {
+  const node = document.getElementById('inquiry-product-chips');
+  if (node) node.innerHTML = inquiryProductChipsMarkup();
 }
 
 function renderIntake() {
   const meta = state.deal.customer_meta || {};
+  const deal = state.deal;
+  const mspOption = (value) =>
+    `<option value="${value}" ${(deal.msp_status || 'unknown') === value ? 'selected' : ''}>${MSP_LABELS[value]}</option>`;
   return `${stageHeader('01', '들어온 데이터', '포탈·미팅·시트에서 들어온 고객 맥락을 한곳에 정리합니다. 이 정보는 이후 모든 단계에 그대로 이어집니다.')}
-    <div class="form-grid">
-      <div class="field"><label for="deal-customer">고객사</label><input id="deal-customer" type="text" data-deal-field="customer" value="${escapeHtml(state.deal.customer)}" ${disabledAttr()}></div>
+    <div class="field-group"><h3>고객사</h3><div class="form-grid">
+      <div class="field"><label for="deal-customer">고객사</label><input id="deal-customer" type="text" data-deal-field="customer" value="${escapeHtml(deal.customer)}" ${disabledAttr()}></div>
       <div class="field"><label for="deal-industry">업종</label><input id="deal-industry" type="text" data-meta-field="industry" value="${escapeHtml(meta.industry || '')}" placeholder="금융 / 제조 / 공공" ${disabledAttr()}></div>
       <div class="field"><label for="deal-company-size">조직 규모</label><select id="deal-company-size" data-meta-field="companySize" ${disabledAttr()}><option value="">선택</option>${companySizeOptions(meta.companySize)}</select></div>
       <div class="field"><label for="deal-target-users">도입 대상</label><input id="deal-target-users" type="text" data-meta-field="targetUsers" value="${escapeHtml(meta.targetUsers || '')}" placeholder="예: 전사 2,000명 / 개발조직 200명" ${disabledAttr()}></div>
-      <div class="field"><label for="deal-contact">고객 연락처</label><input id="deal-contact" type="text" data-meta-field="contact" value="${escapeHtml(meta.contact || state.deal.lead_contact || '')}" placeholder="업무 이메일 또는 전화번호" ${disabledAttr()}></div>
+    </div></div>
+
+    <div class="field-group"><h3>고객 담당자</h3><div class="form-grid">
       ${portalContactMarkup()}
+      <div class="field"><label for="deal-contact-name">이름</label><input id="deal-contact-name" type="text" data-deal-field="customer_contact_name" value="${escapeHtml(deal.customer_contact_name || '')}" placeholder="예: 김디지털" ${disabledAttr()}></div>
+      <div class="field"><label for="deal-contact-dept">소속 부서</label><input id="deal-contact-dept" type="text" data-deal-field="customer_contact_dept" value="${escapeHtml(deal.customer_contact_dept || '')}" placeholder="예: 디지털혁신본부" ${disabledAttr()}></div>
+      <div class="field"><label for="deal-contact-title">직함</label><input id="deal-contact-title" type="text" data-deal-field="customer_contact_title" value="${escapeHtml(deal.customer_contact_title || '')}" placeholder="예: 상무 / 팀장" ${disabledAttr()}></div>
+      <div class="field"><label for="deal-contact-email">이메일</label><input id="deal-contact-email" type="email" data-deal-field="customer_contact_email" value="${escapeHtml(deal.customer_contact_email || '')}" placeholder="name@company.com" ${disabledAttr()}></div>
+      ${legacyContactMarkup(meta)}
+    </div></div>
+
+    <div class="field-group"><h3>딜 관리 (MZC)</h3><div class="form-grid">
+      <div class="field"><label for="deal-mzc-sales">MZC Sales</label><input id="deal-mzc-sales" type="text" data-deal-field="mzc_sales" value="${escapeHtml(deal.mzc_sales || '')}" placeholder="담당 코어세일즈" ${disabledAttr()}></div>
+      <div class="field"><label for="deal-msp">MSP 여부</label><select id="deal-msp" data-deal-field="msp_status" ${disabledAttr()}>${mspOption('unknown')}${mspOption('yes')}${mspOption('no')}</select></div>
+      <div class="field"><label for="deal-inquiry-date">문의 유입 시점</label><input id="deal-inquiry-date" type="date" data-deal-field="inquiry_date" value="${escapeHtml(deal.inquiry_date || '')}" ${disabledAttr()}></div>
+      <div class="field"><label>유입 경로</label><div class="readonly-value">${escapeHtml(sourceNames[deal.source] || deal.source || '—')}</div></div>
+      <div id="stall-summary" class="stall-summary">${stallSummaryMarkup()}</div>
+    </div></div>
+
+    <div class="field-group"><h3>문의 내용</h3><div class="form-grid">
+      ${inquiryProductsMarkup()}
       <div class="field"><label for="deal-security-stack">보안 게이트웨이 <small>(영업 확인)</small></label><select id="deal-security-stack" data-meta-field="securityStack" ${disabledAttr()}><option value="">미정</option><option value="none" ${meta.securityStack === 'none' ? 'selected' : ''}>별도 SWG 없음</option><option value="existing" ${meta.securityStack === 'existing' ? 'selected' : ''}>있으나 제품 미확인 (고객 응답)</option><option value="managed" ${meta.securityStack === 'managed' ? 'selected' : ''}>AI 전용 정책까지 운영 (고객 응답)</option><option value="zscaler" ${meta.securityStack === 'zscaler' ? 'selected' : ''}>Zscaler</option><option value="other-swg" ${meta.securityStack === 'other-swg' ? 'selected' : ''}>타사 SWG</option></select></div>
       <div class="field"><label for="deal-investment">투자 여력</label><select id="deal-investment" data-meta-field="investment" ${disabledAttr()}><option value="">미정</option><option value="low" ${meta.investment === 'low' ? 'selected' : ''}>제한적</option><option value="medium" ${meta.investment === 'medium' ? 'selected' : ''}>PoC 예산 확보</option><option value="high" ${meta.investment === 'high' ? 'selected' : ''}>전사 확장 가능</option></select></div>
       <div class="field full"><label for="deal-notes">고객 상황·요청 메모</label><textarea id="deal-notes" data-meta-field="notes" ${disabledAttr()} placeholder="미팅에서 확인한 문제, 의사결정자, 일정 등을 적어주세요.">${escapeHtml(meta.notes || state.deal.lead_message || '')}</textarea></div>
-    </div>`;
+    </div></div>`;
 }
 
 /**
@@ -1095,6 +1298,22 @@ function renderIsvBundles() {
   </section>`;
 }
 
+/**
+ * 고객이 물어봤는데 조합에 안 들어간 제품.
+ *
+ * 문의 ≠ 제안이라 자동으로 넣지 않는다. 다만 **물어본 걸 빼고 제안하면 대화가
+ * 어긋나므로** 한 줄로 알려 준다. 자동 추가·경고 배지까지는 만들지 않는다.
+ */
+function inquiryGapMarkup() {
+  const inCombo = new Set(asArray(state.deal?.isv_combo));
+  const byId = new Map(state.refs.solutions.map((item) => [item.id, item]));
+  const missing = asArray(state.deal?.inquiry_products)
+    .filter((id) => !inCombo.has(id))
+    .map((id) => byId.get(id)?.name || id);
+  if (!missing.length) return '';
+  return `<p class="catalog-hidden-note">고객이 물어본 제품 중 조합에 없는 것 — ${escapeHtml(missing.join(', '))}</p>`;
+}
+
 function renderSolutions() {
   const selected = new Set(asArray(state.deal.isv_combo));
   const query = state.catalogQuery.toLowerCase();
@@ -1114,6 +1333,7 @@ function renderSolutions() {
   </label>`).join('');
   return `${stageHeader('03', 'ISV 조합 추천', 'AI Radar의 내부 카탈로그를 딜과 연결합니다. 급·포컬·기술 제약은 내부에서만 보입니다.')}
     <div id="reco-panel" class="reco-panel"></div>
+    ${inquiryGapMarkup()}
     ${renderIsvBundles()}
     <div class="catalog-toolbar"><div class="search-wrap"><i data-lucide="search"></i><input id="catalog-search" type="search" value="${escapeHtml(state.catalogQuery)}" placeholder="솔루션·카테고리 검색"></div><a class="secondary-button" href="/radar" target="_blank" rel="noopener" title="AI Radar를 새 창으로 열기"><i data-lucide="external-link"></i> AI Radar</a></div>
     <div class="selection-grid">${cards || '<div class="empty-state">검색 결과가 없습니다.</div>'}</div>
@@ -1623,6 +1843,10 @@ function buildPitch() {
       line('업종', meta.industry), line('규모', meta.companySize),
       line('도입 대상', meta.targetUsers)
     ].filter(Boolean).join('   ·   '),
+    // 직함이 있으면 Top-down 딜인지 여기서 드러난다. 제안 톤이 달라진다.
+    line('\n담당', [deal.customer_contact_name, deal.customer_contact_title,
+      deal.customer_contact_dept].filter(Boolean).join(' · ')),
+    line('\n문의', inquiryProductNames().join(' · ')),
     meta.notes || deal.lead_message ? `\n메모: ${meta.notes || deal.lead_message}` : '',
     `\n${quotes}`,
     totals.insight ? `\n${totals.insight}` : '',
@@ -1723,7 +1947,9 @@ function buildPitch() {
     .filter((a2) => Number.isFinite(Number(a2.score)))
     .sort((a2, b2) => a2.score - b2.score)[0];
   const summary = block('요약', [
-    line('고객   ', [meta.industry, meta.companySize, meta.targetUsers].filter(Boolean).join(' · ')),
+    line('고객   ', [meta.industry, meta.companySize, meta.targetUsers,
+      [deal.customer_contact_name, deal.customer_contact_title].filter(Boolean).join(' ')
+    ].filter(Boolean).join(' · ')),
     line('현재   ', Number.isFinite(avg)
       ? `${totals.maturity?.name || ''} 단계 ${avg.toFixed(2)}`
         + (weakest ? ` — ${weakest.name} ${Number(weakest.score).toFixed(1)} 이 가장 낮다` : '')
@@ -1793,6 +2019,22 @@ function reportHeader(stageIndex) {
 }
 
 /** STEP01 — 들어온 고객 맥락. 이후 모든 판단의 전제라 그대로 남긴다. */
+/** 문의 제품 이름. 카탈로그에서 내려간 id 는 조용히 감추지 않는다. */
+function inquiryProductNames() {
+  const byId = new Map(state.refs.solutions.map((item) => [item.id, item]));
+  return asArray(state.deal?.inquiry_products)
+    .map((id) => byId.get(id)?.name || `${id} (카탈로그에 없음)`);
+}
+
+/** 문서용 정체 한 줄. 화면 칩과 같은 계산을 쓴다 — 두 번 계산하면 숫자가 갈린다. */
+function stallReportLine() {
+  const stall = stallState(state.deal);
+  const parts = [];
+  if (stall.inflowDays != null) parts.push(`${stall.inflowLabel} ${stall.inflowDays}일 경과`);
+  if (stall.stageDays != null) parts.push(`현재 단계 ${stall.stageDays}일`);
+  return parts.join(' · ') || '문의 시점 미입력';
+}
+
 function intakeReport() {
   const meta = state.deal.customer_meta || {};
   const label = {
@@ -1810,6 +2052,25 @@ function intakeReport() {
 | 현재 보안 환경 | ${label[meta.securityStack] || meta.securityStack || '미정'} |
 | 투자 여력 | ${label[meta.investment] || meta.investment || '미정'} |
 | 유입 경로 | ${sourceNames[state.deal.source] || state.deal.source || '—'} |
+| 문의 유입 시점 | ${state.deal.inquiry_date || '—'} |
+| 문의 제품 | ${inquiryProductNames().join(' · ') || '—'} |
+
+## 고객 담당자
+
+| 항목 | 값 |
+|---|---|
+| 이름 | ${state.deal.customer_contact_name || '—'} |
+| 소속 부서 | ${state.deal.customer_contact_dept || '—'} |
+| 직함 | ${state.deal.customer_contact_title || '—'} |
+| 이메일 | ${state.deal.customer_contact_email || '—'} |
+
+## 딜 관리 (MZC)
+
+| 항목 | 값 |
+|---|---|
+| MZC Sales | ${state.deal.mzc_sales || '—'} |
+| MSP 여부 | ${MSP_LABELS[state.deal.msp_status] || MSP_LABELS.unknown} |
+| 진행 상황 | ${stallReportLine()} |
 
 ## 고객 상황·요청 메모
 
@@ -1964,6 +2225,18 @@ function bindStageEvents() {
     state.deal[input.dataset.dealField] = input.value;
     scheduleSave({ [input.dataset.dealField]: input.value });
   }));
+  // 문의 제품. renderStage() 를 부르지 않는다 — 부르면 <details> 가 접히고 스크롤이 튄다.
+  $$('[data-inquiry-product]').forEach((box) => box.addEventListener('change', () => {
+    const picked = $$('[data-inquiry-product]').filter((item) => item.checked)
+      .map((item) => item.dataset.inquiryProduct);
+    state.deal.inquiry_products = picked;
+    renderInquiryProductChips();
+    scheduleSave({ inquiry_products: picked }, true);
+  }));
+  // 문의 시점을 고치면 정체 계산이 달라진다. 그 줄만 다시 그린다.
+  // 위 data-deal-field 핸들러가 같은 요소에 먼저 걸려 state 를 갱신한 뒤 여기가 돈다.
+  $('#deal-inquiry-date')?.addEventListener('input', renderStallSummary);
+
   $$('[data-meta-field]').forEach((input) => input.addEventListener('input', () => {
     const meta = { ...(state.deal.customer_meta || {}), [input.dataset.metaField]: input.type === 'checkbox' ? input.checked : input.value };
     state.deal.customer_meta = meta;
@@ -2229,11 +2502,12 @@ function connectEvents() {
         refreshed = await api(`/api/hub/deals/${change.id}`);
       } catch (error) {
         if (state.deal?.id !== change.id) return;
-        state.deal = null;
-        $('#workspace').classList.add('hidden');
-        $('#empty-workspace').classList.remove('hidden');
-        syncDealSelection();
-        toast('이 딜은 다른 담당자가 맡았습니다.');
+        // 삭제는 DB 상 UPDATE(soft delete)라 change.operation 으로 구분이 안 된다.
+        // ⚠ operation 을 읽으려 하지 말 것. 대신 목록 존재 여부로 가른다 —
+        //   GET /deals 는 소유자 게이트가 없어서 「남이 claim」이면 목록에 남고
+        //   「삭제」면 빠진다. 위에서 loadDeals() 를 이미 돌렸으므로 최신이다.
+        const stillListed = state.deals.some((deal) => deal.id === change.id);
+        closeWorkspace(stillListed ? '이 딜은 다른 담당자가 맡았습니다.' : '이 딜은 삭제되었습니다.');
         return;
       }
       const stillHasLocalSave = state.pendingDealId === change.id || state.inFlightSaves.has(change.id);

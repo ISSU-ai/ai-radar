@@ -130,6 +130,16 @@ const simulatorStepsData = {
 // time out ("database_unavailable"). Let pg resolve whatever the configured
 // host actually offers; override with DB_IP_FAMILY only if you know you need it.
 const dbIpFamily = Number(process.env.DB_IP_FAMILY) || undefined;
+/**
+ * `date` 컬럼을 문자열 그대로 받는다 (OID 1082 · 041 의 deals.inquiry_date).
+ *
+ * 기본 파서는 '2026-08-05' 를 **서버 지역시간 자정**의 Date 로 만든다. 그걸 JSON 으로
+ * 내보내면 UTC 로 환산되어 한국 시간대 서버에서는 하루 전(2026-08-04)이 화면에 뜨고,
+ * 그 값을 다시 저장하면 하루씩 계속 밀린다. 날짜는 시각이 아니므로 애초에 시간대를
+ * 태우지 않는 것이 맞다 — 문자열로 받아 그대로 <input type="date"> 에 넣는다.
+ */
+require('pg').types.setTypeParser(1082, (value) => value);
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },

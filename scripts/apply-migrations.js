@@ -38,7 +38,10 @@ const MIGRATIONS = [
   // 031 도 컬럼·인덱스만 만든다. 028~030 은 어휘 정리·문항 시드라 1회성으로 제외.
   '031_deal_readiness.sql',
   // 032 는 컬럼 + 백필이다. 백필은 빈 값에만 채우므로 다시 돌려도 안전하다.
-  '032_deal_readiness_source.sql'
+  '032_deal_readiness_source.sql',
+  // 041 도 컬럼 + 빈 값 백필이다. 033~040 은 시드·1회성 삭제라 제외.
+  // 040(fqa drop)과 겹치는 대상이 없어 순서에 무관하다.
+  '041_deal_pipeline_fields.sql'
 ];
 
 async function main() {

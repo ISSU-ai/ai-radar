@@ -37,6 +37,7 @@
           <button class="active" type="button" data-filter="all" aria-pressed="true">전체</button>
           <button type="button" data-filter="mine" aria-pressed="false">내 딜</button>
           <button type="button" data-filter="new" aria-pressed="false">신규</button>
+          <button type="button" data-filter="msp" aria-pressed="false">MSP</button>
         </div>
         <div id="sync-status" class="sync-status"><span></span> 실시간 연결 대기</div>
       </header>
@@ -60,6 +61,7 @@
           <div class="workspace-actions">
             <span id="save-state" class="save-state"><i></i> 자동 저장됨</span>
             <button id="claim-button" class="secondary-button hidden" type="button"><i data-lucide="user-check"></i> 담당하기</button>
+            <button id="delete-deal-button" class="ghost-button danger hidden" type="button"><i data-lucide="trash-2"></i> 딜 삭제</button>
           </div>
         </header>
 
@@ -77,6 +79,9 @@
                   <div><dt>트랙</dt><dd id="context-track">미정</dd></div>
                   <div><dt>유입</dt><dd id="context-source">—</dd></div>
                   <div><dt>업데이트</dt><dd id="context-updated">—</dd></div>
+                  <div><dt>MZC Sales</dt><dd id="context-mzc-sales">—</dd></div>
+                  <div><dt>MSP</dt><dd id="context-msp">확인 필요</dd></div>
+                  <div><dt>고객 담당</dt><dd id="context-contact">—</dd></div>
                 </dl>
               </section>
               <section id="readiness-card" class="panel-card readiness-card"></section>
@@ -108,6 +113,24 @@
       </section>
     </main>
   </div>
+
+  <!-- 삭제 확인. window.confirm 을 안 쓰는 이유는 **무엇이 지워지는지**를 한 줄로
+       못 쓰기 때문이다. 고객 담당자 정보가 함께 파기된다는 걸 여기서 말해야 한다.
+       ⚠ 닫기 속성이 새 딜 창과 다르다 — data-close-dialog 위임이 #new-deal-dialog 를
+       하드코딩해 닫으므로 그대로 쓰면 취소가 엉뚱한 창을 닫는다. -->
+  <dialog id="delete-deal-dialog">
+    <form method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">DELETE DEAL</p><h2>딜을 삭제할까요?</h2></div><button class="workspace-icon-button" data-close-delete-dialog type="button" aria-label="삭제 창 닫기"><i data-lucide="x"></i></button></div>
+      <p class="dialog-lead">고객사 <b id="delete-deal-customer"></b> 딜이 목록에서 사라집니다.</p>
+      <ul class="dialog-warn">
+        <li>고객 담당자 이름·부서·직함·이메일은 <b>함께 지워집니다.</b> 되돌려도 복구되지 않습니다.</li>
+        <li>진단 응답·추천 기록·견적은 남지만 화면에서는 볼 수 없습니다.</li>
+        <li>되돌리려면 관리자에게 문의해야 합니다.</li>
+      </ul>
+      <p id="delete-deal-error" class="form-error"></p>
+      <div class="dialog-actions"><button class="ghost-button" data-close-delete-dialog type="button">취소</button><button id="confirm-delete-deal" class="danger-button" type="button">삭제</button></div>
+    </form>
+  </dialog>
 
   <dialog id="new-deal-dialog">
     <form id="new-deal-form" method="dialog">
