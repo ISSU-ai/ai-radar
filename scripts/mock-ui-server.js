@@ -263,7 +263,17 @@ app.get('/api/hub/deals', (_req, res) => res.json(
   })
 ));
 app.post('/api/hub/deals', (req, res) => {
-  const deal = { id: `d${deals.length + 1}`, customer: req.body.customer, customer_meta: req.body.customer_meta || {}, track: null, isv_combo: [], packages: [], stage: 0, source: req.body.source || 'manual', owner_id: user.id, owner_name: user.name, updated_at: new Date().toISOString() };
+  const now = new Date().toISOString();
+  // 041 의 DB 기본값을 그대로 흉내 낸다. 빠뜨리면 새로 만든 딜이 로컬에서만
+  // 「단계 기록없음」으로 보인다 — 실서버에서는 default now() 가 붙어 「단계 0일」이다.
+  const deal = { id: `d${deals.length + 1}`, customer: req.body.customer, customer_meta: req.body.customer_meta || {},
+    track: null, isv_combo: [], packages: [], stage: 0, source: req.body.source || 'manual',
+    owner_id: user.id, owner_name: user.name,
+    mzc_sales: null, msp_status: 'unknown', inquiry_date: null,
+    customer_contact_name: null, customer_contact_dept: null,
+    customer_contact_title: null, customer_contact_email: null,
+    inquiry_products: [], stage_changed_at: now, deleted_at: null,
+    created_at: now, updated_at: now };
   deals.unshift(deal); res.status(201).json(deal);
 });
 app.get('/api/hub/deals/:id', (req, res) => {

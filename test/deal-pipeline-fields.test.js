@@ -267,3 +267,18 @@ test('MSP 필터와 배지가 화면에 실제로 붙어 있다', () => {
   // 「확인 필요」를 전 딜에 띄우면 소음이 되어 아무도 안 본다
   assert.match(hubJs, /deal\.msp_status === 'yes' \? '<span class="msp-tag">MSP<\/span>' : ''/);
 });
+
+test('목업이 새 딜에 041 기본값을 그대로 붙인다', () => {
+  // DB 기본값(msp_status unknown · inquiry_products [] · stage_changed_at now())을
+  // 목업이 안 흉내 내면 **새로 만든 딜만** 로컬에서 다르게 보인다.
+  // 실서버는 「단계 0일」인데 로컬은 「기록없음」이 되는 식이라 알아채기 어렵다.
+  const block = mock.slice(mock.indexOf("app.post('/api/hub/deals'"), mock.indexOf("app.get('/api/hub/deals/:id'"));
+  assert.match(block, /msp_status: 'unknown'/);
+  assert.match(block, /inquiry_products: \[\]/);
+  assert.match(block, /stage_changed_at: now/);
+  assert.match(block, /created_at: now/);
+  // 041 이 default 를 주는 것과 안 주는 것이 갈린다
+  assert.match(block, /inquiry_date: null/, '문의 시점은 영업이 직접 적는다 — 기본값 없음');
+  assert.match(migration, /add column if not exists msp_status text not null default 'unknown'/);
+  assert.match(migration, /add column if not exists inquiry_products jsonb not null default '\[\]'::jsonb/);
+});
