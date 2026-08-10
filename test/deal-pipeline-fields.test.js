@@ -376,3 +376,15 @@ test('자연어 편집 탭이 화면·서버 양쪽에서 사라졌다', () => {
   assert.match(serverSrc, /const requireReadinessScores/, '이웃 미들웨어까지 잘라내면 안 된다');
   assert.equal((admin.match(/data-admin-action="switch-tab"/g) || []).length, 5, '탭은 다섯이다');
 });
+
+test('/radar 는 ISV 탐색기를 맨 위에 둔다', () => {
+  // 카탈로그를 찾으러 들어오는 화면이다. 시뮬레이터·매트릭스를 지나야 목록이
+  // 나오면 매번 스크롤부터 하게 된다.
+  const radar = read('index.html');
+  const main = radar.slice(radar.indexOf('<main class="app-main"'), radar.indexOf('</main>'));
+  const order = [...main.matchAll(/<section class="dashboard-section ([\w-]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(order, ['explorer-section', 'simulator-section', 'matrix-section']);
+  // 로그인 사용자에게 굳이 보여줄 링크가 아니라 헤더에서 뺐다. 페이지 자체는 남는다.
+  assert.ok(!radar.includes('href="/about"'), '소개 버튼이 남아 있다');
+  assert.match(serverSrc, /app\.get\(\['\/about', '\/about\.html'\]/, '/about 페이지까지 지우면 안 된다');
+});
