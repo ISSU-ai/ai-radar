@@ -361,3 +361,18 @@ test('솔루션 조사 서식이 admin 폼·마이그레이션에서 항목을 �
   assert.match(gen, /비워두시면 ISSU 가 채웁니다/);
   assert.ok(!/kind":"fqa|"signal":/.test(gen), 'JSON 예시를 조사 서식에 넣었다');
 });
+
+test('자연어 편집 탭이 화면·서버 양쪽에서 사라졌다', () => {
+  // 규칙 기반 껍데기만 있고 실제 생성이 없어서 걷어냈다. 화면만 지우고 라우트를
+  // 남기면 인증만 통과하면 부를 수 있는 죽은 엔드포인트가 된다.
+  const admin = read('admin.html');
+  for (const token of ['data-tab="ai"', 'tab-admin-ai', 'requestAiEdit', 'aiProposal', 'suggest-edit']) {
+    assert.ok(!admin.includes(token), `admin.html 에 ${token} 이 남았다`);
+  }
+  assert.ok(!serverSrc.includes('suggest-edit'), '서버에 죽은 라우트가 남았다');
+  // 발행 흐름은 폼 편집기와 공유하므로 지우면 안 된다
+  assert.match(admin, /function proposePublish/);
+  assert.match(admin, /async function commitPublish/);
+  assert.match(serverSrc, /const requireReadinessScores/, '이웃 미들웨어까지 잘라내면 안 된다');
+  assert.equal((admin.match(/data-admin-action="switch-tab"/g) || []).length, 5, '탭은 다섯이다');
+});

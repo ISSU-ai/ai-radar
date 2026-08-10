@@ -443,7 +443,6 @@
       <div class="admin-tabs">
         <button type="button" class="admin-tab-btn active" data-admin-action="switch-tab" data-tab="form">폼 편집기 (Form Editor)</button>
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="members" data-role-admin>회원 승인</button>
-        <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="ai">자연어 편집 (AI Propose)</button>
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="history" id="history-tab-btn">버전 이력 / 롤백 (v1)</button>
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="packages" data-role-admin>패키지 단가</button>
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="reco-report">추천 vs 채택</button>
@@ -742,40 +741,7 @@
       </div>
 
       <!-- Tab 2: AI Propose (자연어 편집) -->
-      <div id="tab-admin-ai" class="glass-card admin-tab-content hidden">
-        <div class="ai-assistant-card">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <i data-lucide="sparkles" style="color: var(--accent-purple);"></i>
-            <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0;">AI 자연어 편집 어시스턴트</h3>
-          </div>
-          <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;">
-            자연어로 솔루션 본문 수정을 명령하면 AI가 내용을 분석해 diff를 제공합니다. (예: "Articul8 7번 체크리스트에 '백엔드 이중화 보증 항목' 추가해줘")
-          </p>
-          <div class="ai-input-row">
-            <input type="text" id="ai-prompt" class="ai-input" placeholder="어떤 수정을 진행할까요?">
-            <button type="button" data-admin-action="request-ai-edit" class="ai-btn" id="ai-send-btn">
-              <i data-lucide="send" style="width: 14px; height: 14px;"></i>분석 요청
-            </button>
-          </div>
-        </div>
-
-        <div id="ai-suggestion-result" class="hidden" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
-          <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--accent-blue);" id="ai-result-heading">AI 변경 제안 미리보기</h4>
-          <p id="ai-explanation" style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;"></p>
-          
-          <!-- Diff Box -->
-          <div class="diff-container" id="ai-diff-box">
-            <!-- Populated dynamically -->
-          </div>
-
-          <div class="actions-bar" style="border:none; padding: 0;">
-            <button type="button" data-admin-action="reject-ai-proposal" class="btn-save">제안 거절</button>
-            <button type="button" data-admin-action="accept-ai-proposal" class="btn-commit" style="background: var(--accent-green); box-shadow: none;">제안 승인 및 발행 (Commit)</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tab 3: History (버전 이력 / 롤백) -->
+<!-- Tab 3: History (버전 이력 / 롤백) -->
       <div id="tab-admin-history" class="glass-card admin-tab-content hidden">
         <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.5rem;">버전 히스토리 기록 (SSOT Audit)</h3>
         <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.5rem;">
@@ -880,7 +846,6 @@
     let solutions = [];
     let focalContacts = [];
     let originalSnapshot = null; // Form original states to calculate diffs
-    let aiProposalTemp = null; // Save proposed edits from AI temporary
     let selectionRequestSequence = 0;
     let loadedSolutionId = null;
     let loadedMetadata = { industries: [], simulator_mappings: [] };
@@ -1296,9 +1261,6 @@
       if (action === 'archive') void archiveSolution();
       if (action === 'save-draft') void saveAsDraft();
       if (action === 'propose-publish') proposePublish();
-      if (action === 'request-ai-edit') void requestAiEdit();
-      if (action === 'reject-ai-proposal') rejectAiProposal();
-      if (action === 'accept-ai-proposal') void acceptAiProposal();
       if (action === 'close-commit') toggleCommitModal(false);
       if (action === 'commit-publish') void commitPublish();
       if (action === 'close-add-solution') toggleAddSolutionModal(false);
@@ -2053,101 +2015,6 @@
         loadPackages();
         loadSettings();
       }
-    }
-
-    // ----------------------------------------------------
-    // Natural Language Propose AI Logic
-    // ----------------------------------------------------
-    async function requestAiEdit() {
-      if (!requireCurrentSolution()) return;
-      const solutionId = currentSelectedId;
-      const requestSequence = selectionRequestSequence;
-      const promptText = document.getElementById('ai-prompt').value.trim();
-      const sendBtn = document.getElementById('ai-send-btn');
-
-      if (!promptText) {
-        alert('자연어 지시 사항을 입력해주세요.');
-        return;
-      }
-
-      sendBtn.disabled = true;
-      sendBtn.innerHTML = `<i data-lucide="loader" class="animate-spin"></i> 분석 중...`;
-      lucide.createIcons();
-
-      try {
-        const res = await fetch('/api/admin/suggest-edit', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            solutionId,
-            prompt: promptText
-          })
-        });
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'AI 제안 도중 오류 발생');
-        if (requestSequence !== selectionRequestSequence || solutionId !== currentSelectedId) return;
-
-        // Show suggestions preview
-        aiProposalTemp = data;
-        document.getElementById('ai-explanation').textContent = data.explanation;
-        
-        // Generate section diff
-        const oldSecState = {};
-        const newSecState = {};
-        oldSecState[data.section] = data.oldContent;
-        newSecState[data.section] = data.newContent;
-
-        const diffHtml = generateDiffHtml({ sections: oldSecState }, { sections: newSecState });
-        document.getElementById('ai-diff-box').innerHTML = diffHtml;
-
-        document.getElementById('ai-suggestion-result').classList.remove('hidden');
-        showToast('AI가 변경 내용을 생성했습니다.');
-      } catch (err) {
-        alert(err.message);
-      } finally {
-        sendBtn.disabled = false;
-        sendBtn.innerHTML = `<i data-lucide="send" style="width: 14px; height: 14px;"></i>분석 요청`;
-        lucide.createIcons();
-      }
-    }
-
-    function rejectAiProposal() {
-      aiProposalTemp = null;
-      document.getElementById('ai-suggestion-result').classList.add('hidden');
-      document.getElementById('ai-prompt').value = '';
-    }
-
-    async function acceptAiProposal() {
-      if (!aiProposalTemp || !requireCurrentSolution()) return;
-
-      // Apply proposed AI edits to the form elements directly
-      document.getElementById(`sec-${aiProposalTemp.section}`).value = aiProposalTemp.newContent;
-
-      // Apply metadata edits if proposed by AI
-      if (aiProposalTemp.suggestedMetadata) {
-        const meta = aiProposalTemp.suggestedMetadata;
-        if (Array.isArray(meta.industries)) {
-          loadedMetadata.industries = cloneMetadataList(meta.industries);
-          const industryKeys = new Set(loadedMetadata.industries.map(getIndustryKey).filter(Boolean));
-          document.querySelectorAll('input[name="sol-industries"]').forEach(cb => {
-            cb.checked = industryKeys.has(cb.value);
-          });
-        }
-        if (Array.isArray(meta.simulator_mappings)) {
-          loadedMetadata.simulator_mappings = cloneMetadataList(meta.simulator_mappings);
-          const simulatorKeys = new Set(loadedMetadata.simulator_mappings.map(getSimulatorMappingKey).filter(Boolean));
-          document.querySelectorAll('input[name="sol-simulator"]').forEach(cb => {
-            cb.checked = simulatorKeys.has(cb.value);
-          });
-        }
-      }
-
-      // Switch to editor tab and trigger Publish modal
-      switchAdminTab('form');
-      proposePublish();
     }
 
     // ----------------------------------------------------
