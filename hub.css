@@ -522,6 +522,24 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
   background: var(--surface-muted); color: var(--text-secondary); font-size: .74rem; font-weight: 600; }
 .stall-chip.warn { background: rgba(245,165,36,.14); color: #f5a524; }
 .stall-chip.late { background: rgba(229,72,77,.14); color: #e5484d; }
+/* 판정 기준 말풍선. 색만 보고는 왜 노랑인지 알 수 없어서 붙인다.
+   네이티브 title 을 안 쓰는 이유 — 1초쯤 기다려야 뜨고 줄바꿈·폭을 못 잡는다. */
+.stall-chip[data-hint] { position: relative; cursor: help; outline: 0; }
+.stall-chip[data-hint]::after {
+  content: attr(data-hint); position: absolute; z-index: 80; right: 0; top: calc(100% + 7px);
+  width: max-content; max-width: 260px; padding: 9px 12px;
+  color: var(--ink); border: 1px solid var(--line2); border-radius: 9px; background: var(--raised);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .42);
+  font-size: 11.5px; font-weight: 500; line-height: 1.7; text-align: left; white-space: pre-line;
+  opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .12s ease;
+}
+.stall-chip[data-hint]:hover::after,
+.stall-chip[data-hint]:focus-visible::after { opacity: 1; visibility: visible; }
+/* 사이드바 목록은 overflow:auto 라 말풍선이 잘린다. 거기선 안 띄운다 —
+   같은 내용을 딜을 열면 컨텍스트 카드에서 본다. */
+.deal-card-list .stall-chip[data-hint]::after { content: none; }
+.deal-card-list .stall-chip[data-hint] { cursor: pointer; }
+
 /* 컨텍스트 카드 안에서는 칩이 우측 정렬로 붙는다. 값이 둘이라 줄바꿈을 허용한다. */
 #context-stall { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
 #context-stall .stall-chip { padding: 2px 7px; font-size: .68rem; }

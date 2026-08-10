@@ -306,8 +306,16 @@ test('정체 칩이 마우스오버로 자기 판정 기준을 말한다', () =>
   // 두 칩이 각자 다른 기준을 쓴다 — 유입과 단계는 임계값이 다르다
   assert.match(body, /stallHint\('inflow'/);
   assert.match(body, /stallHint\('stage'/);
-  // title 은 속성이라 이스케이프가 필요하다
-  assert.match(body, /title="\$\{escapeHtml\(/);
+  // 네이티브 title 이 아니라 data-hint + CSS 말풍선이다. title 은 1초쯤 기다려야
+  // 뜨고 줄바꿈·폭을 못 잡아서 「올려도 아무 반응 없다」로 읽힌다.
+  assert.match(body, /data-hint="\$\{escapeHtml\(/, '속성이라 이스케이프가 필요하다');
+  assert.ok(!/title="\$\{escapeHtml/.test(body), '네이티브 title 로 되돌아갔다');
+  assert.match(body, /tabindex="0"/, '키보드로도 볼 수 있어야 한다');
+  assert.match(hubCss, /\.stall-chip\[data-hint\]::after/);
+  assert.match(hubCss, /white-space: pre-line/, '줄바꿈이 안 살면 한 줄로 뭉친다');
+  assert.match(hubCss, /:focus-visible::after/);
+  // 사이드바는 overflow:auto 라 말풍선이 잘린다
+  assert.match(hubCss, /\.deal-card-list \.stall-chip\[data-hint\]::after \{ content: none/);
   // 문의 시점이 없으면 그 사실을 설명에 밝힌다
   assert.match(body, /문의 시점 미입력/);
 });

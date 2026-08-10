@@ -749,6 +749,9 @@ const STALL_LEVEL_NAME = ['정상', '주의', '지연'];
 /**
  * 칩에 붙는 설명. 숫자를 여기 다시 적지 않고 STALL_DAYS 에서 만든다 —
  * 기준을 고쳤는데 설명만 옛 숫자로 남으면 화면이 거짓말을 한다.
+ *
+ * title 이 아니라 data-hint 로 넘긴다. 네이티브 툴팁은 1초쯤 기다려야 뜨고
+ * 줄바꿈·폭을 못 잡아서 "마우스를 올려도 아무 반응이 없다"로 읽힌다.
  */
 function stallHint(kind, level) {
   const [warn, late] = kind === 'inflow'
@@ -768,10 +771,10 @@ function stallChipsMarkup(deal) {
     const head = stall.inflowLabel === '유입'
       ? `문의가 들어온 지 ${stall.inflowDays}일`
       : `딜을 만든 지 ${stall.inflowDays}일 (문의 시점 미입력)`;
-    chips.push(`<span class="stall-chip ${STALL_CLASS[stall.inflowLevel]}" title="${escapeHtml(`${head}\n\n${stallHint('inflow', stall.inflowLevel)}`)}">${stall.inflowLabel} ${stall.inflowDays}일</span>`);
+    chips.push(`<span class="stall-chip ${STALL_CLASS[stall.inflowLevel]}" tabindex="0" data-hint="${escapeHtml(`${head}\n\n${stallHint('inflow', stall.inflowLevel)}`)}">${stall.inflowLabel} ${stall.inflowDays}일</span>`);
   }
   if (stall.stageDays != null) {
-    chips.push(`<span class="stall-chip ${STALL_CLASS[stall.stageLevel]}" title="${escapeHtml(`현재 단계에 머문 지 ${stall.stageDays}일\n\n${stallHint('stage', stall.stageLevel)}`)}">단계 ${stall.stageDays}일</span>`);
+    chips.push(`<span class="stall-chip ${STALL_CLASS[stall.stageLevel]}" tabindex="0" data-hint="${escapeHtml(`현재 단계에 머문 지 ${stall.stageDays}일\n\n${stallHint('stage', stall.stageLevel)}`)}">단계 ${stall.stageDays}일</span>`);
   }
   return chips.join('');
 }
