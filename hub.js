@@ -744,15 +744,34 @@ function stallState(deal) {
 }
 
 const STALL_CLASS = ['', 'warn', 'late'];
+const STALL_LEVEL_NAME = ['정상', '주의', '지연'];
+
+/**
+ * 칩에 붙는 설명. 숫자를 여기 다시 적지 않고 STALL_DAYS 에서 만든다 —
+ * 기준을 고쳤는데 설명만 옛 숫자로 남으면 화면이 거짓말을 한다.
+ */
+function stallHint(kind, level) {
+  const [warn, late] = kind === 'inflow'
+    ? [STALL_DAYS.inflowWarn, STALL_DAYS.inflowLate]
+    : [STALL_DAYS.stageWarn, STALL_DAYS.stageLate];
+  return `현재 ${STALL_LEVEL_NAME[level]}\n`
+    + `판정 기준\n`
+    + `  0~${warn - 1}일   정상\n`
+    + `  ${warn}일 이상   주의\n`
+    + `  ${late}일 이상   지연`;
+}
 
 function stallChipsMarkup(deal) {
   const stall = stallState(deal);
   const chips = [];
   if (stall.inflowDays != null) {
-    chips.push(`<span class="stall-chip ${STALL_CLASS[stall.inflowLevel]}">${stall.inflowLabel} ${stall.inflowDays}일</span>`);
+    const head = stall.inflowLabel === '유입'
+      ? `문의가 들어온 지 ${stall.inflowDays}일`
+      : `딜을 만든 지 ${stall.inflowDays}일 (문의 시점 미입력)`;
+    chips.push(`<span class="stall-chip ${STALL_CLASS[stall.inflowLevel]}" title="${escapeHtml(`${head}\n\n${stallHint('inflow', stall.inflowLevel)}`)}">${stall.inflowLabel} ${stall.inflowDays}일</span>`);
   }
   if (stall.stageDays != null) {
-    chips.push(`<span class="stall-chip ${STALL_CLASS[stall.stageLevel]}">단계 ${stall.stageDays}일</span>`);
+    chips.push(`<span class="stall-chip ${STALL_CLASS[stall.stageLevel]}" title="${escapeHtml(`현재 단계에 머문 지 ${stall.stageDays}일\n\n${stallHint('stage', stall.stageLevel)}`)}">단계 ${stall.stageDays}일</span>`);
   }
   return chips.join('');
 }

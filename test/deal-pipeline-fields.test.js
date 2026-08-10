@@ -296,3 +296,18 @@ test('정체 표시가 STEP01 과 컨텍스트 카드에 같이 갱신된다', (
   assert.match(hubJs, /\$\('#context-updated'\)\.textContent = formatDate\(deal\.updated_at\);\s*renderStallSummary\(\)/);
   assert.match(hubCss, /#context-stall/);
 });
+
+test('정체 칩이 마우스오버로 자기 판정 기준을 말한다', () => {
+  const body = hubJs.slice(hubJs.indexOf('function stallHint'), hubJs.indexOf('/** 계산 결과만. 입력칸과 분리해야 문의 시점'));
+  // 기준 숫자를 설명에 다시 적으면 STALL_DAYS 를 고쳤을 때 설명만 옛 숫자로 남는다.
+  assert.match(body, /STALL_DAYS\.inflowWarn, STALL_DAYS\.inflowLate/);
+  assert.match(body, /STALL_DAYS\.stageWarn, STALL_DAYS\.stageLate/);
+  assert.ok(!/0~29|30일 이상|0~13|14일 이상/.test(body), '설명에 숫자를 손으로 적었다');
+  // 두 칩이 각자 다른 기준을 쓴다 — 유입과 단계는 임계값이 다르다
+  assert.match(body, /stallHint\('inflow'/);
+  assert.match(body, /stallHint\('stage'/);
+  // title 은 속성이라 이스케이프가 필요하다
+  assert.match(body, /title="\$\{escapeHtml\(/);
+  // 문의 시점이 없으면 그 사실을 설명에 밝힌다
+  assert.match(body, /문의 시점 미입력/);
+});
