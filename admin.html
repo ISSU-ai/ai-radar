@@ -31,6 +31,8 @@
       max-height: calc(100vh - 180px);
       overflow-y: auto;
     }
+    .sol-group-label { margin: 12px 0 4px; padding: 0 2px; color: var(--text-secondary); font-size: .68rem; font-weight: 700; letter-spacing: .06em; }
+    .sol-group-label:first-child { margin-top: 0; }
     .sol-item-btn {
       background: rgba(255, 255, 255, 0.02);
       border: 1px solid var(--card-border);
@@ -1536,8 +1538,27 @@
         return;
       }
 
-      solutions.forEach(sol => {
+      // 노출 중인 것부터 보여준다. 「숨김」을 누르면 그 행이 아래 묶음으로 내려가
+      // 지금 무엇이 대외에 나가고 있는지가 목록 위쪽만 봐도 잡힌다.
+      // 같은 상태 안에서는 서버가 준 순서를 그대로 둔다(정렬이 두 번 흔들리지 않게).
+      const visibilityRank = (item) => (item.is_archived ? 2 : item.is_hidden ? 1 : 0);
+      const ordered = solutions
+        .map((sol, index) => ({ sol, index }))
+        .sort((a, b) => visibilityRank(a.sol) - visibilityRank(b.sol) || a.index - b.index)
+        .map((item) => item.sol);
+
+      let lastRank = null;
+      ordered.forEach(sol => {
         const isv = sol; // just alias
+        // 묶음이 바뀌는 자리에 라벨을 넣는다. 없으면 왜 이 순서인지 알 수 없다.
+        const rank = visibilityRank(isv);
+        if (rank !== lastRank) {
+          lastRank = rank;
+          const divider = document.createElement('p');
+          divider.className = 'sol-group-label';
+          divider.textContent = ['노출 중', '숨김', '아카이브'][rank];
+          container.appendChild(divider);
+        }
         const stars = String(isv.layer || '').includes("L0") ? "★" : (isv.synergy === "매우 높음" ? "★★★" : (isv.synergy === "높음" ? "★★" : "★"));
         
         const btn = document.createElement('button');

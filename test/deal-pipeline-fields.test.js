@@ -327,3 +327,18 @@ test('목업 딜 목록이 실제 라우트와 같은 조건·정렬을 쓴다',
   const real = routes.slice(routes.indexOf("router.get('/deals'"), routes.indexOf("router.post('/deals'"));
   assert.match(real, /const \{ q = '', stage = '', track = '', mine = '' \} = req\.query/);
 });
+
+test('솔루션 목록이 노출 상태로 묶여 정렬된다', () => {
+  // 「숨김」을 누르면 그 행이 아래 묶음으로 내려가야 지금 무엇이 대외에
+  // 나가고 있는지가 목록 위쪽만 봐도 잡힌다.
+  const admin = read('admin.html');
+  const block = admin.slice(admin.indexOf('function renderSolutionsMenu'), admin.indexOf('function selectSolution'));
+  assert.match(block, /const visibilityRank = \(item\) => \(item\.is_archived \? 2 : item\.is_hidden \? 1 : 0\)/);
+  // 같은 상태 안에서는 서버가 준 순서를 지킨다 — 안 그러면 토글할 때마다 목록이 흔들린다
+  assert.match(block, /a\.index - b\.index/);
+  assert.match(block, /\['노출 중', '숨김', '아카이브'\]\[rank\]/, '왜 이 순서인지 알려주는 라벨이 없다');
+  assert.match(admin, /\.sol-group-label \{/);
+  // 토글 뒤 재조회 없이 바로 다시 그린다
+  const toggle = admin.slice(admin.indexOf('async function toggleSolutionVisibility'), admin.indexOf('function renderSolutionsMenu'));
+  assert.match(toggle, /renderSolutionsMenu\(\)/);
+});
