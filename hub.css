@@ -522,6 +522,9 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
   background: var(--surface-muted); color: var(--text-secondary); font-size: .74rem; font-weight: 600; }
 .stall-chip.warn { background: rgba(245,165,36,.14); color: #f5a524; }
 .stall-chip.late { background: rgba(229,72,77,.14); color: #e5484d; }
+/* 컨텍스트 카드 안에서는 칩이 우측 정렬로 붙는다. 값이 둘이라 줄바꿈을 허용한다. */
+#context-stall { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+#context-stall .stall-chip { padding: 2px 7px; font-size: .68rem; }
 
 /* 문의 제품 — 카탈로그가 수십 종이라 접어 둔다. 열려 있으면 다른 칸을 다 밀어낸다 */
 .inquiry-products { grid-column: 1 / -1; padding: 10px 12px; border: 1px solid var(--card-border); border-radius: 8px; }

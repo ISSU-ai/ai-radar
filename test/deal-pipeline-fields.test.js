@@ -282,3 +282,17 @@ test('목업이 새 딜에 041 기본값을 그대로 붙인다', () => {
   assert.match(migration, /add column if not exists msp_status text not null default 'unknown'/);
   assert.match(migration, /add column if not exists inquiry_products jsonb not null default '\[\]'::jsonb/);
 });
+
+test('정체 표시가 STEP01 과 컨텍스트 카드에 같이 갱신된다', () => {
+  // 컨텍스트 카드는 다섯 단계 내내 보이고 STEP01 것은 문의 시점을 고칠 때의 즉시
+  // 피드백이다. 갱신을 부르는 쪽에 맡기면 한쪽만 옛 숫자로 남는다.
+  assert.match(hubHtml, /<dt>경과<\/dt><dd id="context-stall">/);
+  const body = hubJs.slice(hubJs.indexOf('function renderStallSummary'), hubJs.indexOf('const MSP_LABELS'));
+  assert.match(body, /getElementById\('stall-summary'\)/);
+  assert.match(body, /getElementById\('context-stall'\)/, '컨텍스트 카드가 안 갱신된다');
+  // 딜을 닫은 뒤에도 옛 딜의 숫자가 남으면 안 된다
+  assert.match(body, /state\.deal \?[\s\S]{0,80}: '—'/);
+  // 워크스페이스를 그릴 때 한 번 채운다
+  assert.match(hubJs, /\$\('#context-updated'\)\.textContent = formatDate\(deal\.updated_at\);\s*renderStallSummary\(\)/);
+  assert.match(hubCss, /#context-stall/);
+});

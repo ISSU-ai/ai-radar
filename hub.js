@@ -578,6 +578,7 @@ function renderWorkspace() {
   $('#context-track').textContent = deal.track ? `${deal.track} · ${deal.track_name || ''}` : '미정';
   $('#context-source').textContent = sourceNames[deal.source] || deal.source;
   $('#context-updated').textContent = formatDate(deal.updated_at);
+  renderStallSummary();
   $('#context-mzc-sales').textContent = deal.mzc_sales || '—';
   $('#context-msp').textContent = MSP_LABELS[deal.msp_status] || MSP_LABELS.unknown;
   // 직함은 여기서 보여준다. 목록(GET /deals)에는 안 싣는다 — 그 응답은 담당자가
@@ -766,9 +767,17 @@ function stallSummaryMarkup() {
   return chips + note;
 }
 
+/**
+ * 정체 표시를 **두 곳에 같이** 갱신한다 — STEP01 입력칸 옆과 우측 컨텍스트 카드.
+ *
+ * 컨텍스트 카드는 다섯 단계 내내 보이고 STEP01 것은 문의 시점을 고칠 때의 즉시
+ * 피드백이다. 갱신을 부르는 쪽에 맡기면 한쪽만 옛 숫자로 남는다.
+ */
 function renderStallSummary() {
   const node = document.getElementById('stall-summary');
   if (node) node.innerHTML = stallSummaryMarkup();
+  const context = document.getElementById('context-stall');
+  if (context) context.innerHTML = state.deal ? (stallChipsMarkup(state.deal) || '—') : '—';
 }
 
 const MSP_LABELS = Object.freeze({ yes: 'MSP 운영 중', no: '미운영', unknown: '확인 필요' });
