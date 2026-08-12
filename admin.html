@@ -692,6 +692,46 @@
               </div>
             </div>
 
+            <h4 style="font-size:.9rem; font-weight:700; color:var(--accent-purple); border-bottom:1px dashed rgba(255,255,255,.08); padding-bottom:6px; margin:18px 0 4px;">리스트 프라이스 (벤더 공시가 · /radar 「가격」 탭에 표시)</h4>
+            <p style="color:var(--text-secondary); font-size:.75rem; margin:0 0 10px;">
+              딜 견적을 계산하는 <b>단가</b>와 다릅니다. 이건 벤더가 <b>공개한 정가</b>이고 협상 기준선으로만 씁니다.
+              <b style="color:#f87171;">공시가가 없는 벤더는 「견적 전용」으로 두고 숫자를 넣지 마세요</b> —
+              3자 사이트의 범위는 보고된 견적이지 정가가 아니라, 화면에 뜨면 영업이 고객 앞에서 인용합니다.
+            </p>
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="control-label" for="sol-lp-status">공개 여부</label>
+                <select id="sol-lp-status" class="form-control" style="padding-left:12px; cursor:pointer;">
+                  <option value="quote">견적 전용 — 공시가 없음</option>
+                  <option value="published">공시가 공개</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="control-label" for="sol-lp-checked">확인일</label>
+                <input type="date" id="sol-lp-checked" class="form-control" style="padding-left:12px;">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="sol-lp-source">출처 URL</label>
+              <input type="url" id="sol-lp-source" class="form-control" style="padding-left:12px;" placeholder="https://vendor.com/pricing — 벤더 공식 페이지">
+              <small style="color:var(--text-secondary); font-size:.75rem;">출처와 확인일이 없으면 나중에 이 값을 아무도 검증할 수 없습니다. 가격은 조용히 낡습니다.</small>
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="sol-lp-note">한 줄 안내</label>
+              <input type="text" id="sol-lp-note" class="form-control" style="padding-left:12px;" placeholder="예: Enterprise 는 좌석료 + API 사용량이라 좌석료만 제시하면 안 된다">
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="sol-lp-items">요금 항목 · JSON — 「공시가 공개」일 때만 저장됩니다</label>
+              <textarea id="sol-lp-items" class="textarea-control" style="height:130px; font-family:monospace; font-size:12px;"
+                placeholder='[{"plan":"Premium","amount":29,"currency":"USD","unit":"user/월","terms":"연간 약정"},
+ {"plan":"Ultimate","amount":null,"currency":"USD","unit":"user/월","terms":"맞춤 견적"}]'></textarea>
+              <small style="color:var(--text-secondary); font-size:.75rem;">과금 모양이 제품마다 달라 배열로 받습니다(좌석/월 · 1M 토큰 · GB · 시간당). <code>amount</code> 를 <code>null</code> 로 두면 그 줄은 「견적」으로 표시됩니다.</small>
+            </div>
+            <label style="display:flex; align-items:center; gap:8px; margin:6px 0 4px; color:#f87171; font-size:.82rem; font-weight:600; cursor:pointer;">
+              <input type="checkbox" id="sol-lp-review" style="cursor:pointer;">
+              <span>사람이 한 번 더 대조해야 함 — 공식 페이지를 확인하지 못하고 넣은 값</span>
+            </label>
+
             <div class="form-group">
               <label class="control-label">덮는 평가영역 (Assessment Coverage) <span style="color:#f87171;">*</span></label>
               <div id="assessment-coverage-editor" style="display:flex; flex-direction:column; gap:8px;"></div>
@@ -1109,7 +1149,23 @@
         }).filter(Boolean);
       }
 
-      /** JSON 텍스트에어리어 파싱. 깨지면 저장을 막고 그 자리에서 알린다. */
+      /**
+     * 벤더 공시가. 「견적 전용」이면 항목을 아예 안 보낸다 —
+     * 서버도 한 번 더 자르지만, 화면에서 먼저 끊어야 실수로 남은 값이 안 나간다.
+     */
+    function collectListPrice() {
+      const status = document.getElementById('sol-lp-status').value === 'published' ? 'published' : 'quote';
+      return {
+        status,
+        source: document.getElementById('sol-lp-source').value.trim(),
+        checked_at: document.getElementById('sol-lp-checked').value || null,
+        needs_review: document.getElementById('sol-lp-review').checked,
+        note: document.getElementById('sol-lp-note').value.trim(),
+        items: status === 'published' ? parseJsonField('sol-lp-items', '요금 항목') : []
+      };
+    }
+
+    /** JSON 텍스트에어리어 파싱. 깨지면 저장을 막고 그 자리에서 알린다. */
       function parseJsonField(id, label) {
         const el = document.getElementById(id);
         const raw = (el?.value || '').trim();
@@ -1679,6 +1735,14 @@
         document.getElementById('sol-red-flags').value =
           Array.isArray(sol.red_flags) && sol.red_flags.length ? JSON.stringify(sol.red_flags, null, 2) : '';
         renderAssessmentCoverageEditor(sol.assessment_coverage || []);
+        const lp = (sol.list_price && typeof sol.list_price === 'object') ? sol.list_price : {};
+        document.getElementById('sol-lp-status').value = lp.status === 'published' ? 'published' : 'quote';
+        document.getElementById('sol-lp-checked').value = lp.checked_at || '';
+        document.getElementById('sol-lp-source').value = lp.source || '';
+        document.getElementById('sol-lp-note').value = lp.note || '';
+        document.getElementById('sol-lp-review').checked = Boolean(lp.needs_review);
+        document.getElementById('sol-lp-items').value = Array.isArray(lp.items) && lp.items.length
+          ? JSON.stringify(lp.items, null, 2) : '';
         document.getElementById('completeness-result').textContent = '저장 후 [지금 검사]를 누르세요.';
 
         // 내부 전용 문단. 서버가 admin 응답에만 실어준다(009 적용 전이면 비어 있다).
@@ -1777,7 +1841,8 @@
         bundle_potential: document.getElementById('sol-bundle-potential').value || null,
         assessment_coverage: collectAssessmentCoverage(),
         assessment_prerequisites: parseJsonField('sol-prerequisites', '전제 조건'),
-        red_flags: parseJsonField('sol-red-flags', '부적합 신호')
+        red_flags: parseJsonField('sol-red-flags', '부적합 신호'),
+        list_price: collectListPrice()
       };
     }
 

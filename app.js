@@ -665,6 +665,71 @@ function renderInternalBlock() {
   `;
 }
 
+/**
+ * 9번 탭 — 벤더 공시가.
+ *
+ * 우리 견적 단가(unit_price)가 아니라 **벤더가 공개한 정가**다. 협상 기준선으로만 쓴다.
+ * 공시가가 없는 벤더는 숫자를 안 그린다 — 3자 사이트의 「보고된 견적」을 정가처럼
+ * 띄우면 영업이 고객 앞에서 인용한다.
+ *
+ * 출처와 확인일을 항상 같이 보여준다. 가격은 조용히 낡고, 낡은 값을 그대로 든 영업이
+ * 값을 못 믿게 되는 순간 이 탭 전체가 죽는다.
+ */
+function renderListPriceTab() {
+  const lp = (currentSelectedIsv && typeof currentSelectedIsv.list_price === 'object' && currentSelectedIsv.list_price) || {};
+  const status = lp.status === 'published' ? 'published' : 'quote';
+  const items = Array.isArray(lp.items) ? lp.items : [];
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  if (!lp.status) {
+    return `<div class="tab-pane"><p style="color: var(--text-secondary);">아직 가격 정보가 등록되지 않았습니다. /admin 폼 편집기의 「리스트 프라이스」에서 넣습니다.</p></div>`;
+  }
+
+  const stale = (() => {
+    if (!lp.checked_at) return '';
+    const days = Math.floor((Date.now() - Date.parse(`${lp.checked_at}T00:00:00Z`)) / 86400000);
+    if (!Number.isFinite(days)) return '';
+    return days >= 180
+      ? `<span style="color:#f87171; font-weight:700;">· ${days}일 지남 — 다시 확인하세요</span>`
+      : `<span style="color: var(--text-secondary);">· ${days}일 전</span>`;
+  })();
+
+  const head = `
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+      <span style="padding:3px 10px; border-radius:20px; font-size:.75rem; font-weight:800;
+        ${status === 'published'
+          ? 'background:rgba(79,180,119,.14); color:#4fb477;'
+          : 'background:rgba(224,106,126,.14); color:#e06a7e;'}">
+        ${status === 'published' ? '공시가 공개' : '견적 전용 · 공시가 없음'}</span>
+      ${lp.needs_review ? '<span style="padding:3px 10px; border-radius:20px; background:rgba(212,164,56,.16); color:#d4a438; font-size:.75rem; font-weight:800;">사람 확인 필요</span>' : ''}
+      ${lp.checked_at ? `<span style="font-size:.78rem; color:var(--text-secondary);">확인일 ${esc(lp.checked_at)} ${stale}</span>` : ''}
+    </div>`;
+
+  const table = items.length ? `
+    <div class="table-container"><table class="isv-table">
+      <thead><tr><th>요금제</th><th>금액</th><th>단위</th><th>조건</th></tr></thead>
+      <tbody>${items.map((row) => `<tr>
+        <td><strong>${esc(row.plan)}</strong></td>
+        <td>${row.amount === null || row.amount === undefined
+              ? '<span style="color:var(--text-secondary);">견적</span>'
+              : `${esc(row.currency || '')} ${Number(row.amount).toLocaleString('en-US')}`}</td>
+        <td>${esc(row.unit || '-')}</td>
+        <td style="color:var(--text-secondary);">${esc(row.terms || '')}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : `
+    <p style="padding:16px; border:1px dashed rgba(255,255,255,.14); border-radius:8px; color:var(--text-secondary);">
+      이 벤더는 정가를 공개하지 않습니다. <b style="color:var(--text-primary);">벤더·총판 견적이 필요합니다.</b></p>`;
+
+  const note = lp.note ? `<p style="margin-top:14px; padding:11px 13px; border-left:3px solid var(--accent-blue); background:rgba(76,154,255,.06); font-size:.85rem; line-height:1.7;">${esc(lp.note)}</p>` : '';
+  const source = lp.source
+    ? `<p style="margin-top:12px; font-size:.78rem; color:var(--text-secondary);">출처 · <a href="${esc(lp.source)}" target="_blank" rel="noopener" style="color:var(--accent-blue);">${esc(lp.source)}</a></p>`
+    : '<p style="margin-top:12px; font-size:.78rem; color:#f87171;">출처가 없습니다 — 이 값은 검증할 수 없습니다.</p>';
+
+  return `<div class="tab-pane">${head}${table}${note}${source}
+    <p style="margin-top:16px; font-size:.76rem; color:var(--text-secondary);">
+      벤더 공시가입니다. 우리 견적 단가와 다르고, 실제 제안 금액은 딜 허브 STEP 04 에서 산정합니다.</p></div>`;
+}
+
 function renderTabContent() {
   if (!currentSelectedIsv) return;
 
@@ -674,6 +739,12 @@ function renderTabContent() {
     : {};
   const markdownText = String(sections[currentActiveTab] || "상세 정보가 존재하지 않습니다.");
   const internalBlock = renderInternalBlock();
+
+  if (currentActiveTab === "9") {
+    contentContainer.innerHTML = renderListPriceTab();
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
 
   if (currentActiveTab === "7") {
     // Render Checklist tab with split layout and download button

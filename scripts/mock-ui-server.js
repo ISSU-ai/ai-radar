@@ -566,6 +566,17 @@ const isvSections = (() => {
   return new Map(rows.map((row) => [slugify(row.name), row.sections || {}]));
 })();
 
+/** 042 가 심는 벤더 공시가. 목업이 안 주면 /radar 「가격」 탭을 로컬에서 못 본다. */
+const listPrices = (() => {
+  const sql = require('fs').readFileSync(
+    path.join(__dirname, '..', 'db', 'migrations', '042_solution_list_price.sql'), 'utf8');
+  const map = new Map();
+  for (const m of sql.matchAll(/list_price = '(\{[\s\S]*?\})'::jsonb where slug = '([a-z0-9-]+)'/g)) {
+    map.set(m[2], JSON.parse(m[1]));
+  }
+  return map;
+})();
+
 app.get('/api/solutions/:slug', (req, res) => {
   // 카탈로그 픽스처(mockSolutions)와 허브 참조(refs.solutions)가 목업에선 딴 목록이다.
   // 실제 서버는 같은 테이블이라, 참조에 있는 slug 가 여기서 404 나면 **로컬에서만**
@@ -576,9 +587,10 @@ app.get('/api/solutions/:slug', (req, res) => {
   // 본문이 없는 솔루션은 sections 가 비어서 나간다 — 실제로 개요만 찬 것들이 있고,
   // 부록이 그 줄만 빼고 카드를 내는지 확인하려면 그 상태 그대로 보여야 한다.
   const sections = isvSections.get(req.params.slug) || found.sections || {};
+  const list_price = listPrices.get(req.params.slug) || found.list_price || {};
   // 실제 서버는 non-admin 에게만 걸러 준다. 목업 사용자는 admin 이라 그대로 간다 —
   // 피치 부록이 라벨로 한 번 더 거르는지를 로컬에서 확인할 수 있어야 한다.
-  res.json({ ...found, sections });
+  res.json({ ...found, sections, list_price });
 });
 app.get('/api/admin/solutions/:id/versions', (_req, res) => res.json([]));
 app.get('/api/admin/solutions/:id/completeness', (req, res) => {

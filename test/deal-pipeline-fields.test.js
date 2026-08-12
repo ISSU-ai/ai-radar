@@ -396,3 +396,64 @@ test('/radar 는 ISV 탐색기를 맨 위에 둔다', () => {
   assert.ok(!radar.includes('href="/about"'), '소개 버튼이 남아 있다');
   assert.match(serverSrc, /app\.get\(\['\/about', '\/about\.html'\]/, '/about 페이지까지 지우면 안 된다');
 });
+
+// ── 042 벤더 공시가 ──────────────────────────────────────────────
+test('공시가가 없는 벤더에는 숫자를 넣지 않는다', () => {
+  // 3자 사이트의 「$72~325」 같은 범위는 보고된 견적이지 정가가 아니다.
+  // 화면에 숫자가 보이면 영업이 고객 앞에서 인용한다.
+  const sql = read('db/migrations/042_solution_list_price.sql');
+  const seeds = [...sql.matchAll(/list_price = '(\{[\s\S]*?\})'::jsonb where slug = '([a-z0-9-]+)'/g)];
+  assert.equal(seeds.length, 9, `시드가 ${seeds.length}종이다`);
+  const byStatus = { published: [], quote: [] };
+  for (const [, json, slug] of seeds) {
+    const lp = JSON.parse(json);
+    byStatus[lp.status].push(slug);
+    assert.ok(lp.checked_at, `${slug} 에 확인일이 없다 — 나중에 검증할 수 없다`);
+    if (lp.status === 'quote') {
+      assert.equal(lp.items.length, 0, `${slug} 은 공시가가 없는데 숫자가 들어 있다`);
+    } else {
+      assert.ok(lp.source, `${slug} 에 출처가 없다`);
+      assert.ok(lp.items.length, `${slug} 이 공개인데 항목이 비었다`);
+    }
+  }
+  assert.deepEqual(byStatus.quote.sort(), ['articul8', 'check-point', 'portal26', 'zscaler']);
+  // 서버도 한 번 더 자른다 — 화면만 막으면 API 로 들어오는 값이 남는다
+  const block = serverSrc.slice(serverSrc.indexOf('async function persistListPrice'),
+    serverSrc.indexOf('async function persistPriceFlag'));
+  assert.match(block, /status === 'published' && Array\.isArray\(raw\.items\) \? raw\.items[\s\S]{0,40}: \[\]/);
+  assert.match(block, /hasColumn\('solutions', 'list_price'\)/);
+});
+
+test('list_price 는 영업도 보고, 우리 견적 단가는 admin 만 본다', () => {
+  const common = serverSrc.slice(serverSrc.indexOf('SOLUTION_COLUMNS_COMMON'),
+    serverSrc.indexOf('SOLUTION_COLUMNS_ADMIN_ONLY'));
+  const adminOnly = serverSrc.slice(serverSrc.indexOf('SOLUTION_COLUMNS_ADMIN_ONLY'),
+    serverSrc.indexOf('SOLUTION_COLUMNS_OPTIONAL'));
+  assert.match(common, /'list_price'/, '영업이 못 보면 가격 탭이 빈다');
+  assert.match(adminOnly, /'unit_price'/, '견적 단가가 영업에게 새면 안 된다');
+  assert.ok(!/'unit_price'/.test(common));
+  // 042 미적용 구간에도 카탈로그가 500 이 나면 안 된다
+  assert.match(serverSrc, /SOLUTION_COLUMNS_OPTIONAL = Object\.freeze\(\[[^\]]*'list_price'/);
+  assert.match(serverSrc, /SOLUTION_COLUMNS_OPTIONAL\.includes\(column\) && !\(await hasColumn/);
+});
+
+test('/radar 에 가격 탭이 있고 출처·확인일을 같이 띄운다', () => {
+  const radar = read('index.html');
+  const app = read('app.js');
+  assert.match(radar, /switchTab\(event, '9'\)">9\. 가격/);
+  assert.match(app, /function renderListPriceTab/);
+  assert.match(app, /currentActiveTab === "9"/);
+  // 가격은 조용히 낡는다. 출처와 확인일이 없으면 아무도 검증할 수 없다.
+  assert.match(app, /확인일/);
+  assert.match(app, /출처가 없습니다 — 이 값은 검증할 수 없습니다/);
+  assert.match(app, /다시 확인하세요/, '오래된 값에 경고가 없다');
+  // 견적 전용이면 숫자 대신 안내를 띄운다
+  assert.match(app, /벤더·총판 견적이 필요합니다/);
+  // 우리 견적과 다르다는 것을 화면이 말한다
+  assert.match(app, /우리 견적 단가와 다르고/);
+});
+
+test('목업이 042 시드를 직접 읽는다', () => {
+  assert.match(mock, /042_solution_list_price\.sql/, '베껴 두면 가격 탭이 로컬에서만 다르게 보인다');
+  assert.match(mock, /list_price/);
+});

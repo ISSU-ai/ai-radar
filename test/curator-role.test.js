@@ -77,7 +77,10 @@ test('가격 필드는 admin 만 바꾼다 — 세 경로 전부 막혀 있다',
 
 test('내부 본문(opinion·sections_internal)은 curator 에게 열려 있다', () => {
   // ISSU 가 등록할 때 마진 코멘트까지 한 번에 쓰도록 열기로 결정했다.
-  assert.match(source, /if \(!isCatalogEditor\(\{ role \}\)\) return \[\.\.\.SOLUTION_COLUMNS_COMMON\]/);
+  // 042 로 COMMON 에도 선택 컬럼(list_price)이 생겨 목록이 필터를 거친다.
+  // viewer 가 ADMIN_ONLY 를 못 받는다는 규약은 그대로다.
+  assert.match(source, /if \(!isCatalogEditor\(\{ role \}\)\) return common;/);
+  assert.match(source, /return \[\.\.\.common, \.\.\.\(await keep\(SOLUTION_COLUMNS_ADMIN_ONLY\)\)\]/);
   assert.match(source, /const canSeeInternal = isCatalogEditor\(req\.user\)/);
   // viewer 에게는 여전히 런타임 제거가 걸려 있어야 한다.
   assert.match(source, /stripInternalSections\(row\.sections\)/);

@@ -193,24 +193,35 @@ async function hasColumn(table, column) {
 const SOLUTION_COLUMNS_COMMON = Object.freeze([
   'id', 'legacy_id', 'slug', 'name', 'delivery', 'layer', 'synergy', 'category',
   'jtbd', 'value_chain', 'sections', 'simulator_mappings', 'industries',
-  'status', 'updated_at'
+  'status', 'updated_at', 'list_price'
 ]);
 const SOLUTION_COLUMNS_ADMIN_ONLY = Object.freeze([
   'opinion', 'sections_internal', 'grade', 'scale', 'status_op', 'note', 'tech_note',
   'focal_id', 'price_type', 'unit_price', 'currency', 'price_tiers',
   'price_is_placeholder', 'version', 'updated_by'
 ]);
+/**
+ * 마이그레이션이 수동이라 코드가 먼저 배포되는 구간이 있다. 여기 적힌 컬럼은 없으면
+ * SELECT 에서 빼고, 있으면 넣는다. 안 빼면 컬럼 하나 때문에 카탈로그 전체가 500 이 된다.
+ *
+ * list_price 는 **영업도 봐야 해서** COMMON 에 있다. 벤더 공시가라 대외 민감이 아니고,
+ * 우리 견적 단가(unit_price)는 여전히 ADMIN_ONLY 다.
+ */
+const SOLUTION_COLUMNS_OPTIONAL = Object.freeze(['sections_internal', 'price_is_placeholder', 'list_price']);
 
 async function solutionColumnsFor(role) {
+  const keep = async (columns) => {
+    const available = [];
+    for (const column of columns) {
+      if (SOLUTION_COLUMNS_OPTIONAL.includes(column) && !(await hasColumn('solutions', column))) continue;
+      available.push(column);
+    }
+    return available;
+  };
+  const common = await keep(SOLUTION_COLUMNS_COMMON);
   // curator 도 내부 본문을 편집해야 하므로 admin 과 같은 컬럼을 받는다.
-  if (!isCatalogEditor({ role })) return [...SOLUTION_COLUMNS_COMMON];
-  const optional = ['sections_internal', 'price_is_placeholder'];
-  const available = [];
-  for (const column of SOLUTION_COLUMNS_ADMIN_ONLY) {
-    if (optional.includes(column) && !(await hasColumn('solutions', column))) continue;
-    available.push(column);
-  }
-  return [...SOLUTION_COLUMNS_COMMON, ...available];
+  if (!isCatalogEditor({ role })) return common;
+  return [...common, ...(await keep(SOLUTION_COLUMNS_ADMIN_ONLY))];
 }
 
 /**
@@ -257,6 +268,31 @@ async function persistRecommendationFields(executor, solutionId, payload = {}) {
     }
     await executor.query(`UPDATE solutions SET ${column} = $1 WHERE id = $2`, [stored, solutionId]);
   }
+}
+
+/**
+ * 벤더 공시가(list_price)를 반영한다. 042 적용 전이면 조용히 건너뛴다.
+ *
+ * ⚠ status 가 'quote' 인데 숫자가 들어오면 items 를 비운다. 공시가가 없는 벤더에
+ *   3자 사이트의 「보고된 견적」을 적어 두면 영업이 고객 앞에서 정가처럼 인용한다.
+ *   화면에서 막는 것으로는 부족하다 — API 로 들어오는 값도 여기서 잘라야 한다.
+ */
+async function persistListPrice(executor, solutionId, value) {
+  if (value === undefined) return;
+  if (!(await hasColumn('solutions', 'list_price'))) return;
+  const raw = (value && typeof value === 'object' && !Array.isArray(value))
+    ? value : (parseJsonColumn(value, {}) || {});
+  const status = raw.status === 'published' ? 'published' : 'quote';
+  const items = status === 'published' && Array.isArray(raw.items) ? raw.items.slice(0, 30) : [];
+  const stored = {
+    status,
+    source: String(raw.source || '').slice(0, 400),
+    checked_at: /^\d{4}-\d{2}-\d{2}$/.test(String(raw.checked_at || '')) ? raw.checked_at : null,
+    needs_review: Boolean(raw.needs_review),
+    note: String(raw.note || '').slice(0, 600),
+    items
+  };
+  await executor.query('UPDATE solutions SET list_price = $1 WHERE id = $2', [JSON.stringify(stored), solutionId]);
 }
 
 /** solutions.price_is_placeholder 를 반영한다. 009 적용 전이면 조용히 건너뛴다. */
@@ -853,6 +889,7 @@ app.post('/api/admin/solutions', authenticateToken, catalogEditorOnly, async (re
     await persistSectionsInternal(pool, solId, req.body.sections_internal);
     await persistRecommendationFields(pool, solId, req.body);
     await persistPriceFlag(pool, solId, req.body.price_is_placeholder, req.user);
+    await persistListPrice(pool, solId, req.body.list_price);
     auditLog(req.user.id, 'edit', slug, 'Created Draft');
 
     res.json({ message: '솔루션 초안(Draft)이 성공적으로 생성되었습니다.', id: solId, slug });
@@ -932,6 +969,7 @@ app.put('/api/admin/solutions/:id', authenticateToken, catalogEditorOnly, async 
     await persistSectionsInternal(pool, solId, req.body.sections_internal);
     await persistRecommendationFields(pool, solId, req.body);
     await persistPriceFlag(pool, solId, req.body.price_is_placeholder, req.user);
+    await persistListPrice(pool, solId, req.body.list_price);
 
     auditLog(req.user.id, 'edit', slug, 'Updated solution details');
     res.json({ message: '솔루션 정보가 저장되었습니다.', slug });
@@ -1066,6 +1104,7 @@ app.post('/api/admin/solutions/:id/publish', authenticateToken, catalogEditorOnl
     await persistSectionsInternal(client, solId, payload.sections_internal);
     await persistRecommendationFields(client, solId, payload);
     await persistPriceFlag(client, solId, payload.price_is_placeholder, req.user);
+    await persistListPrice(client, solId, payload.list_price);
     const sectionsInternal = payload.sections_internal !== undefined
       ? (parseJsonColumn(payload.sections_internal, {}) || {})
       : (parseJsonColumn(updatedSol.sections_internal, {}) || {});
