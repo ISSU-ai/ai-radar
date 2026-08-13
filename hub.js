@@ -784,14 +784,61 @@ function stallChipsMarkup(deal) {
   return chips.join('');
 }
 
+/**
+ * 결과 링크 열람(048). 정체 시계 옆에 붙는 **세 번째 시계**다 —
+ * 「안 열었다」와 「열었는데 3주째 안 움직인다」는 다음 행동이 다르다.
+ *
+ * ⚠ 「보냄 → 열람」이라고 쓰지 않는다. 발송 수단이 아직 없어서(MAIL_PROVIDER_URL 미정)
+ *   **보냈는지를 우리가 모른다.** 지금 아는 것은 링크가 만들어졌다는 것과 열렸는지뿐이라
+ *   거기까지만 말한다. 발송 기록이 생기면 「미발송」 상태가 여기 하나 늘어난다.
+ */
+function resultOpenState(deal) {
+  // 044 이전 리드는 링크 자체가 없다. 「미열람」이라고 쓰면 안 연 것처럼 보인다.
+  if (!deal || deal.lead_result_open_count == null) return null;
+  const days = (value) => {
+    const at = value ? new Date(value).getTime() : NaN;
+    return Number.isFinite(at) ? Math.floor((Date.now() - at) / 86400000) : null;
+  };
+  const count = Number(deal.lead_result_open_count) || 0;
+  if (!deal.lead_result_opened_at) return { opened: false, count: 0 };
+  return {
+    opened: true,
+    count,
+    firstDays: days(deal.lead_result_opened_at),
+    lastDays: days(deal.lead_result_last_opened_at || deal.lead_result_opened_at)
+  };
+}
+
+const dayPhrase = (value) => (value == null ? '' : value === 0 ? '오늘' : `${value}일 전`);
+
+function resultOpenChipMarkup(deal) {
+  const open = resultOpenState(deal);
+  if (!open) return '';
+  if (!open.opened) {
+    return `<span class="stall-chip" tabindex="0" data-hint="${escapeHtml(
+      '고객이 진단 결과 링크를 아직 열지 않았습니다.\n\n'
+      + '링크를 보낸 기록은 아직 남기지 않습니다 —\n'
+      + '메일 발송 수단이 붙기 전까지는 「안 보냈다」와\n'
+      + '「보냈는데 안 열었다」를 구분할 수 없습니다.')}">결과 미열람</span>`;
+  }
+  const again = open.count > 1 ? ` · ${open.count}회` : '';
+  return `<span class="stall-chip opened" tabindex="0" data-hint="${escapeHtml(
+    `처음 ${dayPhrase(open.firstDays)} · 마지막 ${dayPhrase(open.lastDays)} · 모두 ${open.count}회\n\n`
+    + '30분 안의 재조회는 한 번으로 셉니다(새로고침).\n'
+    + '다시 열어 봤다면 관심이 살아 있다는 신호입니다.')}">결과 열람 ${dayPhrase(open.lastDays)}${again}</span>`;
+}
+
 /** 계산 결과만. 입력칸과 분리해야 문의 시점을 고칠 때 포커스를 잃지 않는다. */
 function stallSummaryMarkup() {
+  const open = resultOpenChipMarkup(state.deal);
   const chips = stallChipsMarkup(state.deal);
-  if (!chips) return '<span class="stall-chip">문의 시점을 넣으면 F/U 시점이 계산됩니다.</span>';
+  if (!chips) {
+    return `<span class="stall-chip">문의 시점을 넣으면 F/U 시점이 계산됩니다.</span>${open}`;
+  }
   const stall = stallState(state.deal);
   const note = stall.stageDays == null
     ? ' <span class="stall-chip">단계 이동 기록은 다음 이동부터 쌓입니다.</span>' : '';
-  return chips + note;
+  return chips + open + note;
 }
 
 /**
@@ -805,6 +852,8 @@ function renderStallSummary() {
   if (node) node.innerHTML = stallSummaryMarkup();
   const context = document.getElementById('context-stall');
   if (context) context.innerHTML = state.deal ? (stallChipsMarkup(state.deal) || '—') : '—';
+  const opened = document.getElementById('context-result-open');
+  if (opened) opened.innerHTML = state.deal ? (resultOpenChipMarkup(state.deal) || '—') : '—';
 }
 
 const MSP_LABELS = Object.freeze({ yes: 'MSP 운영 중', no: '미운영', unknown: '확인 필요' });

@@ -50,7 +50,9 @@ const MIGRATIONS = [
   // 046 은 컬럼 + 인덱스. 기존 리드를 소급 판정하지 않는다.
   '046_lead_spam_signals.sql',
   // 047 은 빈 표만 만든다. 내용은 /admin 에서 넣는다.
-  '047_case_studies.sql'
+  '047_case_studies.sql',
+  // 048 은 컬럼 셋 + 인덱스. 기존 리드는 전부 미열람으로 남는다(소급 불가).
+  '048_lead_result_open.sql'
 ];
 
 async function main() {

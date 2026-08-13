@@ -215,15 +215,19 @@ app.post('/api/hub/public/leads', (req, res) => {
   catch (error) { return res.status(400).json({ error: error.message }); }
   // 044 의 result_token. 실제 서버는 gen_random_uuid() 가 만든다.
   const resultToken = require('crypto').randomUUID();
+  // 048. 열람 요약 셋. 실서버는 leads 컬럼이고 목업은 이 객체가 그 자리다.
   mockLeads.push({ ...lead, id: `mock-${mockLeads.length + 1}`, result_token: resultToken,
-    created_at: new Date().toISOString() });
+    promoted_deal: `d${deals.length + 1}`, created_at: new Date().toISOString(),
+    result_opened_at: null, result_last_opened_at: null, result_open_count: 0 });
   // 실서버는 GET /deals/:id 가 leads 를 조인해 lead_contact_* 로 준다. 목업은 딜에 심는다.
   const leadContact = {
     lead_contact: lead.contact, lead_contact_name: lead.contact_name,
     lead_contact_phone: lead.contact_phone, lead_contact_title: lead.contact_title || null,
     lead_message: lead.message,
     // 046. 실서버는 목록에 개수만, 상세에 목록을 준다.
-    lead_spam_signals: lead.spam_signals || [], spam_count: (lead.spam_signals || []).length
+    lead_spam_signals: lead.spam_signals || [], spam_count: (lead.spam_signals || []).length,
+    // 048. 실서버는 GET /deals/:id 의 lateral join 이 준다. 아직 안 열린 상태로 시작한다.
+    lead_result_opened_at: null, lead_result_last_opened_at: null, lead_result_open_count: 0
   };
 
   // 실제 서버와 같이 딜을 만든다. 이게 없으면 /readiness 로 제출한 결과가 허브에
@@ -777,7 +781,27 @@ app.get('/api/hub/public/result/:token', (req, res) => {
   result.priorities = (result.priorities || []).map((p) => ({ ...p, offerings: covering.get(p.area) || [] }));
   // ⚠ 담당자 이름·전화·이메일을 싣지 않는다. 회사명과 결과까지다.
   res.json({ customer: lead.customer, created_at: lead.created_at, result });
+  recordResultOpen(lead);
 });
+
+/**
+ * 048. 열람 기록. **응답을 보낸 뒤에** 부르고, /r/:token(정적 HTML)에서는 안 센다 —
+ * 실서버와 같은 규칙이라야 로컬에서 본 숫자를 믿을 수 있다.
+ */
+const RESULT_OPEN_WINDOW_MS = 30 * 60 * 1000;
+function recordResultOpen(lead) {
+  const now = new Date();
+  const last = lead.result_last_opened_at ? new Date(lead.result_last_opened_at).getTime() : 0;
+  if (!last || now.getTime() - last >= RESULT_OPEN_WINDOW_MS) lead.result_open_count += 1;
+  if (!lead.result_opened_at) lead.result_opened_at = now.toISOString();
+  lead.result_last_opened_at = now.toISOString();
+  const deal = deals.find((item) => item.id === lead.promoted_deal);
+  if (deal) {
+    deal.lead_result_opened_at = lead.result_opened_at;
+    deal.lead_result_last_opened_at = lead.result_last_opened_at;
+    deal.lead_result_open_count = lead.result_open_count;
+  }
+}
 
 app.get('/admin', (_req, res) => res.sendFile(path.join(__dirname, '..', 'admin.html')));
 

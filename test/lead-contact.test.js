@@ -268,9 +268,13 @@ test('항목을 늘렸으면 고지와 동의 버전도 같이 올린다', () =>
   const notice = html.slice(html.indexOf('<b>수집 항목</b>'), html.indexOf('<b>이용 목적</b>'));
   assert.match(notice, /직함/, '고지에 직함이 없다');
   assert.match(notice, /도입 희망 시기/, '고지에 도입 시기가 없다');
-  // 옛 버전 그대로면 무엇에 동의했는지 되찾을 수 없다
-  assert.match(routes, /version: '2026-08-13-v2'/);
-  assert.ok(!/version: '2026-07-22-v1'/.test(routes), '동의 버전이 안 올라갔다');
+  assert.match(notice, /열람 기록/, '고지에 결과 링크 열람 기록이 없다');   // 048
+  // 옛 버전 그대로면 무엇에 동의했는지 되찾을 수 없다. **이 줄은 수집 항목을 고칠
+  // 때마다 같이 올라간다** — 그게 이 검사의 목적이다. 지난 버전은 되돌아올 수 없다.
+  assert.match(routes, /version: '2026-08-13-v3'/);
+  for (const retired of ["'2026-07-22-v1'", "'2026-08-13-v2'"]) {
+    assert.ok(!routes.includes(`version: ${retired}`), `동의 버전이 ${retired} 로 되돌아갔다`);
+  }
 });
 
 test('직함은 포탈 원본과 영업 확인분을 가른다', () => {

@@ -27,9 +27,10 @@ const PUBLIC_LEAD_LIMIT = 8;
  * 수집 항목을 늘릴 때는 version 을 올린다 — 옛 동의로 받은 건과 새 동의로 받은 건이
  * 섞이면 나중에 "이 사람은 무엇에 동의했나" 를 되찾을 수 없다.
  * v2: 직함·도입 시기 추가 (045)
+ * v3: 결과 링크 열람 기록 추가 (048) — 저장하는 것을 늘렸으면 고지도 같이 올린다
  */
 const PRIVACY_NOTICE = Object.freeze({
-  version: '2026-08-13-v2',
+  version: '2026-08-13-v3',
   purpose: 'AI 준비도 진단 결과를 바탕으로 한 상담 접수, 담당자 연락 및 제안 준비',
   retention: '상담 요청일로부터 1년'
 });
@@ -376,6 +377,37 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
    *
    * ⚠ 담당자 이름·전화·이메일을 싣지 않는다. 회사명과 진단 결과까지다.
    */
+  /**
+   * 열람 기록(048). **응답을 보낸 뒤에 부른다.** 기록이 실패해도 고객 화면은 정상이어야
+   * 한다 — 우리 내부 지표 때문에 고객이 결과를 못 보는 일은 없어야 한다. slackNotify·
+   * sendLeadReceipt 와 같은 규약이다(void 로 부르고 예외를 삼킨다).
+   *
+   * ⚠ 이 라우트에서만 센다. 정적 HTML(/r/:token)에서 세면 기업 메일 게이트웨이가 링크를
+   *   미리 열어 본 것까지 「열람」이 되어, 고객이 안 봤는데 봤다고 말하게 된다.
+   *
+   * 30분 창을 두는 것은 새로고침·뒤로가기가 횟수를 부풀리기 때문이다. 창 안에서는
+   * 마지막 시각만 갱신하고 횟수는 그대로 둔다.
+   */
+  const RESULT_OPEN_WINDOW = '30 minutes';
+  async function recordResultOpen(token) {
+    try {
+      if (!(hasColumn && await hasColumn('leads', 'result_open_count'))) return;
+      await pool.query(
+        `update leads set
+            result_opened_at = coalesce(result_opened_at, now()),
+            result_last_opened_at = now(),
+            result_open_count = result_open_count + (case
+              when result_last_opened_at is null
+                or result_last_opened_at < now() - interval '${RESULT_OPEN_WINDOW}'
+              then 1 else 0 end)
+          where result_token = $1`,
+        [token]
+      );
+    } catch (error) {
+      console.error('Result open tracking failed:', error.message);
+    }
+  }
+
   router.get('/public/result/:token', async (req, res) => {
     try {
       if (!/^[0-9a-f-]{36}$/i.test(String(req.params.token || ''))) {
@@ -411,6 +443,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       result.priorities = asArray(result.priorities)
         .map((p) => ({ ...p, offerings: covering.get(p.area) || [] }));
       res.json({ customer: row.customer, created_at: row.created_at, result });
+      void recordResultOpen(req.params.token);
     } catch (error) {
       console.error('Result link failed:', error.message);
       sendPublicUnavailable(res, '결과를 불러오지 못했습니다.');
@@ -630,14 +663,22 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         : 'l.contact, l.message, null::text as contact_name, null::text as contact_phone')
         + (hasTitle ? ', l.contact_title' : ', null::text as contact_title')
         + ((hasColumn && await hasColumn('leads', 'spam_signals'))
-          ? ', l.spam_signals' : `, '[]'::jsonb as spam_signals`);
+          ? ', l.spam_signals' : `, '[]'::jsonb as spam_signals`)
+        // 048. 열람 요약 셋. **목록(GET /deals)에는 안 싣는다** — 목록은 owner 게이트가
+        // 없어 승인된 전원이 보고, 이 값은 딜을 맡은 사람이 다음 행동을 정할 때 쓴다.
+        + ((hasColumn && await hasColumn('leads', 'result_open_count'))
+          ? ', l.result_opened_at, l.result_last_opened_at, l.result_open_count'
+          : ', null::timestamptz as result_opened_at, null::timestamptz as result_last_opened_at, 0 as result_open_count');
       const result = await pool.query(
         `select d.*, p.full_name as owner_name, t.name as track_name,
                 lead.contact as lead_contact, lead.message as lead_message,
                 lead.contact_name as lead_contact_name,
                 lead.contact_phone as lead_contact_phone,
                 lead.contact_title as lead_contact_title,
-                lead.spam_signals as lead_spam_signals
+                lead.spam_signals as lead_spam_signals,
+                lead.result_opened_at as lead_result_opened_at,
+                lead.result_last_opened_at as lead_result_last_opened_at,
+                lead.result_open_count as lead_result_open_count
          from deals d
          left join profiles p on p.id = d.owner_id
          left join tracks t on t.id = d.track
