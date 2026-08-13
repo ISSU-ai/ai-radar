@@ -564,7 +564,8 @@ test('내부 라벨 목록을 화면에 또 적지 않는다', () => {
 test('요약은 맨 위, 부록은 본문 아래', () => {
   const hub = hubJs();
   const body = hub.slice(hub.indexOf('function buildPitch'), hub.indexOf('const STAGE_REPORT_TITLES'));
-  assert.match(body, /\[head, summary, opening, context, proposal, size, risk, next\]/);
+  // 5-1 레퍼런스가 예상 질문 뒤, 다음 단계 앞에 온다(047). 매칭 0건이면 빈 문자열이다.
+  assert.match(body, /\[head, summary, opening, context, proposal, size, risk, reference, next\]/);
   assert.match(body, /\+ appendix/, '부록은 맨 뒤에 붙는다');
   assert.match(body, /내부 준비용입니다/, '문서 성격을 머리에 박는다');
   // 요약은 본문에서 이미 계산한 값을 쓴다 — 따로 계산하면 위아래가 갈라진다

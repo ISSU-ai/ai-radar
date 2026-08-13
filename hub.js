@@ -2017,6 +2017,13 @@ function buildPitch() {
 
   const risk = block('5. 예상 질문과 대응', objections);
 
+  // 레퍼런스. 미팅에서 반드시 나오는 질문이라 대화 가이드에도 넣는다.
+  // 실명은 서버가 승인된 것만 내려보낸다(047).
+  const cases = asArray(state.reco?.caseStudies);
+  const reference = cases.length ? block('5-1. 비슷한 사례', cases.map((item) =>
+    `${item.customer} — ${item.headline}`
+    + (item.outcome ? `\n   ${item.outcome}` : '')).join('\n')) : '';
+
   // ── 6. 다음 단계 ──────────────────────────────────────────────
   const next = block('6. 다음 단계', [
     pending.length ? `확인 필요 (미확정 전제)\n${bullet(pending)}\n` : '',
@@ -2076,7 +2083,7 @@ function buildPitch() {
       + block('부록. 솔루션별 이야기할 거리', cards.join('\n\n'))
     : '';
 
-  return [head, summary, opening, context, proposal, size, risk, next].join('\n') + appendix;
+  return [head, summary, opening, context, proposal, size, risk, reference, next].join('\n') + appendix;
 }
 
 /**
@@ -2229,6 +2236,15 @@ function buildCustomerKit() {
     '※ 사용량 변동이 큰 API 는 포함하지 않았습니다.'
   ].filter(Boolean).join('\n');
 
+  // ── 레퍼런스 ────────────────────────────────────────────────
+  // 매칭이 0건이면 절 자체가 안 나온다. 억지로 붙인 사례가 안 붙인 것보다 나쁘다.
+  // 실명 여부는 서버가 이미 갈라서 보낸다 — 화면은 customer 를 그대로 쓴다.
+  const caseStudies = asArray(state.reco?.caseStudies).map((item) =>
+    `### ${item.headline}\n\n${[
+      item.customer ? `**${item.customer}**` : '',
+      item.situation, item.what_we_did, item.outcome
+    ].filter(Boolean).join('\n\n')}`).join('\n\n');
+
   const openCount = collectOpenItems().length;
 
   return `# ${deal.customer} — AI 도입 검토 정리
@@ -2241,8 +2257,9 @@ ${block('1. 진단 결과', diagnosis)}
 ${block('2. 이렇게 이해했습니다', context + (notes ? `\n\n${notes}` : ''))}
 ${asked ? block('3. 문의하신 제품', asked) : ''}
 ${block('4. 권고 구성', proposal)}
-${block('5. 예상 규모', size)}
-${block('6. 다음 단계', bullet([
+${caseStudies ? block('5. 비슷한 사례', caseStudies) : ''}
+${block(caseStudies ? '6. 예상 규모' : '5. 예상 규모', size)}
+${block(caseStudies ? '7. 다음 단계' : '6. 다음 단계', bullet([
   '이 정리 내용에 빠지거나 다른 부분을 알려주세요.',
   openCount ? '함께 확인이 필요한 항목이 있어 다음 미팅에서 여쭙겠습니다.' : '',
   '범위가 정해지면 일정과 금액을 확정해 드립니다.'

@@ -550,6 +550,35 @@ app.get('/api/admin/slots', (_req, res) => res.json(mockSlots));
 app.get('/api/admin/focal-contacts', (_req, res) => res.json([{ id: 'f1', name: '박포컬', org: 'ISSU' }]));
 app.get('/api/admin/profiles', (_req, res) => res.json([{ id: user.id, email: user.email, full_name: user.name, team: 'ISSU', role: 'admin', approved: true }]));
 app.get('/api/admin/packages', (_req, res) => res.json(refs.packages.map((p) => ({ ...p, base_md: 20, unit_price: 0, price_is_placeholder: true }))));
+/**
+ * 레퍼런스·사례 (047). 목업은 메모리에 둔다.
+ * ⚠ 딜 쪽 응답(matchCaseStudies)과 달리 여기는 실명을 그대로 준다 — /admin 이라서다.
+ */
+let mockCases = [
+  { id: 'cs-sample', headline: '금융권 전사 AI 도입 — 90일 만에 생산성 지표 확인',
+    industry: 'Finance', package_ids: ['P02'], isv_slugs: ['openai-enterprise', 'portal26'],
+    situation: '개인 계정으로 쓰는 AI 를 회사가 파악하지 못하고 있었습니다.',
+    what_we_did: '전사 워크스페이스를 구성하고 사용 현황을 한 화면에서 보게 했습니다.',
+    outcome: '90일 시점에 문서 작성 시간이 눈에 띄게 줄었습니다.',
+    is_named: false, customer_name: null, customer_label: '금융권 A사',
+    status: 'published', sort_order: 10, updated_at: new Date().toISOString() }
+];
+app.get('/api/admin/case-studies', (_req, res) => res.json(mockCases));
+app.post('/api/admin/case-studies', (req, res) => {
+  const b = req.body || {};
+  if (!b.headline) return res.status(400).json({ error: '한 줄 제목이 필요합니다.' });
+  if (!b.customer_label) return res.status(400).json({ error: '익명 표기는 항상 채웁니다.' });
+  if (!b.is_named && b.customer_name) {
+    return res.status(400).json({ error: '실명 공개 승인 없이 실명을 저장할 수 없습니다.' });
+  }
+  const id = b.id || `cs-${Date.now().toString(36)}`;
+  const row = { ...b, id, package_ids: b.package_ids || [], isv_slugs: b.isv_slugs || [],
+    updated_at: new Date().toISOString() };
+  const at = mockCases.findIndex((x) => x.id === id);
+  if (at >= 0) mockCases[at] = row; else mockCases.push(row);
+  res.json({ message: '사례를 저장했습니다.', id });
+});
+
 app.get('/api/admin/settings', (_req, res) => res.json({ usd_krw: 1400 }));
 app.get('/api/solutions', (req, res) => {
   // 실제 서버는 include_hidden / include_archived 가 1 일 때만 돌려준다 (server.js).

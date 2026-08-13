@@ -39,6 +39,7 @@ const { scoreReadiness } = require('../lib/readiness-scoring');
 const { scoreAssessment, bridgeAssessmentScores, buildGapTotals } = require('../lib/assessment-scoring');
 const { INTERNAL_BULLET_LABELS } = require('../lib/section-privacy');
 const { sendLeadReceipt } = require('../lib/notify');
+const { pickCaseStudies, caseContext } = require('../lib/case-match');
 
 function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColumn }) {
   // 009 는 수동 적용이라 컬럼이 아직 없을 수 있다. 없으면 "미확정(true)"으로 본다 —
@@ -339,6 +340,31 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       sendPublicUnavailable(res, '준비도 결과를 계산하지 못했습니다.');
     }
   });
+
+  /**
+   * 딜에 붙일 레퍼런스. 업종·오퍼링·ISV 로 고른다.
+   *
+   * ⚠ **is_named 가 false 면 실명(customer_name)을 아예 안 내려보낸다.** 화면에서
+   *   숨기는 방식이면 언젠가 어느 화면이 실수한다 — 이 응답은 고객용 키트로 흘러간다.
+   *
+   * ⚠ **매칭이 0건이면 빈 배열을 준다.** 억지로 붙인 사례가 안 붙인 것보다 나쁘다.
+   *   고객이 "이게 우리랑 무슨 상관이죠" 라고 물으면 그 뒤 문서 전체를 안 믿는다.
+   */
+  /**
+   * 딜에 붙일 레퍼런스. 규칙은 lib/case-match.js 에 있다 — 서버와 목업이 같은 것을
+   * 쓰고, DB 없이도 검사할 수 있어야 해서 순수 함수로 뺐다.
+   *
+   * 여기서는 읽어 오기만 한다. **실명을 자르는 것도 그쪽 pickCaseStudies 가 한다.**
+   */
+  const matchCaseStudies = async (deal, solutionSlugs) => {
+    if (!(hasColumn && await hasColumn('case_studies', 'headline'))) return [];
+    const { rows } = await pool.query(
+      `select id, headline, industry, package_ids, isv_slugs,
+              situation, what_we_did, outcome, is_named, customer_name, customer_label, status
+         from case_studies where status = 'published' order by sort_order, id`
+    );
+    return pickCaseStudies(rows, caseContext(deal, solutionSlugs));
+  };
 
   /**
    * 결과 링크. **인증 없이 열린다.**
@@ -735,6 +761,13 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         itemCountByCategory: itemCount,
         config: { weights, filters }
       });
+
+      // 레퍼런스는 추천과 같은 재료(업종·조합·패키지)로 고른다. 여기 실어 보내면
+      // 화면이 따로 부를 필요가 없다 — 피치와 고객용 키트가 같이 쓴다.
+      const comboSlugs = solutions
+        .filter((row) => asArray(deal.isv_combo).includes(row.id))
+        .map((row) => row.slug).filter(Boolean);
+      result.caseStudies = await matchCaseStudies(deal, comboSlugs);
 
       auditLog(req.user.id, 'view', `deal:${req.params.id}`, 'recommendations');
       res.json(result);

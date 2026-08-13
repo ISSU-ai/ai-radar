@@ -446,6 +446,7 @@
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="history" id="history-tab-btn">버전 이력 / 롤백 (v1)</button>
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="packages" data-role-admin>패키지 단가</button>
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="reco-report">추천 vs 채택</button>
+        <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="cases">레퍼런스</button>
       </div>
 
       <!-- Tab 1: Form Editor -->
@@ -819,6 +820,92 @@
         </div>
         <div id="packages-list">
           <!-- Loaded via API -->
+        </div>
+      </div>
+
+      <!-- Tab 6: 레퍼런스 · 사례 -->
+      <div id="tab-admin-cases" class="glass-card admin-tab-content hidden">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:6px;">
+          <h3 style="margin:0; font-size:1rem;">레퍼런스 · 사례</h3>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn-save" data-admin-action="new-case">새 사례</button>
+            <button type="button" class="btn-save" data-admin-action="reload-cases">새로고침</button>
+          </div>
+        </div>
+        <p style="color:var(--text-secondary); font-size:.78rem; margin:0 0 14px;">
+          미팅에서 반드시 나오는 질문입니다. 여기 넣은 사례는 <b>업종·패키지·ISV 가 겹치는 딜</b>의
+          세일즈 피치와 <b>고객용 키트</b>에 자동으로 붙습니다. 겹치는 게 없으면 아무것도 안 붙습니다 —
+          억지로 붙인 사례가 안 붙인 것보다 나쁩니다.<br>
+          <b style="color:#f87171;">고객사 실명은 승인받은 것만 씁니다.</b> 승인이 없으면 「금융권 A사」 같은 익명 표기로만 나갑니다.
+          마진·단가·내부 판단은 여기 쓰지 마세요 — 고객이 받는 문서로 나갑니다.
+        </p>
+        <div id="cases-list" style="display:grid; gap:8px; margin-bottom:16px;"></div>
+
+        <div id="case-editor" class="hidden" style="border-top:1px dashed rgba(255,255,255,.1); padding-top:14px;">
+          <input type="hidden" id="case-id">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="control-label" for="case-headline">한 줄 제목 <span style="color:#f87171;">*</span></label>
+              <input type="text" id="case-headline" class="form-control" style="padding-left:12px;" placeholder="예: 금융권 전사 AI 도입 — 90일 만에 생산성 지표 확인">
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="case-status">상태</label>
+              <select id="case-status" class="form-control" style="padding-left:12px; cursor:pointer;">
+                <option value="draft">작성 중 (문서에 안 나감)</option>
+                <option value="published">발행 (문서에 붙음)</option>
+                <option value="archived">보관</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="case-industry">업종</label>
+              <select id="case-industry" class="form-control" style="padding-left:12px; cursor:pointer;"><option value="">전 업종</option></select>
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="case-packages">패키지 <small>(쉼표)</small></label>
+              <input type="text" id="case-packages" class="form-control" style="padding-left:12px;" placeholder="P02, P03">
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="case-isvs">ISV 슬러그 <small>(쉼표)</small></label>
+              <input type="text" id="case-isvs" class="form-control" style="padding-left:12px;" placeholder="openai-enterprise, portal26">
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="case-sort">정렬</label>
+              <input type="number" id="case-sort" class="form-control" style="padding-left:12px;" value="0">
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="control-label" for="case-label">익명 표기 <span style="color:#f87171;">*</span></label>
+              <input type="text" id="case-label" class="form-control" style="padding-left:12px;" placeholder="예: 금융권 A사">
+              <small style="color:var(--text-secondary); font-size:.75rem;">실명 승인이 취소돼도 문서가 안 깨지도록 <b>항상</b> 채웁니다.</small>
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="case-name">고객사 실명</label>
+              <input type="text" id="case-name" class="form-control" style="padding-left:12px;" placeholder="승인받은 경우에만">
+            </div>
+          </div>
+          <label style="display:flex; align-items:center; gap:8px; margin:4px 0 12px; color:#f87171; font-size:.82rem; font-weight:600; cursor:pointer;">
+            <input type="checkbox" id="case-named" style="cursor:pointer;">
+            <span>실명 공개를 고객사에서 승인받았습니다 — 체크하지 않으면 실명이 <b>서버 응답에서 아예 빠집니다</b></span>
+          </label>
+
+          <div class="form-group">
+            <label class="control-label" for="case-situation">고객이 처해 있던 상황</label>
+            <textarea id="case-situation" class="textarea-control" style="height:70px;" placeholder="무엇이 막혀 있었는지"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="control-label" for="case-did">우리가 한 것</label>
+            <textarea id="case-did" class="textarea-control" style="height:70px;" placeholder="어떤 범위로 무엇을 했는지"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="control-label" for="case-outcome">결과</label>
+            <textarea id="case-outcome" class="textarea-control" style="height:70px;" placeholder="숫자가 있으면 숫자로. 확인 안 된 것은 비워 두는 편이 낫습니다"></textarea>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn-save" data-admin-action="save-case">저장</button>
+            <button type="button" class="btn-save" data-admin-action="cancel-case" style="background:transparent; border:1px solid rgba(255,255,255,.14);">취소</button>
+          </div>
         </div>
       </div>
     </main>
@@ -1313,7 +1400,10 @@
       const action = control.dataset.adminAction;
       if (action === 'stop') return;
       if (action === 'create-draft') createNewDraft();
-      if (action === 'switch-tab') switchAdminTab(control.dataset.tab);
+      if (action === 'switch-tab') {
+        switchAdminTab(control.dataset.tab);
+        if (control.dataset.tab === 'cases' && !caseStudies.length) void loadCases();
+      }
       if (action === 'archive') void archiveSolution();
       if (action === 'save-draft') void saveAsDraft();
       if (action === 'propose-publish') proposePublish();
@@ -1322,6 +1412,11 @@
       if (action === 'close-add-solution') toggleAddSolutionModal(false);
       if (action === 'submit-new-solution') void submitNewSolution();
       if (action === 'rollback') void triggerRollback(Number(control.dataset.versionId), Number(control.dataset.version));
+      if (action === 'new-case') openCaseEditor(null);
+      if (action === 'reload-cases') void loadCases();
+      if (action === 'save-case') void saveCase();
+      if (action === 'cancel-case') document.getElementById('case-editor').classList.add('hidden');
+      if (action === 'edit-case') openCaseEditor(control.dataset.caseId);
     }
 
     function escapeAdminHtml(value) {
@@ -2080,6 +2175,99 @@
         loadPackages();
         loadSettings();
       }
+    }
+
+    // ----------------------------------------------------
+    // 레퍼런스 · 사례 (047)
+    // ----------------------------------------------------
+    let caseStudies = [];
+
+    async function loadCases() {
+      try {
+        const res = await fetch('/api/admin/case-studies');
+        if (!res.ok) throw new Error('사례를 불러올 수 없습니다.');
+        caseStudies = await res.json();
+        renderCases();
+      } catch (err) { showToast(err.message, 'alert-triangle'); }
+    }
+
+    function renderCases() {
+      const host = document.getElementById('cases-list');
+      if (!caseStudies.length) {
+        host.innerHTML = `<p style="color:var(--text-secondary); font-size:.82rem; padding:12px 0;">
+          아직 등록된 사례가 없습니다. 비어 있어도 화면은 정상입니다 — 겹치는 사례가 없으면 아무것도 안 붙습니다.</p>`;
+        return;
+      }
+      host.innerHTML = caseStudies.map((row) => {
+        // 실명 승인 여부가 목록에서 바로 보여야 한다. 승인 없이 실명이 남아 있으면 위험하다.
+        const naming = row.is_named
+          ? `<span style="color:#4fb477;">실명 ${escapeAdminHtml(row.customer_name || '')}</span>`
+          : `<span style="color:var(--text-secondary);">익명 ${escapeAdminHtml(row.customer_label || '')}</span>`;
+        return `<div style="display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid rgba(255,255,255,.06); border-radius:6px;">
+          <span class="status-badge ${row.status === 'published' ? 'published' : 'draft'}">${row.status.toUpperCase()}</span>
+          <strong style="flex:1; min-width:0; color:var(--text-primary); font-size:.86rem;">${escapeAdminHtml(row.headline)}</strong>
+          <span style="font-size:.75rem;">${naming}</span>
+          <span style="color:var(--text-secondary); font-size:.72rem;">${escapeAdminHtml(row.industry || '전 업종')}</span>
+          <button type="button" class="btn-save" style="padding:4px 10px; font-size:.72rem;"
+            data-admin-action="edit-case" data-case-id="${escapeAdminHtml(row.id)}">편집</button>
+        </div>`;
+      }).join('');
+    }
+
+    function openCaseEditor(id) {
+      const row = caseStudies.find((item) => item.id === id) || {};
+      const set = (field, value) => { document.getElementById(field).value = value ?? ''; };
+      // 업종 목록은 taxonomy.js 한 곳에서 온다. 여기 다시 적으면 값이 갈린다.
+      const industry = document.getElementById('case-industry');
+      if (industry.options.length <= 1 && window.IssuTaxonomy) {
+        industry.insertAdjacentHTML('beforeend', window.IssuTaxonomy.INDUSTRIES
+          .map(([code, label]) => `<option value="${code}">${label} (${code})</option>`).join(''));
+      }
+      set('case-id', row.id || '');
+      set('case-headline', row.headline);
+      set('case-status', row.status || 'draft');
+      set('case-industry', row.industry || '');
+      set('case-packages', (row.package_ids || []).join(', '));
+      set('case-isvs', (row.isv_slugs || []).join(', '));
+      set('case-sort', row.sort_order ?? 0);
+      set('case-label', row.customer_label);
+      set('case-name', row.customer_name);
+      set('case-situation', row.situation);
+      set('case-did', row.what_we_did);
+      set('case-outcome', row.outcome);
+      document.getElementById('case-named').checked = Boolean(row.is_named);
+      document.getElementById('case-editor').classList.remove('hidden');
+      document.getElementById('case-editor').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    async function saveCase() {
+      const val = (field) => document.getElementById(field).value.trim();
+      const list = (field) => val(field).split(',').map((x) => x.trim()).filter(Boolean);
+      const isNamed = document.getElementById('case-named').checked;
+      if (!val('case-headline')) return showToast('한 줄 제목을 넣어주세요.', 'alert-circle');
+      if (!val('case-label')) return showToast('익명 표기는 항상 채웁니다. 실명 승인이 취소돼도 문서가 안 깨지도록.', 'alert-circle');
+      if (isNamed && !val('case-name')) return showToast('실명 공개를 체크했으면 고객사 실명이 필요합니다.', 'alert-circle');
+
+      const payload = {
+        id: val('case-id') || undefined,
+        headline: val('case-headline'), status: val('case-status'),
+        industry: val('case-industry') || null,
+        package_ids: list('case-packages'), isv_slugs: list('case-isvs'),
+        sort_order: Number(val('case-sort')) || 0,
+        customer_label: val('case-label'), customer_name: val('case-name') || null,
+        is_named: isNamed,
+        situation: val('case-situation'), what_we_did: val('case-did'), outcome: val('case-outcome')
+      };
+      try {
+        const res = await fetch('/api/admin/case-studies', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
+        showToast('사례를 저장했습니다.');
+        document.getElementById('case-editor').classList.add('hidden');
+        await loadCases();
+      } catch (err) { showToast(err.message, 'alert-triangle'); }
     }
 
     // ----------------------------------------------------

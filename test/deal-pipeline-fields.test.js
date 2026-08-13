@@ -382,7 +382,10 @@ test('자연어 편집 탭이 화면·서버 양쪽에서 사라졌다', () => {
   assert.match(admin, /function proposePublish/);
   assert.match(admin, /async function commitPublish/);
   assert.match(serverSrc, /const requireReadinessScores/, '이웃 미들웨어까지 잘라내면 안 된다');
-  assert.equal((admin.match(/data-admin-action="switch-tab"/g) || []).length, 5, '탭은 다섯이다');
+  // 047 로 「레퍼런스」가 붙어 여섯이 됐다. 자연어 편집이 되살아났는지가 요점이라
+  // 개수가 아니라 이름으로 본다.
+  const tabs = [...admin.matchAll(/switch-tab" data-tab="([\w-]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(tabs, ['form', 'members', 'history', 'packages', 'reco-report', 'cases']);
 });
 
 test('/radar 는 ISV 탐색기를 맨 위에 둔다', () => {

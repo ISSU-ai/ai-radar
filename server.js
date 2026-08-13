@@ -1390,6 +1390,80 @@ app.patch('/api/admin/profiles/:id', authenticateToken, adminOnly, async (req, r
  *   manual 추천에 없었는데 고름       → 엔진이 놓친 것. 가장 값지다
  *   nodata 판정 데이터가 없어 빠짐    → 보강 우선순위 (딜에서 걸린 횟수 순)
  */
+/**
+ * 레퍼런스·사례 (047). 편집은 카탈로그 편집자(ISSU·admin)만.
+ *
+ * ⚠ 목록 응답에는 실명을 그대로 준다 — 여기는 /admin 이고 승인 여부를 눈으로 봐야
+ *   관리가 된다. **고객 문서로 나가는 경로는 routes/hub.js 의 matchCaseStudies 이고,
+ *   거기서 is_named 가 false 면 실명을 아예 안 싣는다.** 두 경로를 가르는 것이 요점이다.
+ */
+app.get('/api/admin/case-studies', authenticateToken, catalogEditorOnly, async (_req, res) => {
+  try {
+    if (!(await hasColumn('case_studies', 'headline'))) {
+      return res.status(503).json({ error: '사례 표가 없습니다. 047 마이그레이션을 확인하세요.' });
+    }
+    const { rows } = await pool.query(
+      `select id, headline, industry, offering_id, package_ids, isv_slugs,
+              situation, what_we_did, outcome, is_named, customer_name, customer_label,
+              status, sort_order, updated_at
+         from case_studies where status <> 'archived' order by sort_order, id`
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error('Case studies list failed:', error.message);
+    res.status(500).json({ error: '사례를 불러오지 못했습니다.' });
+  }
+});
+
+app.post('/api/admin/case-studies', authenticateToken, catalogEditorOnly, async (req, res) => {
+  try {
+    if (!(await hasColumn('case_studies', 'headline'))) {
+      return res.status(503).json({ error: '사례 표가 없습니다. 047 마이그레이션을 확인하세요.' });
+    }
+    const body = req.body || {};
+    const text = (value, max) => String(value ?? '').trim().slice(0, max);
+    const list = (value) => (Array.isArray(value) ? value : [])
+      .map((x) => String(x).trim()).filter(Boolean).slice(0, 20);
+
+    const headline = text(body.headline, 200);
+    const label = text(body.customer_label, 120);
+    const isNamed = body.is_named === true;
+    const name = text(body.customer_name, 120);
+    if (!headline) return res.status(400).json({ error: '한 줄 제목이 필요합니다.' });
+    if (!label) return res.status(400).json({ error: '익명 표기는 항상 채웁니다.' });
+    // 승인 없이 실명이 저장되면 나중에 체크 한 번으로 실명이 문서에 나간다.
+    if (!isNamed && name) return res.status(400).json({ error: '실명 공개 승인 없이 실명을 저장할 수 없습니다.' });
+    if (isNamed && !name) return res.status(400).json({ error: '실명 공개를 선택했으면 고객사 실명이 필요합니다.' });
+
+    const status = ['draft', 'published', 'archived'].includes(body.status) ? body.status : 'draft';
+    const id = text(body.id, 60) || `cs-${Date.now().toString(36)}`;
+    const values = [id, headline, text(body.industry, 60) || null, list(body.package_ids),
+      list(body.isv_slugs), text(body.situation, 2000), text(body.what_we_did, 2000),
+      text(body.outcome, 2000), isNamed, name || null, label, status,
+      Number(body.sort_order) || 0];
+
+    await pool.query(
+      `insert into case_studies (id, headline, industry, package_ids, isv_slugs,
+         situation, what_we_did, outcome, is_named, customer_name, customer_label,
+         status, sort_order, updated_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+       on conflict (id) do update set
+         headline = excluded.headline, industry = excluded.industry,
+         package_ids = excluded.package_ids, isv_slugs = excluded.isv_slugs,
+         situation = excluded.situation, what_we_did = excluded.what_we_did,
+         outcome = excluded.outcome, is_named = excluded.is_named,
+         customer_name = excluded.customer_name, customer_label = excluded.customer_label,
+         status = excluded.status, sort_order = excluded.sort_order, updated_at = now()`,
+      values
+    );
+    auditLog(req.user.id, 'edit', `case:${id}`, headline);
+    res.json({ message: '사례를 저장했습니다.', id });
+  } catch (error) {
+    console.error('Case study save failed:', error.message);
+    res.status(500).json({ error: '사례를 저장하지 못했습니다.' });
+  }
+});
+
 app.get('/api/admin/recommendation-report', authenticateToken, catalogEditorOnly, async (_req, res) => {
   try {
     if (!(await hasColumn('deals', 'recommendation_snapshot'))) {
