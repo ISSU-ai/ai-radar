@@ -651,7 +651,10 @@ const assessmentBridge = (() => {
 
 /** 실제 서버의 applyReadiness 와 같은 일. 채점만 한다. */
 function mockApplyReadiness(scores, options = {}) {
-  return scoreReadiness(readiness.items, readiness.areas, scores, options);
+  // ⚠ 처방(043)을 여기서도 붙인다. 안 붙이면 딜의 readiness_totals 에만 fix 가 빠져
+  //   고객용 키트와 STEP02 에서 「무엇부터」가 로컬에서만 사라진다 — 실서버는
+  //   loadReadinessItems 가 fix 를 실어 오므로 이 차이는 로컬에서만 난다.
+  return scoreReadiness(readinessItemsWithFix(), readiness.areas, scores, options);
 }
 
 /** 실제 서버의 applyAssessment 와 같은 일. 037 bridge 로 평가영역을 채운다. */
@@ -676,6 +679,10 @@ const readinessFixes = (() => {
   }
   return map;
 })();
+
+/** 문항에 처방을 붙여 돌려준다. 채점 경로가 여럿이라 한 곳에서 만든다. */
+const readinessItemsWithFix = () =>
+  readiness.items.map((item) => ({ ...item, fix: readinessFixes.get(item.code) || null }));
 
 /** 038 의 packages.readiness_coverage — 우선 개선 축을 다루는 패키지. */
 const packageAxisCoverage = (() => {
@@ -704,8 +711,7 @@ const coveringPackagesMock = (axes) => {
 
 app.post('/api/hub/public/readiness', (req, res) => {
   try {
-    const withFix = readiness.items.map((item) => ({ ...item, fix: readinessFixes.get(item.code) || null }));
-    const result = scoreReadiness(withFix, readiness.areas, req.body?.scores);
+    const result = scoreReadiness(readinessItemsWithFix(), readiness.areas, req.body?.scores);
     const covering = coveringPackagesMock((result.priorities || []).map((p) => p.area));
     result.priorities = (result.priorities || []).map((p) => ({ ...p, offerings: covering.get(p.area) || [] }));
     res.json(result);
@@ -729,8 +735,7 @@ app.get('/api/hub/public/result/:token', (req, res) => {
   if (!Object.keys(scores).length) {
     return res.status(404).json({ error: '이 링크에 연결된 진단 응답이 없습니다.' });
   }
-  const withFix = readiness.items.map((item) => ({ ...item, fix: readinessFixes.get(item.code) || null }));
-  const result = scoreReadiness(withFix, readiness.areas, scores, { partial: true });
+  const result = scoreReadiness(readinessItemsWithFix(), readiness.areas, scores, { partial: true });
   const covering = coveringPackagesMock((result.priorities || []).map((p) => p.area));
   result.priorities = (result.priorities || []).map((p) => ({ ...p, offerings: covering.get(p.area) || [] }));
   // ⚠ 담당자 이름·전화·이메일을 싣지 않는다. 회사명과 결과까지다.

@@ -1770,6 +1770,24 @@ function parseTalkTracks(section8) {
 }
 
 /**
+ * §5 유즈케이스. 「- **UC1. …**」 라벨과 바로 아래 「기대효과」 한 줄만 뽑는다.
+ *
+ * 고객 문서에 들어갈 것이라 본문을 통째로 넣지 않는다 — 카탈로그 한 절이 수백 자라
+ * 그대로 붙이면 읽히지 않는다. 「무엇을 / 무엇이 좋아지나」 두 줄이면 된다.
+ */
+function parseUseCases(section5) {
+  const lines = String(section5 || '').split('\n');
+  const out = [];
+  lines.forEach((line, index) => {
+    const label = line.match(/^\s*-\s*\*\*(UC\d+[.\s][^*]*)\*\*/);
+    if (!label) return;
+    const effect = (lines[index + 1] || '').match(/기대효과\s*[:：]\s*(.+)$/);
+    out.push({ label: label[1].trim(), effect: effect ? effect[1].trim() : '' });
+  });
+  return out.slice(0, 2);
+}
+
+/**
  * 선택한 ISV 의 본문을 가져온다.
  *
  * reference-data 에 sections 를 싣지 않는 이유는 17종 본문을 허브 열 때마다
@@ -1780,8 +1798,14 @@ function parseTalkTracks(section8) {
  * 막히면 안 된다.
  */
 async function loadPitchSources() {
+  // 조합(우리가 제안한 것)과 문의 제품(고객이 물어본 것)을 **둘 다** 받는다.
+  // 고객용 키트가 「문의하신 제품」 절을 쓰려면 조합에 없는 것도 있어야 한다.
+  const wanted = new Set([
+    ...asArray(state.deal?.isv_combo),
+    ...asArray(state.deal?.inquiry_products)
+  ]);
   const slugs = state.refs.solutions
-    .filter((s2) => asArray(state.deal?.isv_combo).includes(s2.id))
+    .filter((s2) => wanted.has(s2.id))
     .map((s2) => s2.slug).filter(Boolean);
   const missing = slugs.filter((slug) => !(slug in state.pitchSources));
   if (!missing.length) return;
@@ -1791,11 +1815,14 @@ async function loadPitchSources() {
       const row = await api(`/api/solutions/${encodeURIComponent(slug)}`);
       state.pitchSources[slug] = {
         strengths: parseStrengths(row?.sections?.['1']),
-        talkTracks: parseTalkTracks(row?.sections?.['8'])
+        talkTracks: parseTalkTracks(row?.sections?.['8']),
+        // 고객용 키트가 쓴다. 화법(talkTracks)은 영업 대본이라 **거기 안 들어간다**.
+        useCases: parseUseCases(row?.sections?.['5']),
+        listPrice: (row?.list_price && typeof row.list_price === 'object') ? row.list_price : {}
       };
     } catch (error) {
       console.error(`Pitch source failed (${slug}):`, error.message);
-      state.pitchSources[slug] = { strengths: [], talkTracks: [] };
+      state.pitchSources[slug] = { strengths: [], talkTracks: [], useCases: [], listPrice: {} };
     }
   }));
 
@@ -2030,6 +2057,173 @@ function buildPitch() {
  *
  * 화면에 없는 숫자를 만들지 않는다. 점수는 서버가 낸 값을 그대로 쓴다.
  */
+/**
+ * 아직 확인 안 된 것들. 지금 **네 곳에 흩어져 있다.**
+ *
+ * 인계 문서의 핵심 절이 될 자리라 미리 한 곳에 모아 둔다(~/CC/deployment-Brief 의
+ * evidence_item.status='open' 에 해당한다). **고객용 키트에는 안 쓴다** — 고객에게
+ * "우리가 아직 모르는 것" 목록을 보내는 문서가 아니다.
+ */
+function collectOpenItems() {
+  const deal = state.deal || {};
+  const totals = deal.readiness_totals || {};
+  const open = [];
+
+  const unansweredCount = Number(totals.totalCount || 0) - Number(totals.answeredCount || 0);
+  if (unansweredCount > 0) open.push(`42문항 중 ${unansweredCount}개가 미응답입니다.`);
+
+  asArray(deal.assessment_totals?.unanswered).forEach((area) => {
+    const ref = asArray(state.refs.assessmentAreas).find((a) => a.id === area);
+    open.push(`평가영역 ${area}${ref ? ` ${ref.name}` : ''} — 아직 확인되지 않았습니다.`);
+  });
+
+  // 미확인 전제. STEP05 가 이미 같은 방식으로 모으고 있어 그 경로를 그대로 쓴다.
+  const confirmed = deal.prereq_confirmations && typeof deal.prereq_confirmations === 'object'
+    ? deal.prereq_confirmations : {};
+  ['prepare', 'adopt', 'operate']
+    .flatMap((key) => asArray(state.reco?.proposal?.[key]))
+    .concat(asArray(state.reco?.needsConfirmation))
+    .forEach((item) => {
+      asArray(item.prerequisites?.pendingManual).forEach((prereq) => {
+        if (!confirmed[item.slug || item.id]?.[prereq.label]) {
+          open.push(`${item.name} 전제 미확인 — ${prereq.label}`);
+        }
+      });
+    });
+
+  const quote = computeQuote();
+  if (quote.hasPlaceholder) open.push('서비스 MD 단가가 확정되지 않아 금액이 별도협의입니다.');
+
+  return open;
+}
+
+/**
+ * 고객용 핸드오프 키트. 미팅 뒤에 **고객에게 보내는** 문서다.
+ *
+ * ⚠ 내부 문구를 지우는 방식이 아니다. **애초에 안 부른다.** 플래그 하나로 내부용과
+ *   갈라 쓰면 언젠가 반드시 샌다 — 이 함수는 opinion·tech_note·급·포컬·MZC Sales·
+ *   MSP·정체 시계·우리 단가·담당자 연락처를 **읽지 않는다.**
+ *
+ * ⚠ 금액은 실단가가 확정될 때까지 「별도협의」로만 나간다. 지금 시스템의 MD 단가는
+ *   전부 price_is_placeholder 다.
+ */
+function buildCustomerKit() {
+  const deal = state.deal;
+  const meta = deal.customer_meta || {};
+  const totals = deal.readiness_totals || {};
+  const byId = new Map(state.refs.solutions.map((item) => [item.id, item]));
+  const bySlug = (slug) => state.pitchSources[slug] || {};
+
+  const block = (title, body) => `\n## ${title}\n\n${body}`;
+  const bullet = (list) => list.filter(Boolean).map((t) => `- ${t}`).join('\n');
+
+  // ── 1. 진단 결과 ────────────────────────────────────────────
+  const avg = Number(totals.average);
+  const areaRows = asArray(totals.areas)
+    .map((a) => `| ${a.name} | ${Number(a.score).toFixed(2)} / 5 | ${a.score < 3 ? '보완 필요' : a.score < 4 ? '보통' : '양호'} |`)
+    .join('\n');
+
+  // 고객이 고른 문장을 그대로 인용한다. 숫자만 보내면 "그건 해석이죠" 로 끝난다.
+  const priorities = asArray(totals.priorities).map((p, index) =>
+    `### ${index + 1}순위 · ${p.name} (${Number(p.score).toFixed(2)} / 5)\n\n`
+    + asArray(p.items).map((item) =>
+      `- **${item.code}** ${item.text}\n  - ${item.score}점 — ${item.rubric}`
+      + (item.fix ? `\n  - **무엇부터** ${item.fix}` : '')).join('\n')).join('\n\n');
+
+  const diagnosis = Number.isFinite(avg)
+    ? `| | |\n|---|---|\n| 종합 점수 | **${avg.toFixed(2)} / 5.00** |`
+      + (totals.maturity ? `\n| 성숙도 | **Level ${totals.maturity.level}. ${totals.maturity.name}** — ${totals.maturity.note} |` : '')
+      + (areaRows ? `\n\n| 영역 | 점수 | 판정 |\n|---|---|---|\n${areaRows}` : '')
+      + (totals.insight ? `\n\n${totals.insight}` : '')
+      + (priorities ? `\n\n### 우선 개선 영역\n\n${priorities}` : '')
+    : '_진단이 아직 완료되지 않았습니다._';
+
+  // ── 2. 이렇게 이해했습니다 ──────────────────────────────────
+  const context = bullet([
+    meta.industry && `업종 — ${meta.industry}`,
+    meta.companySize && `조직 규모 — ${meta.companySize}`,
+    meta.targetUsers && `도입 대상 — ${meta.targetUsers}`
+  ]) || '_확인된 내용이 없습니다._';
+  const notes = meta.notes || deal.lead_message;
+
+  // ── 3. 문의하신 제품 ────────────────────────────────────────
+  // 041 의 inquiry_products. 고객이 물어본 것이라 조합(isv_combo)과 다를 수 있다.
+  const asked = asArray(deal.inquiry_products).map((id) => byId.get(id)).filter(Boolean)
+    .map((item) => {
+      const src = bySlug(item.slug);
+      const price = src.listPrice || {};
+      const lines = [`### ${item.name}${item.category ? ` · ${item.category}` : ''}`];
+      if (item.jtbd) lines.push(item.jtbd);
+      if (asArray(src.strengths).length) {
+        lines.push('', ...asArray(src.strengths).map((text) => `- ${text}`));
+      }
+      if (asArray(src.useCases).length) {
+        lines.push('', '**활용 예**', ...asArray(src.useCases)
+          .map((uc) => `- ${uc.label}${uc.effect ? ` — ${uc.effect}` : ''}`));
+      }
+      // 벤더 공시가만. 우리 단가(unit_price)는 넣지 않는다.
+      if (price.status === 'published' && asArray(price.items).length) {
+        lines.push('', '**벤더 공시가**', ...asArray(price.items).slice(0, 4).map((row) =>
+          `- ${row.plan} — ${row.amount === null || row.amount === undefined
+            ? '견적' : `${row.currency || ''} ${Number(row.amount).toLocaleString('en-US')} / ${row.unit || ''}`}`
+          + (row.terms ? ` (${row.terms})` : '')));
+        if (price.source) lines.push(`  출처 ${price.source}`);
+      } else if (price.status === 'quote') {
+        lines.push('', '**가격** — 공시가가 없어 별도 견적이 필요합니다.');
+      }
+      return lines.join('\n');
+    }).join('\n\n');
+
+  // ── 4. 권고 구성 ────────────────────────────────────────────
+  const packageMap = new Map(state.refs.packages.map((pkg) => [pkg.id, pkg]));
+  const chosenPackages = asArray(deal.packages)
+    .map((item) => packageMap.get(typeof item === 'string' ? item : item.id)).filter(Boolean);
+  const combo = asArray(deal.isv_combo).map((id) => byId.get(id)).filter(Boolean);
+
+  const proposal = [
+    combo.length ? `**구성 제품**\n${bullet(combo.map((item) =>
+      `${item.name}${item.jtbd ? ` — ${item.jtbd}` : ''}`))}` : '',
+    chosenPackages.length ? `\n**실행 범위**\n${bullet(chosenPackages.map((pkg) =>
+      `${pkg.name} (${pkg.period || '기간 협의'})${pkg.target ? ` — ${pkg.target}` : ''}`))}` : ''
+  ].filter(Boolean).join('\n') || '_구성을 확정하는 중입니다._';
+
+  // ── 5. 예상 규모 ────────────────────────────────────────────
+  const lic = computeLicense();
+  const quote = computeQuote();
+  const totalMd = quote.rows.reduce((sum, row) => sum + row.totalMd, 0);
+  const size = [
+    `라이선스 — ChatGPT ${lic.seats}석 기준 연 ${formatKRW(lic.annualKrw)} (1 USD = ${lic.fx.toLocaleString('ko-KR')}원)`,
+    totalMd ? `서비스 — 약 ${totalMd} MD · **금액은 범위 확정 후 별도 산정합니다.**` : '',
+    '',
+    '※ Enterprise 가격과 최소 시트는 OpenAI 협의사항이라 확정 금액이 아닙니다.',
+    '※ 사용량 변동이 큰 API 는 포함하지 않았습니다.'
+  ].filter(Boolean).join('\n');
+
+  const openCount = collectOpenItems().length;
+
+  return `# ${deal.customer} — AI 도입 검토 정리
+
+| | |
+|---|---|
+| 작성일 | ${new Date().toISOString().slice(0, 10)} |
+| 고객사 | ${deal.customer} |
+${block('1. 진단 결과', diagnosis)}
+${block('2. 이렇게 이해했습니다', context + (notes ? `\n\n${notes}` : ''))}
+${asked ? block('3. 문의하신 제품', asked) : ''}
+${block('4. 권고 구성', proposal)}
+${block('5. 예상 규모', size)}
+${block('6. 다음 단계', bullet([
+  '이 정리 내용에 빠지거나 다른 부분을 알려주세요.',
+  openCount ? '함께 확인이 필요한 항목이 있어 다음 미팅에서 여쭙겠습니다.' : '',
+  '범위가 정해지면 일정과 금액을 확정해 드립니다.'
+]))}
+
+---
+
+진단 결과는 자가 진단 기반의 참고용입니다.
+실제 실행 범위는 데이터·보안·업무 환경을 함께 검토해 확정합니다.`;
+}
+
 const STAGE_REPORT_TITLES = Object.freeze([
   '들어온 데이터', 'AI 준비도 진단', 'ISV 조합 추천', '패키지와 딜 사이즈', '세일즈 피치'
 ]);
@@ -2246,7 +2440,10 @@ function buildStageReport(stageIndex) {
 }
 
 function renderPitch() {
-  const actions = '<button id="copy-pitch" class="secondary-button" type="button"><i data-lucide="copy"></i> 피치 복사</button>';
+  // 「고객용 키트」는 피치와 **다른 문서**다. 피치는 영업 대본(내부 준비용)이고
+  // 키트는 고객에게 보내는 것이라, 버튼을 나란히 두되 산출물을 섞지 않는다.
+  const actions = '<button id="customer-kit" class="primary-button" type="button"><i data-lucide="send"></i> 고객용 키트</button>'
+    + '<button id="copy-pitch" class="secondary-button" type="button"><i data-lucide="copy"></i> 피치 복사</button>';
   return `${stageHeader('05', '세일즈 피치 준비', '앞 단계에서 확정한 고객 맥락·트랙·ISV·패키지를 한 번에 묶은 대화 가이드입니다.', actions)}
     <div id="pitch-content" class="pitch-box">${escapeHtml(buildPitch())}</div>`;
 }
@@ -2351,6 +2548,18 @@ function bindStageEvents() {
   $('#copy-pitch')?.addEventListener('click', async () => {
     await navigator.clipboard.writeText(buildPitch());
     toast('피치 가이드를 복사했습니다.');
+  });
+  // 고객용 키트. 리포트 버튼과 같은 경로(IssuReport)로 내보내되 내용은 다른 문서다.
+  $('#customer-kit')?.addEventListener('click', () => {
+    const markdown = buildCustomerKit();
+    const baseName = `${state.deal.customer || '고객'}_검토정리_${new Date().toISOString().slice(0, 10)}`;
+    window.IssuReport.pdf(`${state.deal.customer} — AI 도입 검토 정리`, markdown);
+    const open = collectOpenItems();
+    // 아직 확인 안 된 것이 있으면 알려 준다. 문서에는 안 들어가지만 영업은 알아야 한다.
+    toast(open.length
+      ? `고객용 키트를 만들었습니다. 미확인 ${open.length}건은 문서에 넣지 않았습니다.`
+      : '고객용 키트를 만들었습니다.');
+    void baseName;
   });
   // 다섯 단계가 같은 버튼을 쓴다. 지금 보고 있는 단계의 내용이 나온다.
   $$('[data-report]').forEach((button) => button.addEventListener('click', () => {
