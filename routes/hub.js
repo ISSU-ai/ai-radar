@@ -31,6 +31,7 @@ const { recommend } = require('../lib/recommendation-engine');
 const { scoreReadiness } = require('../lib/readiness-scoring');
 const { scoreAssessment, bridgeAssessmentScores, buildGapTotals } = require('../lib/assessment-scoring');
 const { INTERNAL_BULLET_LABELS } = require('../lib/section-privacy');
+const { sendLeadReceipt } = require('../lib/notify');
 
 function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColumn }) {
   // 009 는 수동 적용이라 컬럼이 아직 없을 수 있다. 없으면 "미확정(true)"으로 본다 —
@@ -332,6 +333,57 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     }
   });
 
+  /**
+   * 결과 링크. **인증 없이 열린다.**
+   *
+   * 저장된 집계를 그대로 주지 않고 **고객 원본 응답으로 다시 채점한다.** 032 가
+   * readiness_customer_scores 를 따로 만든 이유가 여기서 산다 — 영업이 허브에서
+   * 점수를 고쳐도 고객이 받은 링크의 숫자는 안 바뀐다. 처방문(043)이 바뀌면
+   * 그건 반영된다. 숫자는 고정, 조언은 최신이다.
+   *
+   * ⚠ 담당자 이름·전화·이메일을 싣지 않는다. 회사명과 진단 결과까지다.
+   */
+  router.get('/public/result/:token', async (req, res) => {
+    try {
+      if (!/^[0-9a-f-]{36}$/i.test(String(req.params.token || ''))) {
+        return res.status(404).json({ error: '결과를 찾을 수 없습니다.' });
+      }
+      if (!(hasColumn && await hasColumn('leads', 'result_token'))) {
+        return sendPublicUnavailable(res, '결과 링크가 아직 준비되지 않았습니다.');
+      }
+      const { rows } = await pool.query(
+        `select l.customer, l.created_at,
+                l.created_at > now() - interval '1 year' as fresh,
+                d.readiness_customer_scores as scores
+           from leads l left join deals d on d.id = l.promoted_deal
+          where l.result_token = $1`,
+        [req.params.token]
+      );
+      const row = rows[0];
+      if (!row) return res.status(404).json({ error: '결과를 찾을 수 없습니다.' });
+      if (!row.fresh) {
+        return res.status(410).json({
+          error: '이 링크는 유효기간(1년)이 지났습니다. 담당자에게 문의해주세요.'
+        });
+      }
+      const scores = row.scores && typeof row.scores === 'object' ? row.scores : {};
+      if (!Object.keys(scores).length) {
+        return res.status(404).json({ error: '이 링크에 연결된 진단 응답이 없습니다.' });
+      }
+      const data = await loadReadinessItems();
+      if (!data) return sendPublicUnavailable(res, '진단 문항을 불러올 수 없습니다.');
+
+      const result = scoreReadiness(data.items, data.areas, scores, { partial: true });
+      const covering = await coveringPackages(asArray(result.priorities).map((p) => p.area));
+      result.priorities = asArray(result.priorities)
+        .map((p) => ({ ...p, offerings: covering.get(p.area) || [] }));
+      res.json({ customer: row.customer, created_at: row.created_at, result });
+    } catch (error) {
+      console.error('Result link failed:', error.message);
+      sendPublicUnavailable(res, '결과를 불러오지 못했습니다.');
+    }
+  });
+
   router.post('/public/leads', checkPublicRateLimit, async (req, res) => {
     let lead;
     try {
@@ -395,10 +447,12 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         leadColumns.push('contact_name', 'contact_phone');
         leadValues.push(lead.contact_name, lead.contact_phone);
       }
+      // 044 미적용 구간에는 토큰 컬럼이 없다. 그때는 결과 링크 없이 접수만 된다.
+      const hasResultToken = hasColumn ? await hasColumn('leads', 'result_token') : false;
       const leadResult = await client.query(
         `insert into leads (${leadColumns.join(', ')}, consent_at)
          values (${leadValues.map((_, i) => `$${i + 1}`).join(', ')}, now())
-         returning id, created_at`,
+         returning id, created_at${hasResultToken ? ', result_token' : ''}`,
         leadValues
       );
       await client.query('commit');
@@ -409,10 +463,16 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       void slackNotify(`🔵 신규 딜: ${lead.customer}`
         + (badge ? ` (${badge})` : '')
         + ` · 담당 ${lead.contact_name} · 포탈 유입 · 담당 미배정`);
+      // 결과 링크. 방금 폼을 낸 본인에게만 돌려준다 — 화면이 바로 보여 주고,
+      // 메일 발송이 붙으면 같은 값을 본문에 넣는다.
+      const resultPath = leadResult.rows[0].result_token
+        ? `/r/${leadResult.rows[0].result_token}` : null;
+      void sendLeadReceipt({ lead, readiness, resultPath });
       res.status(201).json({
         message: '상담 요청이 접수되었습니다.',
         reference: leadResult.rows[0].id,
-        created_at: leadResult.rows[0].created_at
+        created_at: leadResult.rows[0].created_at,
+        result_path: resultPath
       });
     } catch (error) {
       if (client) await client.query('rollback').catch(() => {});

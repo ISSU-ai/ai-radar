@@ -385,7 +385,14 @@ app.use((req, res, next) => {
   const radarPath = req.path === '/radar' || req.path === '/radar/' || req.path === '/index.html' || req.path === '/app.js' || req.path === '/about' || req.path === '/about.html' || req.path.startsWith('/docs/');
   const embeddedAdminPath = req.path.startsWith('/admin') || req.path.startsWith('/api/admin/');
   const allowed = {
-    offering: req.path === '/healthz' || crawlerPath || publicApi || req.path === '/' || req.path === '/offering' || req.path.startsWith('/offering.'),
+    // ⚠ 여기를 빠뜨리면 로컬(all)에서는 멀쩡하고 **프로덕션에서만 404** 가 난다.
+    //   공개 진단(/readiness)과 결과 링크(/r/:token), 그 화면이 쓰는 자산까지 열어야 한다.
+    offering: req.path === '/healthz' || crawlerPath || publicApi || req.path === '/'
+      || req.path === '/offering' || req.path.startsWith('/offering.')
+      || req.path === '/readiness' || req.path === '/readiness.html'
+      || req.path.startsWith('/readiness.') || req.path.startsWith('/r/')
+      || req.path === '/style.css' || req.path === '/report.js' || req.path === '/taxonomy.js'
+      || req.path.startsWith('/assets/'),
     hub: commonPath || radarPath || embeddedAdminPath || req.path === '/' || req.path === '/hub' || req.path.startsWith('/hub.') || req.path.startsWith('/api/hub/') || req.path.startsWith('/api/solutions'),
     admin: commonPath || req.path === '/' || req.path.startsWith('/admin') || req.path.startsWith('/api/admin/') || req.path.startsWith('/api/solutions')
   }[APP_SURFACE];
@@ -1820,6 +1827,9 @@ app.get(['/admin/usage', '/admin-usage.html'], requirePageAuth('/admin/usage', '
 app.get(['/hub', '/hub.html'], requirePageAuth('/hub'), sendFrontendFile('hub.html'));
 app.get(['/offering', '/offering.html'], sendFrontendFile('offering.html'));
 app.get(['/readiness', '/readiness.html'], sendFrontendFile('readiness.html'));
+// 결과 링크. 인증 없이 열리고 화면은 readiness.html 을 그대로 쓴다 — 결과 페이지를
+// 따로 만들면 고객이 받은 링크와 방금 푼 결과가 갈라진다. 토큰 검증은 API 가 한다.
+app.get('/r/:token', sendFrontendFile('readiness.html'));
 app.get(['/about', '/about.html'], requirePageAuth('/about'), sendFrontendFile('about.html'));
 
 // 크롤러 정책. 사내 경로는 로그인 게이트 뒤에 있지만 URL 자체가 색인되는 것도 막는다.
@@ -1841,6 +1851,8 @@ app.get('/robots.txt', (_req, res) => {
     'Disallow: /docs/',
     'Disallow: /api/',
     'Disallow: /login',
+    // 결과 링크는 특정 고객의 진단 결과다. 색인되면 안 된다.
+    'Disallow: /r/',
     '',
     `Sitemap: ${PUBLIC_BASE_URL}/sitemap.xml`,
     ''

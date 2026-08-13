@@ -213,7 +213,10 @@ app.post('/api/hub/public/leads', (req, res) => {
   let lead;
   try { lead = validateLead(req.body); }
   catch (error) { return res.status(400).json({ error: error.message }); }
-  mockLeads.push({ ...lead, id: `mock-${mockLeads.length + 1}`, created_at: new Date().toISOString() });
+  // 044 의 result_token. 실제 서버는 gen_random_uuid() 가 만든다.
+  const resultToken = require('crypto').randomUUID();
+  mockLeads.push({ ...lead, id: `mock-${mockLeads.length + 1}`, result_token: resultToken,
+    created_at: new Date().toISOString() });
 
   // 실제 서버와 같이 딜을 만든다. 이게 없으면 /readiness 로 제출한 결과가 허브에
   // 나타나는지를 로컬에서 확인할 수 없다.
@@ -234,7 +237,16 @@ app.post('/api/hub/public/leads', (req, res) => {
     lead_contact_phone: lead.contact_phone, lead_message: lead.message,
     owner_id: null, owner_name: null, updated_at: new Date().toISOString()
   });
-  res.status(201).json({ message: '접수 완료(목업)', reference: mockLeads[mockLeads.length - 1].id });
+  // 발송 지점도 실제와 같이 부른다 — 수단이 없으면 [mail:skipped] 로만 남는다.
+  const readinessForMail = readinessResult;
+  void require('../lib/notify').sendLeadReceipt({
+    lead, readiness: readinessForMail, resultPath: `/r/${resultToken}`
+  });
+  res.status(201).json({
+    message: '접수 완료(목업)',
+    reference: mockLeads[mockLeads.length - 1].id,
+    result_path: `/r/${resultToken}`
+  });
 });
 // 저장된 리드 확인용. 실제 서버에는 없는 목업 전용 경로다.
 app.get('/api/hub/public/_leads', (_req, res) => res.json(mockLeads));
@@ -703,6 +715,27 @@ app.post('/api/hub/public/readiness', (req, res) => {
 });
 app.get(['/readiness', '/readiness.html'], (_req, res) =>
   res.sendFile(path.join(__dirname, '..', 'readiness.html')));
+// 결과 링크. 실제 서버와 같이 readiness.html 을 그대로 쓴다.
+app.get('/r/:token', (_req, res) => res.sendFile(path.join(__dirname, '..', 'readiness.html')));
+
+/**
+ * 결과 링크 조회. 접수한 리드를 토큰으로 찾아 **고객 원본 응답으로 다시 채점**한다.
+ * 실제 서버와 같은 규칙이라야 로컬 확인이 거짓말을 안 한다.
+ */
+app.get('/api/hub/public/result/:token', (req, res) => {
+  const lead = mockLeads.find((item) => item.result_token === req.params.token);
+  if (!lead) return res.status(404).json({ error: '결과를 찾을 수 없습니다.' });
+  const scores = lead.readiness_scores || {};
+  if (!Object.keys(scores).length) {
+    return res.status(404).json({ error: '이 링크에 연결된 진단 응답이 없습니다.' });
+  }
+  const withFix = readiness.items.map((item) => ({ ...item, fix: readinessFixes.get(item.code) || null }));
+  const result = scoreReadiness(withFix, readiness.areas, scores, { partial: true });
+  const covering = coveringPackagesMock((result.priorities || []).map((p) => p.area));
+  result.priorities = (result.priorities || []).map((p) => ({ ...p, offerings: covering.get(p.area) || [] }));
+  // ⚠ 담당자 이름·전화·이메일을 싣지 않는다. 회사명과 결과까지다.
+  res.json({ customer: lead.customer, created_at: lead.created_at, result });
+});
 
 app.get('/admin', (_req, res) => res.sendFile(path.join(__dirname, '..', 'admin.html')));
 

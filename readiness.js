@@ -492,7 +492,7 @@ async function submitLead(event) {
   const label = button.innerHTML;
   button.textContent = '접수 중…';
   try {
-    await getJson('/api/hub/public/leads', {
+    const receipt = await getJson('/api/hub/public/leads', {
       method: 'POST',
       body: JSON.stringify({
         customer: form.get('customer'),
@@ -514,6 +514,14 @@ async function submitLead(event) {
       })
     });
     formEl.classList.add('hidden');
+    // 결과 링크. 메일 발송이 붙기 전까지는 여기가 고객이 링크를 받는 유일한 자리다.
+    // 4초 뒤 랜딩으로 돌아가므로 그 전에 눈에 보여야 한다.
+    if (receipt?.result_path) {
+      const box = $('#lead-success');
+      box.insertAdjacentHTML('beforeend',
+        `<p class="rd-result-link">진단 결과는 아래 주소에서 다시 보실 수 있습니다. 1년간 유효합니다.<br>
+          <a href="${escapeHtml(receipt.result_path)}">${escapeHtml(window.location.origin + receipt.result_path)}</a></p>`);
+    }
     $('#lead-success').classList.remove('hidden');
     $('#lead-success').scrollIntoView({ behavior: 'smooth', block: 'center' });
     window.lucide?.createIcons();
@@ -558,9 +566,49 @@ function startHomeCountdown(seconds = 4) {
 }
 
 // ── 시작 ──────────────────────────────────────────────────────────
+/**
+ * 결과 링크(/r/:token)로 들어온 경우. 문항을 다시 풀지 않고 결과만 보여준다.
+ *
+ * 화면·CSS·리포트 버튼을 그대로 재사용한다 — 결과 페이지를 따로 만들면 두 화면이
+ * 갈라지고, 갈라지면 고객이 받은 링크와 방금 푼 결과가 다르게 보인다.
+ */
+async function initResultLink(token) {
+  document.body.classList.add('rd-result-only');
+  ['#intro', '#assessment', '#contact'].forEach((id) => $(id)?.classList.add('hidden'));
+  const result = $('#result');
+  result.classList.remove('hidden');
+
+  try {
+    const data = await getJson(`/api/hub/public/result/${encodeURIComponent(token)}`);
+    state.result = data.result;
+    document.title = `${data.customer} — AI 준비도 진단 결과`;
+    renderResult(data.result);
+    const head = $('.rd-result-head div');
+    if (head) {
+      const when = String(data.created_at || '').slice(0, 10);
+      head.insertAdjacentHTML('beforeend',
+        `<p class="rd-lead">${escapeHtml(data.customer)}${when ? ` · ${when} 진단` : ''}</p>`);
+    }
+  } catch (error) {
+    // 만료·오타·삭제 전부 여기로 온다. 서버 문구를 그대로 보여준다 —
+    // "없습니다" 와 "기간이 지났습니다" 는 고객이 해야 할 일이 다르다.
+    result.innerHTML = `<div class="rd-result-head"><div>
+      <p class="kicker">YOUR AI READINESS</p><h2>결과를 열 수 없습니다</h2>
+      <p class="rd-lead">${escapeHtml(error.message)}</p>
+      <p class="rd-start"><a class="button primary" href="/readiness">진단 다시 하기</a></p>
+    </div></div>`;
+  }
+  window.lucide?.createIcons();
+}
+
 async function init() {
   window.lucide?.createIcons();
   bindReport();
+
+  // /r/<token> 으로 들어왔으면 결과만 보여주고 끝낸다.
+  const linked = window.location.pathname.match(/^\/r\/([0-9a-fA-F-]{36})\/?$/);
+  if (linked) return initResultLink(linked[1]);
+
   renderTaxonomyOptions();
   $('#lead-form').addEventListener('submit', submitLead);
   // 진단 중에 상담 요청을 누르면 답한 게 사라진다. 결과가 나오기 전에는 문항으로 되돌린다.

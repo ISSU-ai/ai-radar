@@ -191,3 +191,12 @@
 /* 「우리가 무엇을 하나」는 처방과 가른다. 섞으면 처방이 광고로 읽힌다. */
 .rd-offer { margin: 12px 0 0; padding-top: 10px; border-top: 1px dashed var(--line);
   color: #7a8698; font-size: 12.5px; }
+
+/* 결과 링크(/r/:token)로 열었을 때. 문항·상담 폼은 숨기고 결과만 남긴다. */
+body.rd-result-only .rd-progress-bar,
+body.rd-result-only #nav-contact { display: none; }
+body.rd-result-only .readiness-main { padding-top: 96px; }
+/* 접수 직후 결과 링크. 발송 수단이 붙기 전까지 고객이 링크를 받는 유일한 자리다. */
+.rd-result-link { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);
+  color: #526173; font-size: 13px; line-height: 1.7; }
+.rd-result-link a { color: var(--blue); word-break: break-all; }
