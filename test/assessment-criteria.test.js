@@ -219,3 +219,42 @@ test('040 이 지우는 것을 읽는 코드가 남아 있지 않다', () => {
   const routes = fs.readFileSync(path.join(root, 'routes', 'hub.js'), 'utf8');
   assert.match(routes, /leadColumns = \['customer', 'contact', 'fqa_scores'/);
 });
+
+test('표를 지우는 마이그레이션은 매달린 뷰도 같이 지운다', () => {
+  // drop table 은 뷰가 매달려 있으면 2BP01 로 막힌다. 040 이 실제로 그랬다 —
+  // 001 이 만든 offering_fqa_items 가 fqa_items 를 보고 있었다.
+  // 적용해 봐야 드러나는 종류라 여기서 막는다.
+  //
+  // ⚠ cascade 로 해결하지 않는다. 무엇이 같이 지워지는지 모른 채 지우면
+  //   이 저장소의 「지우는 것을 다 적는다」 원칙이 무너진다.
+  const dir = path.join(root, 'db', 'migrations');
+  const files = fs.readdirSync(dir).filter((f) => /^\d{3}_.*\.sql$/.test(f)).sort();
+  const sources = new Map(files.map((f) => [f, fs.readFileSync(path.join(dir, f), 'utf8')]));
+
+  // 어느 뷰가 어느 표를 보는가
+  const viewsOnTable = new Map();
+  for (const sql of sources.values()) {
+    for (const m of sql.matchAll(/create\s+(?:or\s+replace\s+)?view\s+(\w+)\s+as\s+([\s\S]*?);/gi)) {
+      for (const t of m[2].matchAll(/\bfrom\s+(\w+)/gi)) {
+        if (!viewsOnTable.has(t[1])) viewsOnTable.set(t[1], new Set());
+        viewsOnTable.get(t[1]).add(m[1]);
+      }
+    }
+  }
+
+  for (const [file, sql] of sources) {
+    for (const m of sql.matchAll(/drop\s+table\s+(?:if\s+exists\s+)?(\w+)/gi)) {
+      const table = m[1];
+      for (const view of viewsOnTable.get(table) || []) {
+        assert.match(sql, new RegExp(`drop\\s+view\\s+(?:if\\s+exists\\s+)?${view}\\b`, 'i'),
+          `${file} 이 ${table} 을 지우는데 매달린 뷰 ${view} 를 안 지운다 → 2BP01`);
+        // 순서도 지켜야 한다. 표를 먼저 지우면 그 자리에서 막힌다.
+        assert.ok(sql.search(new RegExp(`drop\\s+view\\s+(?:if\\s+exists\\s+)?${view}\\b`, 'i'))
+          < sql.search(new RegExp(`drop\\s+table\\s+(?:if\\s+exists\\s+)?${table}\\b`, 'i')),
+          `${file}: ${view} 를 ${table} 보다 먼저 지워야 한다`);
+      }
+    }
+  }
+  assert.ok(!/drop\s+table[\s\S]{0,40}cascade/i.test([...sources.values()].join('\n')),
+    'cascade 는 무엇이 같이 지워지는지 모른 채 지운다');
+});

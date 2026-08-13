@@ -41,6 +41,7 @@
 --   · packages.fqa_coverage         038 이 readiness_coverage·assessment_* 로 옮겼다
 --   · packages.readiness_lift       038 이 assessment_lift 로 옮겼다
 --   · isv_bundles.fqa_signal        033 이 readiness_signal 로 옮겼다
+--   · offering_fqa_items (뷰)       001 이 만든 anon 공개 창구. 21문항과 함께 없어진다
 --
 -- ⚠ apply-migrations.js 에서 제외한다 (1회성).
 
@@ -80,6 +81,16 @@ alter table isv_bundles drop column if exists fqa_signal;
 -- 지켜 지운다. leads.fqa_scores 는 **남긴다** — 접수 당시 무엇이 들어왔는지는
 -- 동의 이력과 같은 자리의 기록이라 판정 데이터가 아니다.
 drop table if exists readiness_fqa_bridge;
+
+-- ⚠ fqa_items 에 뷰가 하나 매달려 있다 (2BP01). 001 이 만든 offering_fqa_items 로,
+--   랜딩이 21문항을 anon 권한으로 읽던 공개 창구였다. 21문항이 사라졌으니 이 뷰도
+--   존재 이유가 없고, 코드에서 읽는 곳도 0건이다.
+--
+--   **cascade 를 쓰지 않는다.** cascade 는 무엇이 같이 지워지는지 모른 채 지운다 —
+--   이 파일의 「지우는 것을 다 적는다」 원칙과 정면으로 어긋난다. 이름으로 지운다.
+--   형제 뷰(offering_tracks · offering_packages)는 fqa_items 와 무관하므로 남긴다.
+drop view if exists offering_fqa_items;
+
 drop table if exists fqa_items;
 
 commit;
