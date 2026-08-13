@@ -188,3 +188,62 @@ test('레이더차트가 숨겨진 상태에서도 정상 크기로 그려진다
   assert.ok(calc.indexOf("$('#result').classList.remove('hidden')") < calc.indexOf('renderResult(result)'),
     'renderResult 가 unhide 보다 먼저면 0 폭으로 계산된다');
 });
+
+// ── 043 문항별 처방 ──────────────────────────────────────────────
+test('처방은 목표에 못 미친 문항에만 붙는다', () => {
+  // 잘하고 있는 항목에 처방을 달면 나머지 처방도 같이 안 읽힌다.
+  const items = [
+    { code: 'D1', area: 'D', seq: 1, respondent: 'it', text: '통합', rubric: ['1', '2', '3', '4', '5'], target: 4, fix: '세 종류부터.' },
+    { code: 'D2', area: 'D', seq: 2, respondent: 'it', text: '품질', rubric: ['1', '2', '3', '4', '5'], target: 4, fix: '자동 검사로.' }
+  ];
+  const areas = [{ id: 'D', name: '데이터' }];
+  const result = scoreReadiness(items, areas, { D1: 2, D2: 5 }, { partial: true });
+  const byCode = new Map(result.answers.map((a) => [a.code, a]));
+  assert.equal(byCode.get('D1').fix, '세 종류부터.', 'gap 이 있는데 처방이 안 붙었다');
+  assert.equal(byCode.get('D2').fix, '', 'gap 이 0인데 처방이 붙었다');
+  // priorities 로도 흘러가야 화면·리포트가 쓴다
+  const driver = result.priorities[0].items.find((i) => i.code === 'D1');
+  assert.equal(driver.fix, '세 종류부터.');
+  assert.equal(driver.gap, 2, 'gap 은 계산만 하고 버려지던 값이다 — 같이 살렸다');
+});
+
+test('처방문에 제품·오퍼링 이름이 없다', () => {
+  // 고객이 받는 문서에 그대로 들어간다. 처방이 광고가 되면 처방도 같이 안 읽힌다.
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', '043_readiness_fix.sql'), 'utf8');
+  const rows = [...sql.matchAll(/set fix = '((?:[^']|'')*)' where code = '([A-Z]\d)'/g)];
+  assert.equal(rows.length, 42, `처방문이 ${rows.length}개다`);
+  const banned = /openai|chatgpt|codex|claude|portal26|zscaler|databricks|litellm|AIR Service|OpenAI Ready|AI Consulting|메가존|MZC/i;
+  for (const [, fix, code] of rows) {
+    assert.ok(!banned.test(fix), `${code} 처방문에 제품 이름이 들어갔다: ${fix}`);
+    assert.ok(fix.length <= 70, `${code} 처방문이 ${fix.length}자다 — 루브릭 아래 한 줄이라 길면 안 읽힌다`);
+  }
+  // 42문항과 코드가 정확히 맞아야 한다
+  const seed = fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', '029_readiness_items.sql'), 'utf8');
+  const codes = new Set([...seed.slice(seed.indexOf('insert into readiness_items'))
+    .matchAll(/\('([A-Z]\d)', '[A-Z]', \d+, '\w+',/g)].map((m) => m[1]));
+  for (const [, , code] of rows) assert.ok(codes.has(code), `${code} 는 42문항에 없는 코드다`);
+});
+
+test('처방과 오퍼링을 가른다', () => {
+  const routes = fs.readFileSync(path.join(__dirname, '..', 'routes', 'hub.js'), 'utf8');
+  // 축→패키지는 이미 DB 에 있는 readiness_coverage 를 읽는다.
+  // readiness_offering_weights(ISSU 검토 병목)를 기다리지 않는다.
+  assert.match(routes, /const coveringPackages = async/);
+  assert.match(routes, /hasColumn\('packages', 'readiness_coverage'\)/);
+  // 주석으로 「기다리지 않는다」를 적는 건 괜찮다. 실제 조회만 막는다.
+  assert.ok(!/(from|join|into)\s+readiness_offering_weights/i.test(routes), '아직 없는 표를 조회한다');
+  // 공개 화면이고 단가는 미정이다
+  const block = routes.slice(routes.indexOf('const coveringPackages'), routes.indexOf("router.post('/public/readiness'"));
+  assert.ok(!/unit_price|base_md|price/.test(block), '공개 응답에 가격이 실렸다');
+  // 043 미적용 구간에도 진단이 돌아야 한다
+  assert.match(routes, /hasColumn\('readiness_items', 'fix'\)/);
+
+  const js = fs.readFileSync(path.join(__dirname, '..', 'readiness.js'), 'utf8');
+  assert.match(js, /class="rd-fix"/);
+  assert.match(js, /class="rd-offer"/);
+  assert.match(js, /\*\*무엇부터\*\*/, '리포트에도 처방이 들어가야 한다');
+  // 목업이 시드를 직접 읽는다
+  const mock = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'mock-ui-server.js'), 'utf8');
+  assert.match(mock, /043_readiness_fix\.sql/);
+  assert.match(mock, /readiness_coverage/);
+});

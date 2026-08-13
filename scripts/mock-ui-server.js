@@ -654,9 +654,49 @@ function mockApplyAssessment(readinessScores, manualScores) {
 }
 
 app.get('/api/hub/public/readiness-items', (_req, res) => res.json(readiness));
+/** 043 이 심는 문항별 처방문. 베껴 두면 결과 화면이 로컬에서만 비어 보인다. */
+const readinessFixes = (() => {
+  const sql = require('fs').readFileSync(
+    path.join(__dirname, '..', 'db', 'migrations', '043_readiness_fix.sql'), 'utf8');
+  const map = new Map();
+  for (const m of sql.matchAll(/set fix = '((?:[^']|'')*)' where code = '([A-Z]\d)'/g)) {
+    map.set(m[2], m[1].replace(/''/g, "'"));
+  }
+  return map;
+})();
+
+/** 038 의 packages.readiness_coverage — 우선 개선 축을 다루는 패키지. */
+const packageAxisCoverage = (() => {
+  const sql = require('fs').readFileSync(
+    path.join(__dirname, '..', 'db', 'migrations', '038_assessment_judgement.sql'), 'utf8');
+  const map = new Map();
+  for (const m of sql.matchAll(/readiness_coverage = '(\[[\s\S]*?\])'::jsonb[\s\S]{0,200}?where id = '(\w+)'/g)) {
+    map.set(m[2], JSON.parse(m[1]));
+  }
+  return map;
+})();
+
+const coveringPackagesMock = (axes) => {
+  const byAxis = new Map(axes.map((axis) => [axis, []]));
+  for (const pkg of refs.packages) {
+    for (const entry of packageAxisCoverage.get(pkg.id) || []) {
+      const bucket = byAxis.get(entry.axis);
+      if (bucket) bucket.push({ id: pkg.id, name: pkg.name, target: pkg.target, strength: entry.strength });
+    }
+  }
+  for (const [axis, list] of byAxis) {
+    byAxis.set(axis, list.sort((a, b) => b.strength - a.strength).slice(0, 2));
+  }
+  return byAxis;
+};
+
 app.post('/api/hub/public/readiness', (req, res) => {
   try {
-    res.json(scoreReadiness(readiness.items, readiness.areas, req.body?.scores));
+    const withFix = readiness.items.map((item) => ({ ...item, fix: readinessFixes.get(item.code) || null }));
+    const result = scoreReadiness(withFix, readiness.areas, req.body?.scores);
+    const covering = coveringPackagesMock((result.priorities || []).map((p) => p.area));
+    result.priorities = (result.priorities || []).map((p) => ({ ...p, offerings: covering.get(p.area) || [] }));
+    res.json(result);
   } catch (error) {
     res.status(400).json({ error: error.message, unanswered: error.unanswered });
   }

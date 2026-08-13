@@ -212,9 +212,11 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
   // 진단이고, 저쪽은 "이 제품을 지금 넣을 수 있나" 게이트다. 섞지 않는다.
   const loadReadinessItems = async () => {
     if (!(hasColumn && await hasColumn('readiness_items', 'code'))) return null;
+    const hasFix = hasColumn ? await hasColumn('readiness_items', 'fix') : false;
     const [areas, items] = await Promise.all([
       pool.query('select id, name, sort_order from readiness_areas order by sort_order'),
-      pool.query(`select code, area, seq, respondent, text, detail, rubric, target
+      // 043 미적용 구간에도 진단이 돌아야 한다. 컬럼이 없으면 빈 처방으로 내려보낸다.
+      pool.query(`select code, area, seq, respondent, text, detail, rubric, target${hasFix ? ', fix' : ", null::text as fix"}
                     from readiness_items where status = 'active' order by area, seq`)
     ]);
     return { areas: areas.rows, items: items.rows };
@@ -278,6 +280,39 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     }
   });
 
+  /**
+   * 우선 개선 축을 다루는 패키지. 「그래서 우리가 뭘 하나」다.
+   *
+   * ⚠ 문항의 fix(고객이 할 일)와 **가른다.** 처방에 제품 이름을 섞으면 리포트가
+   *   광고가 되고, 광고가 되면 처방도 같이 안 읽힌다. 처방을 먼저 보여주고 이건
+   *   그 아래 따로 붙인다.
+   *
+   * 038 이 심은 packages.readiness_coverage 를 그대로 읽는다 — 6축을 전부 덮으므로
+   * ISSU 가중치 검토(readiness_offering_weights)를 기다릴 필요가 없다.
+   * 가격은 싣지 않는다. 공개 화면이고 단가는 아직 미정이다.
+   */
+  const coveringPackages = async (axes) => {
+    if (!axes.length) return new Map();
+    if (!(hasColumn && await hasColumn('packages', 'readiness_coverage'))) return new Map();
+    const { rows } = await pool.query(
+      `select id, name, target, readiness_coverage from packages
+        where status = 'active' order by sort_order`
+    );
+    const byAxis = new Map(axes.map((axis) => [axis, []]));
+    for (const row of rows) {
+      for (const entry of asArray(row.readiness_coverage)) {
+        const bucket = byAxis.get(entry?.axis);
+        if (!bucket) continue;
+        bucket.push({ id: row.id, name: row.name, target: row.target, strength: Number(entry.strength) || 0 });
+      }
+    }
+    // 깊게 다루는 것부터. 두 개까지만 — 셋을 넘기면 고르라는 말이 아니라 목록이 된다.
+    for (const [axis, list] of byAxis) {
+      byAxis.set(axis, list.sort((a, b) => b.strength - a.strength).slice(0, 2));
+    }
+    return byAxis;
+  };
+
   // 점수 계산. 저장하지 않는다 — 상담 요청은 별도 경로다.
   router.post('/public/readiness', async (req, res) => {
     try {
@@ -286,6 +321,9 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         return sendPublicUnavailable(res, '준비도 진단 문항이 아직 준비되지 않았습니다.');
       }
       const result = scoreReadiness(data.items, data.areas, req.body?.scores);
+      const covering = await coveringPackages(asArray(result.priorities).map((p) => p.area));
+      result.priorities = asArray(result.priorities)
+        .map((p) => ({ ...p, offerings: covering.get(p.area) || [] }));
       res.json(result);
     } catch (error) {
       if (error?.expected) return sendError(res, error);

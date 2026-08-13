@@ -263,14 +263,19 @@ function renderResult(result) {
       <strong>${area.score.toFixed(2)}</strong></div>`;
   }).join('');
 
-  // 2단계에서 오퍼링 순위로 교체된다. 지금은 최저 축 3개와 그 근거 문항을 낸다.
+  // 축 3개 · 근거 문항 · 문항별 처방(043) · 그 영역을 다루는 것(038).
+  // ⚠ 처방과 오퍼링을 가른다. 처방에 제품 이름을 섞으면 리포트가 광고가 되고,
+  //   광고가 되면 처방도 같이 안 읽힌다.
   $('#priorities').innerHTML = result.priorities.map((p, index) => `
     <article class="rd-priority">
       <header><span class="rd-rank">${index + 1}순위</span>
         <b>${escapeHtml(p.name)}</b><small>${p.score.toFixed(2)} / 5</small></header>
       <ul>${p.items.map((item) => `<li><span class="rd-code">${escapeHtml(item.code)}</span>
         <span>${escapeHtml(item.text)}</span>
-        <em>${item.score}점 — ${escapeHtml(item.rubric)}</em></li>`).join('')}</ul>
+        <em>${item.score}점 — ${escapeHtml(item.rubric)}</em>
+        ${item.fix ? `<b class="rd-fix">${escapeHtml(item.fix)}</b>` : ''}</li>`).join('')}</ul>
+      ${(p.offerings || []).length ? `<p class="rd-offer">이 영역을 다루는 것 —
+        ${(p.offerings || []).map((o) => escapeHtml(o.name)).join(' · ')}</p>` : ''}
     </article>`).join('');
 
   $('#insight').textContent = result.insight;
@@ -369,8 +374,13 @@ function buildMarkdown() {
   const areaRows = r.areas.map((a) =>
     `| ${a.area} · ${a.name} | ${a.score.toFixed(2)} / 5 | ${a.score < 3 ? '보완 필요' : a.score < 4 ? '보통' : '양호'} |`).join('\n');
 
+  // 화면과 같은 데이터를 쓴다. 여기서 따로 만들면 고객이 본 것과 리포트가 갈라진다.
   const priorities = r.priorities.map((p, i) => `### ${i + 1}순위 · ${p.name} (${p.score.toFixed(2)} / 5)\n\n`
-    + p.items.map((it) => `- **${it.code}** ${it.text}\n  - ${it.score}점 — ${it.rubric}`).join('\n')).join('\n\n');
+    + p.items.map((it) => `- **${it.code}** ${it.text}\n  - ${it.score}점 — ${it.rubric}`
+      + (it.fix ? `\n  - **무엇부터** ${it.fix}` : '')).join('\n')
+    + ((p.offerings || []).length
+      ? `\n\n이 영역을 다루는 것 — ${(p.offerings || []).map((o) => o.name).join(' · ')}`
+      : '')).join('\n\n');
 
   const detail = r.areas.map((area) => {
     const rows = r.answers.filter((a) => a.area === area.area)
