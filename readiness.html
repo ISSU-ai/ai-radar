@@ -111,13 +111,14 @@
       <form id="lead-form" class="lead-form">
         <div class="form-row"><label>회사명<input name="customer" maxlength="120" required placeholder="회사명을 입력해주세요"></label><label>업종<select name="industry" id="lead-industry" required><option value="">선택해주세요</option></select></label></div>
         <div class="form-row"><label>고객사 규모<select name="companySize" id="lead-company-size" required><option value="">선택해주세요</option></select></label><label>AI 사용 통제 수준<select name="securityStack"><option value="unknown">아직 파악하지 못했습니다</option><option value="none">회사 차원의 통제 없이 각자 사용하고 있습니다</option><option value="existing">회사 보안 장비를 거쳐 사용하고 있습니다</option><option value="managed">AI 전용 정책·승인 절차까지 갖추고 있습니다</option></select></label></div>
-        <div class="form-row"><label>담당자 이름<input name="contactName" maxlength="60" required placeholder="예: 김영업"></label><label>투자 준비도<select name="investment"><option value="low">정보 수집 단계</option><option value="medium">PoC 예산 검토</option><option value="high">확산 예산 검토</option></select></label></div>
+        <div class="form-row"><label>담당자 이름<input name="contactName" maxlength="60" required placeholder="예: 김영업"></label><label>직함 <small>(선택)</small><input name="contactTitle" maxlength="60" placeholder="예: 상무 / 팀장 / 매니저"></label></div>
+        <div class="form-row"><label>투자 준비도<select name="investment"><option value="low">정보 수집 단계</option><option value="medium">PoC 예산 검토</option><option value="high">확산 예산 검토</option></select></label><label>도입 희망 시기<select name="timeline"><option value="">선택해주세요</option><option value="3m">3개월 안</option><option value="6m">6개월 안</option><option value="1y">1년 안</option><option value="unknown">아직 정해지지 않았습니다</option></select></label></div>
         <div class="form-row"><label>업무 이메일<input name="contact" type="email" maxlength="200" required placeholder="name@company.com"></label><label>전화번호<input name="contactPhone" type="tel" maxlength="60" required placeholder="02-1234-5678"></label></div>
         <label>상담 내용<textarea name="message" maxlength="2000" placeholder="검토 중인 업무, 예상 사용자, 일정 등을 알려주세요."></textarea></label>
         <div class="privacy-notice" aria-labelledby="rd-privacy-title">
           <strong id="rd-privacy-title">개인정보 수집·이용 안내</strong>
           <ul>
-            <li><b>수집 항목</b> 회사명, 업종, 고객사 규모, <b>담당자 이름</b>, <b>업무 이메일</b>, <b>전화번호</b>, 상담 내용, 준비도 42문항 응답과 영역별 결과, AI 사용 통제 수준 및 투자 준비도</li>
+            <li><b>수집 항목</b> 회사명, 업종, 고객사 규모, <b>담당자 이름</b>, <b>직함</b>, <b>업무 이메일</b>, <b>전화번호</b>, 상담 내용, 준비도 42문항 응답과 영역별 결과, AI 사용 통제 수준, 투자 준비도, 도입 희망 시기</li>
             <li><b>이용 목적</b> 상담 접수, 담당자 연락 및 제안 준비</li>
             <li><b>보유 기간</b> 상담 요청일로부터 1년 (기간 만료 시 지체 없이 파기)</li>
           </ul>

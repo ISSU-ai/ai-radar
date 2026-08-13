@@ -231,3 +231,61 @@ test('028 이 옛 어휘 네 가지를 모두 옮긴다', () => {
   assert.match(sql, /1,000 을 걸친다|영업 확인이 필요/);
   assert.match(sql, /where d\.customer_meta ->> 'companySize' = m\.old_value/);
 });
+
+// ── 045 직함·도입 시기 ──────────────────────────────────────────
+test('직함은 개인정보라 leads 로, 도입 시기는 customer_meta 로 간다', () => {
+  const domain = read('lib/hub-domain.js');
+  const routes = read('routes/hub.js');
+  const html = read('readiness.html');
+  const js = read('readiness.js');
+
+  // 직함 — 027 규약대로 동의 이력과 같은 표
+  assert.match(domain, /contact_title: optionalText\(body\.contact_title, 60\)/);
+  assert.match(routes, /leadColumns\.push\('contact_title'\)/);
+  assert.match(routes, /hasColumn\('leads', 'contact_title'\)/);
+  assert.match(js, /contact_title: form\.get\('contactTitle'\)/);
+  // customer_meta 로 새면 딜로 흘러가 어디까지 퍼졌는지 추적할 수 없다
+  const submit = js.slice(js.indexOf('customer_meta: {'), js.indexOf('customer_meta: {') + 500);
+  assert.ok(!/contactTitle|contact_title/.test(submit), '직함이 customer_meta 로 갔다');
+
+  // 도입 시기 — 개인정보가 아니라 컬럼을 만들지 않는다
+  assert.match(js, /timeline: form\.get\('timeline'\)/);
+  assert.ok(!/leads.*contact_timeline|add column.*timeline/i.test(routes));
+  const sql = read('db/migrations/045_lead_authority_timeline.sql');
+  assert.match(sql, /add column if not exists contact_title text/);
+  assert.ok(!/add column[^\n]*timeline/i.test(sql), '도입 시기는 컬럼이 아니다');
+
+  // 폼에 둘 다 있다
+  assert.match(html, /name="contactTitle"/);
+  assert.match(html, /name="timeline"/);
+});
+
+test('항목을 늘렸으면 고지와 동의 버전도 같이 올린다', () => {
+  // 027 이 같은 실수를 한 번 지적해 뒀다 — 항목만 늘리고 고지를 안 고치면
+  // 동의 범위를 벗어난다.
+  const html = read('readiness.html');
+  const routes = read('routes/hub.js');
+  const notice = html.slice(html.indexOf('<b>수집 항목</b>'), html.indexOf('<b>이용 목적</b>'));
+  assert.match(notice, /직함/, '고지에 직함이 없다');
+  assert.match(notice, /도입 희망 시기/, '고지에 도입 시기가 없다');
+  // 옛 버전 그대로면 무엇에 동의했는지 되찾을 수 없다
+  assert.match(routes, /version: '2026-08-13-v2'/);
+  assert.ok(!/version: '2026-07-22-v1'/.test(routes), '동의 버전이 안 올라갔다');
+});
+
+test('직함은 포탈 원본과 영업 확인분을 가른다', () => {
+  const hub = read('hub.js');
+  // leads.contact_title  = 고객이 폼에서 낸 것 → 읽기 전용
+  // deals.customer_contact_title = 영업이 미팅에서 확인한 것 → 편집 가능
+  const portal = hub.slice(hub.indexOf('function portalContactMarkup'), hub.indexOf('function legacyContactMarkup'));
+  assert.match(portal, /lead_contact_title/);
+  assert.match(portal, /readonly-value/);
+  assert.match(hub, /data-deal-field="customer_contact_title"/, '영업 입력칸이 사라졌다');
+  // 도입 시기 어휘는 한 곳에서 온다 — 폼과 허브가 갈리면 값이 안 맞는다
+  assert.match(hub, /const TIMELINE_OPTIONS = Object\.freeze/);
+  const html = read('readiness.html');
+  for (const value of ['3m', '6m', '1y', 'unknown']) {
+    assert.match(html, new RegExp(`value="${value}"`), `폼에 ${value} 가 없다`);
+    assert.match(hub, new RegExp(`'${value}'`), `허브에 ${value} 가 없다`);
+  }
+});

@@ -80,11 +80,11 @@ let deals = [
   // 보여준다. 업종·규모는 taxonomy.js 어휘(SFDC 코드 · 진단기준 구간)로 저장된다.
   // 영업이 아직 아무것도 안 채운 상태 — 「확인 필요」와 단계 시계 없음을 이걸로 본다.
   { id: 'd2', customer: '온누리제조',
-    customer_meta: { industry: 'Manufacturing', companySize: '501~1,000명', securityStack: 'none' },
+    customer_meta: { industry: 'Manufacturing', companySize: '501~1,000명', securityStack: 'none', timeline: '6m' },
     track: 'E-3', track_name: '서비스 개발형',
     isv_combo: [], packages: [], stage: 0, source: 'portal',
     lead_contact: 'park@onnuri.co.kr', lead_contact_name: '박담당',
-    lead_contact_phone: '031-987-6543 (내선 12)',
+    lead_contact_phone: '031-987-6543 (내선 12)', lead_contact_title: '정보전략팀장',
     lead_message: '전사 문서 검색부터 검토 중입니다.',
     mzc_sales: null, msp_status: 'unknown', inquiry_date: dateOnly(3),
     customer_contact_name: null, customer_contact_dept: null, customer_contact_title: null, customer_contact_email: null,
@@ -217,6 +217,12 @@ app.post('/api/hub/public/leads', (req, res) => {
   const resultToken = require('crypto').randomUUID();
   mockLeads.push({ ...lead, id: `mock-${mockLeads.length + 1}`, result_token: resultToken,
     created_at: new Date().toISOString() });
+  // 실서버는 GET /deals/:id 가 leads 를 조인해 lead_contact_* 로 준다. 목업은 딜에 심는다.
+  const leadContact = {
+    lead_contact: lead.contact, lead_contact_name: lead.contact_name,
+    lead_contact_phone: lead.contact_phone, lead_contact_title: lead.contact_title || null,
+    lead_message: lead.message
+  };
 
   // 실제 서버와 같이 딜을 만든다. 이게 없으면 /readiness 로 제출한 결과가 허브에
   // 나타나는지를 로컬에서 확인할 수 없다.
@@ -224,7 +230,7 @@ app.post('/api/hub/public/leads', (req, res) => {
     ? mockApplyReadiness(lead.readiness_scores) : null;
   const assessed = readinessResult ? mockApplyAssessment(lead.readiness_scores, null) : null;
   deals.push({
-    id: `d${deals.length + 1}`, customer: lead.customer,
+    id: `d${deals.length + 1}`, customer: lead.customer, ...leadContact,
     customer_meta: lead.customer_meta || {},
     track: lead.track, track_name: null,
     isv_combo: [], packages: [], stage: 0, source: 'portal',

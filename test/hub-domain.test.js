@@ -65,6 +65,9 @@ test('validateLead normalises public input and blocks missing contact', () => {
     contact: 'owner@example.com',
     contact_name: '김 담당',
     contact_phone: '02-1234-5678',
+    // 045 로 직함이 붙었다. 개인정보라 같은 자리(leads)로 가되 **필수는 아니다** —
+    // 이것 때문에 폼을 못 내면 리드를 통째로 잃는다.
+    contact_title: '',
     message: '',
     customer_meta: { securityStack: 'zscaler' },
     fqa_scores: { 1: 4 },
@@ -81,6 +84,9 @@ test('validateLead normalises public input and blocks missing contact', () => {
   assert.throws(() => validateLead({ ...complete, contact: undefined }), /이메일/);
   assert.throws(() => validateLead({ ...complete, contact_name: undefined }), /담당자 이름/);
   assert.throws(() => validateLead({ ...complete, contact_phone: undefined }), /전화번호/);
+  // 직함은 없어도 접수된다
+  assert.equal(validateLead({ ...complete, contact_title: undefined }).contact_title, '');
+  assert.equal(validateLead({ ...complete, contact_title: ' 상무 ' }).contact_title, '상무');
   assert.throws(() => validateLead({ ...complete, consent: undefined }), /동의/);
 });
 

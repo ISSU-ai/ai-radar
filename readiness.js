@@ -499,6 +499,8 @@ async function submitLead(event) {
         contact: form.get('contact'),
         contact_name: form.get('contactName'),
         contact_phone: form.get('contactPhone'),
+        // 직함도 개인정보라 leads 로 간다(045). customer_meta 에 넣지 않는다.
+        contact_title: form.get('contactTitle'),
         message: form.get('message'),
         consent: form.get('consent') === 'on',
         // 42문항 응답을 그대로 보낸다. 채점과 21문항 채우기(030 bridge)는 서버가 한다 —
@@ -509,6 +511,8 @@ async function submitLead(event) {
           companySize: form.get('companySize'),
           securityStack: form.get('securityStack'),
           investment: form.get('investment'),
+          // 도입 시기는 개인정보가 아니다. 영업이 딜에서 쓰는 값이라 여기로 온다.
+          timeline: form.get('timeline'),
           needsInfrastructure: form.get('securityStack') === 'none'
         }
       })

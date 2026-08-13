@@ -581,6 +581,7 @@ function renderWorkspace() {
   renderStallSummary();
   $('#context-mzc-sales').textContent = deal.mzc_sales || '—';
   $('#context-msp').textContent = MSP_LABELS[deal.msp_status] || MSP_LABELS.unknown;
+  $('#context-timeline').textContent = timelineLabel((deal.customer_meta || {}).timeline) || '—';
   // 직함은 여기서 보여준다. 목록(GET /deals)에는 안 싣는다 — 그 응답은 담당자가
   // 아닌 전 직원이 보고, 「고객사 · CTO」는 사실상 특정 개인을 가리킨다.
   $('#context-contact').textContent = [deal.customer_contact_name, deal.customer_contact_title,
@@ -693,7 +694,8 @@ function companySizeOptions(current) {
  * 미리 채워 놓아서, 영업이 한 글자만 건드리면 개인정보가 customer_meta 로 복사됐다.
  */
 function portalContactMarkup() {
-  const parts = [state.deal.lead_contact_name, state.deal.lead_contact_phone, state.deal.lead_contact];
+  const name = [state.deal.lead_contact_name, state.deal.lead_contact_title].filter(Boolean).join(' ');
+  const parts = [name, state.deal.lead_contact_phone, state.deal.lead_contact];
   if (!parts.some(Boolean)) return '';
   return `<div class="field full"><label>포탈 담당자 <small>(고객 입력 · 편집 불가)</small></label>
     <div class="readonly-value">${escapeHtml(parts.filter(Boolean).join(' · '))}</div></div>
@@ -804,6 +806,13 @@ function renderStallSummary() {
 
 const MSP_LABELS = Object.freeze({ yes: 'MSP 운영 중', no: '미운영', unknown: '확인 필요' });
 
+/** 도입 희망 시기(045). 진단 폼과 같은 값이라야 고객이 고른 것이 그대로 보인다. */
+const TIMELINE_OPTIONS = Object.freeze([
+  ['3m', '3개월 안'], ['6m', '6개월 안'], ['1y', '1년 안'], ['unknown', '아직 미정']
+]);
+const timelineLabel = (value) =>
+  (TIMELINE_OPTIONS.find(([key]) => key === value) || [])[1] || '';
+
 /** 문의 제품 선택 칩. 카탈로그에서 내려간 id 도 조용히 감추지 않는다. */
 function inquiryProductChipsMarkup() {
   const picked = asArray(state.deal?.inquiry_products);
@@ -861,6 +870,8 @@ function renderIntake() {
       <div class="field"><label for="deal-mzc-sales">MZC Sales</label><input id="deal-mzc-sales" type="text" data-deal-field="mzc_sales" value="${escapeHtml(deal.mzc_sales || '')}" placeholder="담당 코어세일즈" ${disabledAttr()}></div>
       <div class="field"><label for="deal-msp">MSP 여부</label><select id="deal-msp" data-deal-field="msp_status" ${disabledAttr()}>${mspOption('unknown')}${mspOption('yes')}${mspOption('no')}</select></div>
       <div class="field"><label for="deal-inquiry-date">문의 유입 시점</label><input id="deal-inquiry-date" type="date" data-deal-field="inquiry_date" value="${escapeHtml(deal.inquiry_date || '')}" ${disabledAttr()}></div>
+      <div class="field"><label for="deal-timeline">도입 희망 시기</label><select id="deal-timeline" data-meta-field="timeline" ${disabledAttr()}><option value="">미정</option>${TIMELINE_OPTIONS.map(([value, label]) =>
+        `<option value="${value}" ${meta.timeline === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
       <div class="field"><label>유입 경로</label><div class="readonly-value">${escapeHtml(sourceNames[deal.source] || deal.source || '—')}</div></div>
       <div id="stall-summary" class="stall-summary">${stallSummaryMarkup()}</div>
     </div></div>
@@ -2278,6 +2289,7 @@ function intakeReport() {
 | 투자 여력 | ${label[meta.investment] || meta.investment || '미정'} |
 | 유입 경로 | ${sourceNames[state.deal.source] || state.deal.source || '—'} |
 | 문의 유입 시점 | ${state.deal.inquiry_date || '—'} |
+| 도입 희망 시기 | ${timelineLabel(meta.timeline) || '—'} |
 | 문의 제품 | ${inquiryProductNames().join(' · ') || '—'} |
 
 ## 고객 담당자

@@ -21,8 +21,15 @@ const PIPELINE_FIELDS_041 = new Set(['mzc_sales', 'msp_status', 'inquiry_date',
 
 const STALE_RATE_LIMIT_MS = 15 * 60 * 1000;
 const PUBLIC_LEAD_LIMIT = 8;
+/**
+ * 접수 시점의 동의 내용. **화면 고지(readiness.html)와 한 글자도 어긋나면 안 된다.**
+ *
+ * 수집 항목을 늘릴 때는 version 을 올린다 — 옛 동의로 받은 건과 새 동의로 받은 건이
+ * 섞이면 나중에 "이 사람은 무엇에 동의했나" 를 되찾을 수 없다.
+ * v2: 직함·도입 시기 추가 (045)
+ */
 const PRIVACY_NOTICE = Object.freeze({
-  version: '2026-07-22-v1',
+  version: '2026-08-13-v2',
   purpose: 'AI 준비도 진단 결과를 바탕으로 한 상담 접수, 담당자 연락 및 제안 준비',
   retention: '상담 요청일로부터 1년'
 });
@@ -438,6 +445,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       // 남지 않지만 리드는 살아서 영업에게 간다.
       const hasContactCols = hasColumn
         ? await hasColumn('leads', 'contact_name') : false;
+      const hasTitleCol = hasColumn ? await hasColumn('leads', 'contact_title') : false;
       const leadColumns = ['customer', 'contact', 'fqa_scores', 'message', 'promoted_deal',
         'consent_version', 'consent_purpose', 'consent_retention'];
       const leadValues = [lead.customer, lead.contact, lead.fqa_scores, lead.message,
@@ -446,6 +454,10 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       if (hasContactCols) {
         leadColumns.push('contact_name', 'contact_phone');
         leadValues.push(lead.contact_name, lead.contact_phone);
+      }
+      if (hasTitleCol) {
+        leadColumns.push('contact_title');
+        leadValues.push(lead.contact_title || null);
       }
       // 044 미적용 구간에는 토큰 컬럼이 없다. 그때는 결과 링크 없이 접수만 된다.
       const hasResultToken = hasColumn ? await hasColumn('leads', 'result_token') : false;
@@ -571,14 +583,17 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       // 027 미적용 구간을 대비해 컬럼 존재를 확인하고 고른다. 없으면 null 로 내려
       // 화면이 "포탈 정보 없음" 으로 그려진다 — 상세 조회 자체가 깨지는 것보다 낫다.
       const hasContactCols = hasColumn ? await hasColumn('leads', 'contact_name') : false;
-      const leadContactCols = hasContactCols
+      const hasTitle = hasColumn ? await hasColumn('leads', 'contact_title') : false;
+      const leadContactCols = (hasContactCols
         ? 'l.contact, l.message, l.contact_name, l.contact_phone'
-        : 'l.contact, l.message, null::text as contact_name, null::text as contact_phone';
+        : 'l.contact, l.message, null::text as contact_name, null::text as contact_phone')
+        + (hasTitle ? ', l.contact_title' : ', null::text as contact_title');
       const result = await pool.query(
         `select d.*, p.full_name as owner_name, t.name as track_name,
                 lead.contact as lead_contact, lead.message as lead_message,
                 lead.contact_name as lead_contact_name,
-                lead.contact_phone as lead_contact_phone
+                lead.contact_phone as lead_contact_phone,
+                lead.contact_title as lead_contact_title
          from deals d
          left join profiles p on p.id = d.owner_id
          left join tracks t on t.id = d.track

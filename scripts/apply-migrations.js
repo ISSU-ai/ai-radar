@@ -44,7 +44,9 @@ const MIGRATIONS = [
   '041_deal_pipeline_fields.sql',
   // 044 는 컬럼 + 인덱스뿐이다. 값은 기본값이 채운다.
   // 042(공시가 시드)·043(처방문 시드)은 사람이 고친 값을 덮으므로 제외.
-  '044_lead_result_token.sql'
+  '044_lead_result_token.sql',
+  // 045 도 컬럼 하나뿐이다.
+  '045_lead_authority_timeline.sql'
 ];
 
 async function main() {
