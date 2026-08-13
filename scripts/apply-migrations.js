@@ -52,7 +52,9 @@ const MIGRATIONS = [
   // 047 은 빈 표만 만든다. 내용은 /admin 에서 넣는다.
   '047_case_studies.sql',
   // 048 은 컬럼 셋 + 인덱스. 기존 리드는 전부 미열람으로 남는다(소급 불가).
-  '048_lead_result_open.sql'
+  '048_lead_result_open.sql',
+  // 049 는 컬럼 하나. 기존 딜은 null 로 남는다 — 소급해 채우면 거짓 원본이 된다.
+  '049_deal_customer_meta_original.sql'
 ];
 
 async function main() {

@@ -479,6 +479,13 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         ? await hasColumn('deals', 'assessment_scores') : false;
       const dealColumns = ['customer', 'customer_meta', 'track'];
       const dealValues = [lead.customer, lead.customer_meta, lead.track];
+      // 049: 영업이 STEP01 에서 고쳐도 고객이 뭐라고 냈는지는 남는다. 032 가 42문항에
+      // 한 것과 같은 목적 — 인계 문서가 「고객이 말한 것」과 「우리가 적은 것」을 가른다.
+      // **여기서 한 번 쓰고 다시는 안 쓴다.** EDITABLE_DEAL_FIELDS 에 없어 PATCH 도 못 한다.
+      if (hasColumn && await hasColumn('deals', 'customer_meta_original')) {
+        dealColumns.push('customer_meta_original');
+        dealValues.push(lead.customer_meta);
+      }
       if (hasReadinessCols && readiness) {
         dealColumns.push('readiness_scores', 'readiness_totals');
         dealValues.push(lead.readiness_scores, readiness);

@@ -207,7 +207,7 @@ app.get('/api/hub/reference-data', (_req, res) => res.json({
 }));
 app.get('/api/hub/public/packages', (_req, res) => res.json(refs.packages.map(({ scale, ...pkg }) => pkg)));
 // 실제 서버와 같은 검증을 거친다. 목업이 무조건 201 을 주면 폼 오류를 화면에서 못 본다.
-const { validateLead } = require('../lib/hub-domain');
+const { validateLead, EDITABLE_DEAL_FIELDS } = require('../lib/hub-domain');
 const mockLeads = [];
 app.post('/api/hub/public/leads', (req, res) => {
   let lead;
@@ -238,6 +238,10 @@ app.post('/api/hub/public/leads', (req, res) => {
   deals.push({
     id: `d${deals.length + 1}`, customer: lead.customer, ...leadContact,
     customer_meta: lead.customer_meta || {},
+    // 049. 접수 시점 맥락을 얼려 둔다. 실서버는 리드 접수 트랜잭션이 넣는다 —
+    // 여기서 안 넣으면 STEP01 에서 업종을 고쳐도 인계 브리프가 「구분 불가」로만 나와
+    // 로컬에서 근거 상태를 확인할 수 없다.
+    customer_meta_original: JSON.parse(JSON.stringify(lead.customer_meta || {})),
     track: lead.track, track_name: null,
     isv_combo: [], packages: [], stage: 0, source: 'portal',
     readiness_scores: lead.readiness_scores || {},
@@ -324,7 +328,13 @@ app.get('/api/hub/deals/:id', (req, res) => {
 app.patch('/api/hub/deals/:id', (req, res) => {
   const index = deals.findIndex((item) => item.id === req.params.id && !item.deleted_at);
   if (index < 0) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
-  const patch = { ...req.body };
+  // 실서버는 normaliseDealPatch 의 **허용목록**을 거친다. 목업이 req.body 를 그대로
+  // 펼치면 거기 없는 컬럼(readiness_customer_scores·customer_meta_original 같은
+  // 「원본」)이 로컬에서만 덮어써지고, 근거 상태 확인이 거짓말이 된다.
+  const patch = {};
+  for (const field of EDITABLE_DEAL_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(req.body, field)) patch[field] = req.body[field];
+  }
   // 단계가 실제로 바뀔 때만 정체 시계를 리셋한다. 실제 라우트와 같은 조건이라야
   // 「메모만 고쳤는데 정체가 풀렸다」를 로컬에서 잡을 수 있다.
   if (Object.prototype.hasOwnProperty.call(patch, 'stage') && patch.stage !== deals[index].stage) {
