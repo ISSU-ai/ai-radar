@@ -223,7 +223,10 @@ function renderDealList() {
     const selected = state.deal?.id === deal.id;
     const dots = state.refs.stages.map((_, index) => `<i class="${index < deal.stage ? 'done' : ''} ${index === deal.stage ? 'current' : ''}"></i>`).join('');
     // MSP 는 yes 일 때만 띄운다. 「확인 필요」를 전 딜에 띄우면 소음이 되어 아무도 안 본다.
-    const tags = (deal.msp_status === 'yes' ? '<span class="msp-tag">MSP</span>' : '') + stallChipsMarkup(deal);
+    // 스팸 신호는 회색이다. 「걸렀다」가 아니라 「한 번 보라」는 뜻이라 눈에 덜 띄어야 한다.
+    const spam = Number(deal.spam_count) > 0
+      ? `<span class="spam-tag">확인 필요 ${deal.spam_count}</span>` : '';
+    const tags = (deal.msp_status === 'yes' ? '<span class="msp-tag">MSP</span>' : '') + spam + stallChipsMarkup(deal);
     return `<button class="deal-card ${selected ? 'selected' : ''}" type="button" data-deal-id="${deal.id}" aria-current="${selected ? 'true' : 'false'}">
       <span class="deal-card-head"><span class="deal-card-customer"><strong>${escapeHtml(deal.customer)}</strong>${isNew ? '<span class="new-tag">신규</span>' : ''}</span><span class="track-badge" data-track="${escapeHtml(deal.track || '')}">${escapeHtml(deal.track || '미정')}</span></span>
       <span class="deal-card-sub">${escapeHtml(sub)}</span>
@@ -844,6 +847,21 @@ function renderInquiryProductChips() {
   if (node) node.innerHTML = inquiryProductChipsMarkup();
 }
 
+/**
+ * 접수 시점의 스팸 의심 신호(046). **판정이 아니라 신호다.**
+ *
+ * 왜 걸렸는지 보여줘야 영업이 고르고, 기준이 헛돌 때 우리가 고칠 수 있다.
+ * 개수만 보여주면 "스팸 점수 0.7" 과 다를 게 없다.
+ */
+function spamSignalMarkup() {
+  const signals = asArray(state.deal?.lead_spam_signals);
+  if (!signals.length) return '';
+  return `<div class="field full"><label>접수 확인 필요 <small>(자동 감지 · 참고용)</small></label>
+    <div class="readonly-value spam-note">${signals.map((s2) =>
+      `<span>${escapeHtml(s2.label)}${s2.hit ? ` — ${escapeHtml(s2.hit)}` : ''}</span>`).join('')}</div>
+    <p class="field-note">자동 감지라 틀릴 수 있습니다. 실제 문의라면 그대로 진행하고, 아니면 우상단에서 딜을 삭제하세요.</p></div>`;
+}
+
 function renderIntake() {
   const meta = state.deal.customer_meta || {};
   const deal = state.deal;
@@ -864,6 +882,7 @@ function renderIntake() {
       <div class="field"><label for="deal-contact-title">직함</label><input id="deal-contact-title" type="text" data-deal-field="customer_contact_title" value="${escapeHtml(deal.customer_contact_title || '')}" placeholder="예: 상무 / 팀장" ${disabledAttr()}></div>
       <div class="field"><label for="deal-contact-email">이메일</label><input id="deal-contact-email" type="email" data-deal-field="customer_contact_email" value="${escapeHtml(deal.customer_contact_email || '')}" placeholder="name@company.com" ${disabledAttr()}></div>
       ${legacyContactMarkup(meta)}
+      ${spamSignalMarkup()}
     </div></div>
 
     <div class="field-group"><h3>딜 관리 (MZC)</h3><div class="form-grid">

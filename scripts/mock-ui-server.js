@@ -221,7 +221,9 @@ app.post('/api/hub/public/leads', (req, res) => {
   const leadContact = {
     lead_contact: lead.contact, lead_contact_name: lead.contact_name,
     lead_contact_phone: lead.contact_phone, lead_contact_title: lead.contact_title || null,
-    lead_message: lead.message
+    lead_message: lead.message,
+    // 046. 실서버는 목록에 개수만, 상세에 목록을 준다.
+    lead_spam_signals: lead.spam_signals || [], spam_count: (lead.spam_signals || []).length
   };
 
   // 실제 서버와 같이 딜을 만든다. 이게 없으면 /readiness 로 제출한 결과가 허브에
@@ -265,7 +267,7 @@ app.get('/api/hub/public/_leads', (_req, res) => res.json(mockLeads));
  */
 const DEAL_LIST_FIELDS = ['id', 'customer', 'track', 'track_name', 'stage', 'source',
   'owner_id', 'owner_name', 'updated_at', 'created_at',
-  'msp_status', 'inquiry_date', 'stage_changed_at'];
+  'msp_status', 'inquiry_date', 'stage_changed_at', 'spam_count'];
 
 app.get('/api/hub/deals', (req, res) => {
   // 실제 라우트와 같은 조건을 건다. 파라미터를 무시하면 사이드바의 검색과

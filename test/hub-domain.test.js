@@ -74,7 +74,9 @@ test('validateLead normalises public input and blocks missing contact', () => {
     // 031 로 42문항 응답도 리드에 실린다. 안 보내면 빈 객체로 지나간다.
     readiness_scores: {},
     track: 'E-1',
-    consent: true
+    consent: true,
+    // 046 — 판정이 아니라 신호다. 이 입력은 걸릴 게 없다.
+    spam_signals: []
   });
 
   const complete = {

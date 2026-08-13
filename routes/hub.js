@@ -459,6 +459,11 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         leadColumns.push('contact_title');
         leadValues.push(lead.contact_title || null);
       }
+      // 신호만 남긴다. 접수를 막지 않는다 — 자동으로 버리면 진짜 고객을 잃는다.
+      if (hasColumn && await hasColumn('leads', 'spam_signals')) {
+        leadColumns.push('spam_signals');
+        leadValues.push(JSON.stringify(lead.spam_signals || []));
+      }
       // 044 미적용 구간에는 토큰 컬럼이 없다. 그때는 결과 링크 없이 접수만 된다.
       const hasResultToken = hasColumn ? await hasColumn('leads', 'result_token') : false;
       const leadResult = await client.query(
@@ -528,12 +533,21 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       const pipelineCols = has041
         ? 'd.msp_status, d.inquiry_date, d.stage_changed_at'
         : `null::text as msp_status, null::date as inquiry_date, null::timestamptz as stage_changed_at`;
+      // 스팸 신호는 leads 에 있다(접수 시점의 판정이라 딜이 아니라 접수 기록의 것).
+      // 개수만 싣는다 — 목록은 전 직원이 보므로 어떤 값이 걸렸는지까지 보낼 이유가 없다.
+      const hasSpam = hasColumn ? await hasColumn('leads', 'spam_signals') : false;
+      const spamJoin = hasSpam
+        ? `left join lateral (select jsonb_array_length(l.spam_signals) as n from leads l
+              where l.promoted_deal = d.id order by l.created_at desc limit 1) spam on true`
+        : '';
+      const spamCol = hasSpam ? 'coalesce(spam.n, 0) as spam_count' : '0 as spam_count';
       // 사이드바 카드는 업종·규모·대상만 쓴다. customer_meta 를 통째로 내보내면
       // 연락처·상담 메모 같은 고객 PII 가 목록 응답에 실린다.
       const result = await pool.query(
         `select d.id, d.customer, d.track, d.stage, d.source,
                 d.owner_id, d.updated_at, d.created_at,
                 ${pipelineCols},
+                ${spamCol},
                 jsonb_build_object(
                   'industry',    d.customer_meta -> 'industry',
                   'companySize', d.customer_meta -> 'companySize',
@@ -543,6 +557,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
          from deals d
          left join profiles p on p.id = d.owner_id
          left join tracks t on t.id = d.track
+         ${spamJoin}
          ${where}
          order by (d.source = 'portal' and d.owner_id is null) desc, d.updated_at desc`,
         params
@@ -587,13 +602,16 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       const leadContactCols = (hasContactCols
         ? 'l.contact, l.message, l.contact_name, l.contact_phone'
         : 'l.contact, l.message, null::text as contact_name, null::text as contact_phone')
-        + (hasTitle ? ', l.contact_title' : ', null::text as contact_title');
+        + (hasTitle ? ', l.contact_title' : ', null::text as contact_title')
+        + ((hasColumn && await hasColumn('leads', 'spam_signals'))
+          ? ', l.spam_signals' : `, '[]'::jsonb as spam_signals`);
       const result = await pool.query(
         `select d.*, p.full_name as owner_name, t.name as track_name,
                 lead.contact as lead_contact, lead.message as lead_message,
                 lead.contact_name as lead_contact_name,
                 lead.contact_phone as lead_contact_phone,
-                lead.contact_title as lead_contact_title
+                lead.contact_title as lead_contact_title,
+                lead.spam_signals as lead_spam_signals
          from deals d
          left join profiles p on p.id = d.owner_id
          left join tracks t on t.id = d.track

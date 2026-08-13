@@ -46,7 +46,9 @@ const MIGRATIONS = [
   // 042(공시가 시드)·043(처방문 시드)은 사람이 고친 값을 덮으므로 제외.
   '044_lead_result_token.sql',
   // 045 도 컬럼 하나뿐이다.
-  '045_lead_authority_timeline.sql'
+  '045_lead_authority_timeline.sql',
+  // 046 은 컬럼 + 인덱스. 기존 리드를 소급 판정하지 않는다.
+  '046_lead_spam_signals.sql'
 ];
 
 async function main() {
