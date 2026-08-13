@@ -5,7 +5,8 @@ const {
   PIPELINE_STAGES,
   normaliseDealPatch,
   validateDealCreate,
-  validateLead
+  validateLead,
+  validateMeetingNote
 } = require('../lib/hub-domain');
 
 /** jsonb 컬럼이 null·잘못된 모양으로 와도 map/filter 가 터지지 않게 한다. */
@@ -41,6 +42,7 @@ const { scoreAssessment, bridgeAssessmentScores, buildGapTotals } = require('../
 const { INTERNAL_BULLET_LABELS } = require('../lib/section-privacy');
 const { sendLeadReceipt } = require('../lib/notify');
 const { pickCaseStudies, caseContext } = require('../lib/case-match');
+const { noteSummary, sortNotes } = require('../lib/meeting-notes');
 
 function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColumn }) {
   // 009 는 수동 적용이라 컬럼이 아직 없을 수 있다. 없으면 "미확정(true)"으로 본다 —
@@ -75,6 +77,27 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
   const liveDeal = async (alias = 'd') => (
     (hasColumn && await hasColumn('deals', 'deleted_at')) ? ` and ${alias}.deleted_at is null` : ''
   );
+
+  /**
+   * 050 은 **표**를 만든다. hasColumn 은 컬럼용이라 여기서는 to_regclass 로 본다.
+   * 없으면 회의록 기능만 조용히 빠지고 딜 상세는 정상이다 — 표가 없다고 딜을 못 여는
+   * 쪽이 훨씬 나쁘다. 있음은 영구 캐시, 없음은 60초(hasColumn 과 같은 규칙).
+   */
+  let meetingNotesTable = null;
+  let meetingNotesCheckedAt = 0;
+  const hasMeetingNotes = async () => {
+    if (meetingNotesTable) return true;
+    if (Date.now() - meetingNotesCheckedAt < 60000) return false;
+    meetingNotesCheckedAt = Date.now();
+    try {
+      const { rows } = await pool.query("select to_regclass('public.meeting_notes') is not null as ok");
+      meetingNotesTable = Boolean(rows[0]?.ok);
+      return meetingNotesTable;
+    } catch (error) {
+      console.error('meeting_notes lookup failed:', error.message);
+      return false;
+    }
+  };
 
   const sendError = (res, error, status = 400) => {
     const message = error instanceof Error ? error.message : '요청을 처리할 수 없습니다.';
@@ -1008,6 +1031,13 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
         [req.user.id, req.params.id]
       );
 
+      // 회의록도 함께 지운다(050). 딜은 soft delete 라 cascade 가 안 걸린다 —
+      // 아무 화면에도 안 보이는 행에 고객 대화를 영구 보관하는 쪽이 더 나쁘다.
+      // 041 이 개인정보 4종을 지우는 것과 같은 판단이다.
+      if (await hasMeetingNotes()) {
+        await pool.query('delete from meeting_notes where deal_id = $1', [req.params.id]);
+      }
+
       // 고객 담당자 정보는 넣지 않는다. Slack 채널은 보존기간 관리 밖이다.
       void slackNotify(`🗑 딜 삭제: ${current.customer} · ${req.user.name}`);
       auditLog(req.user.id, 'delete', `deal:${req.params.id}`, current.customer);
@@ -1196,6 +1226,134 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
     if (dealListenerPromise) await dealListenerPromise.catch(() => {});
     await stopDealListener();
   };
+
+  /**
+   * 회의록(050). **딜 상세와 같은 게이트**를 건다 — 담당자·admin·미배정.
+   * RLS 의 is_approved() 보다 좁다. 회의록에는 고객이 한 말이 그대로 들어 있어
+   * 딜 목록처럼 전 직원에게 열 수 없다.
+   */
+  const loadDealForNotes = async (req, res) => {
+    if (!(await hasMeetingNotes())) {
+      res.status(503).json({ error: '회의록 표가 아직 없습니다. 050 마이그레이션을 확인하세요.' });
+      return null;
+    }
+    const { rows } = await pool.query(
+      `select d.id, d.owner_id from deals d
+        where d.id = $1 and ($2 = 'admin' or d.owner_id is null or d.owner_id = $3)${await liveDeal()}`,
+      [req.params.id, req.user.role, req.user.id]
+    );
+    if (!rows[0]) { res.status(404).json({ error: '딜을 찾을 수 없습니다.' }); return null; }
+    return rows[0];
+  };
+
+  /** 담당자만 쓴다. 딜 편집과 같은 규칙이다. */
+  const canWriteNotes = (deal, user) => user.role === 'admin' || deal.owner_id === user.id;
+
+  /**
+   * 목록. **본문을 안 싣는다** — 회의록 다섯 건이면 응답이 수만 자가 된다.
+   * 모양은 lib 이 정한다(noteSummary). 여기서 컬럼을 고르면 언젠가 body 가 섞인다.
+   */
+  router.get('/deals/:id/notes', async (req, res) => {
+    try {
+      const deal = await loadDealForNotes(req, res);
+      if (!deal) return;
+      const { rows } = await pool.query(
+        `select id, met_on, kind, title, body, created_at, updated_at
+           from meeting_notes where deal_id = $1`,
+        [req.params.id]
+      );
+      res.json(sortNotes(rows).map(noteSummary));
+    } catch (error) {
+      console.error('Meeting notes list failed:', error.message);
+      sendError(res, error, 500);
+    }
+  });
+
+  /** 본문 전량. 여기서만 body 가 나간다. */
+  router.get('/deals/:id/notes/:noteId', async (req, res) => {
+    try {
+      const deal = await loadDealForNotes(req, res);
+      if (!deal) return;
+      const { rows } = await pool.query(
+        `select id, deal_id, met_on, kind, title, body, created_by, created_at, updated_at
+           from meeting_notes where id = $1 and deal_id = $2`,
+        [req.params.noteId, req.params.id]
+      );
+      if (!rows[0]) return res.status(404).json({ error: '회의록을 찾을 수 없습니다.' });
+      res.json(rows[0]);
+    } catch (error) {
+      console.error('Meeting note failed:', error.message);
+      sendError(res, error, 500);
+    }
+  });
+
+  router.post('/deals/:id/notes', async (req, res) => {
+    try {
+      const deal = await loadDealForNotes(req, res);
+      if (!deal) return;
+      if (!canWriteNotes(deal, req.user)) {
+        return res.status(403).json({ error: '담당자만 회의록을 쓸 수 있습니다.' });
+      }
+      const note = validateMeetingNote(req.body);
+      const { rows } = await pool.query(
+        `insert into meeting_notes (deal_id, met_on, kind, title, body, created_by)
+         values ($1, $2, $3, $4, $5, $6)
+         returning id, deal_id, met_on, kind, title, body, created_at, updated_at`,
+        [req.params.id, note.met_on, note.kind, note.title, note.body, req.user.id]
+      );
+      auditLog(req.user.id, 'create', `meeting_note:${rows[0].id}`);
+      res.status(201).json(rows[0]);
+    } catch (error) {
+      if (error instanceof Error && !error.status) return sendError(res, error);
+      console.error('Meeting note create failed:', error.message);
+      sendError(res, error, 500);
+    }
+  });
+
+  router.patch('/deals/:id/notes/:noteId', async (req, res) => {
+    try {
+      const deal = await loadDealForNotes(req, res);
+      if (!deal) return;
+      if (!canWriteNotes(deal, req.user)) {
+        return res.status(403).json({ error: '담당자만 회의록을 고칠 수 있습니다.' });
+      }
+      const note = validateMeetingNote(req.body);
+      const { rows } = await pool.query(
+        `update meeting_notes
+            set met_on = $1, kind = $2, title = $3, body = $4, updated_at = now()
+          where id = $5 and deal_id = $6
+         returning id, deal_id, met_on, kind, title, body, created_at, updated_at`,
+        [note.met_on, note.kind, note.title, note.body, req.params.noteId, req.params.id]
+      );
+      if (!rows[0]) return res.status(404).json({ error: '회의록을 찾을 수 없습니다.' });
+      auditLog(req.user.id, 'update', `meeting_note:${req.params.noteId}`);
+      res.json(rows[0]);
+    } catch (error) {
+      if (error instanceof Error && !error.status) return sendError(res, error);
+      console.error('Meeting note update failed:', error.message);
+      sendError(res, error, 500);
+    }
+  });
+
+  router.delete('/deals/:id/notes/:noteId', async (req, res) => {
+    try {
+      const deal = await loadDealForNotes(req, res);
+      if (!deal) return;
+      if (!canWriteNotes(deal, req.user)) {
+        return res.status(403).json({ error: '담당자만 회의록을 지울 수 있습니다.' });
+      }
+      const { rowCount } = await pool.query(
+        'delete from meeting_notes where id = $1 and deal_id = $2',
+        [req.params.noteId, req.params.id]
+      );
+      if (!rowCount) return res.status(404).json({ error: '회의록을 찾을 수 없습니다.' });
+      auditLog(req.user.id, 'delete', `meeting_note:${req.params.noteId}`);
+      res.json({ message: '회의록을 지웠습니다.' });
+    } catch (error) {
+      console.error('Meeting note delete failed:', error.message);
+      sendError(res, error, 500);
+    }
+  });
 
   return router;
 }

@@ -116,8 +116,23 @@ test('목록 API 에 개인정보를 싣지 않는다', () => {
 test('딜을 읽고 고치는 모든 쿼리가 삭제된 딜을 거른다', () => {
   // 하나만 빠지면 지운 딜이 그 경로에서만 되살아나는데 화면에는 티가 안 난다.
   const authed = routes.slice(routes.indexOf('router.use(authenticateToken)'));
-  const gated = (authed.match(/liveDeal\(/g) || []).length;
-  assert.equal(gated, 5, `liveDeal 이 걸린 쿼리가 ${gated}곳이다 (읽기2·snapshot·claim·owner)`);
+  // ⚠ 개수로 세지 않는다 — 라우트가 하나 늘 때마다 깨지고, **무엇이 안 걸렸는지**를
+  // 안 알려준다. 걸려야 할 자리를 이름으로 짚는다.
+  const mustGate = [
+    ["router.get('/deals'", '딜 목록'],
+    ["router.get('/deals/:id'", '딜 상세'],
+    ["router.post('/deals/:id/claim'", '담당하기'],
+    ['const loadDealForNotes', '회의록 게이트']            // 050
+  ];
+  for (const [anchor, label] of mustGate) {
+    const at = authed.indexOf(anchor);
+    assert.ok(at > 0, `${label} 라우트를 못 찾았다 (${anchor})`);
+    // 고정 폭으로 자르면 주석이 긴 라우트에서 쿼리를 놓친다. 다음 라우트까지 본다.
+    const next = authed.indexOf('  router.', at + 1);
+    const block = authed.slice(at, next > at ? next : at + 3000);
+    // 목록은 조건을 직접 적고 나머지는 liveDeal() 을 쓴다. 둘 다 같은 뜻이다.
+    assert.match(block, /liveDeal\(|deleted_at is null/, `${label} 이 지운 딜을 안 거른다`);
+  }
   // 나머지 둘은 조건절이 아니라 선조회 뒤 JS 로 본다
   const patchBlock = authed.slice(authed.indexOf("router.patch('/deals/:id'"), authed.indexOf("router.delete('/deals/:id'"));
   assert.match(patchBlock, /if \(current\.deleted_at\) return res\.status\(404\)/,

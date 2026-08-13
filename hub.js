@@ -13,6 +13,9 @@ const state = {
   deal: null,
   reco: null,
   activeStage: 0,
+  // 회의록(050). 목록은 머리말만이고 본문은 열 때 따로 받는다 — 다섯 건이면 수만 자다.
+  notes: [],
+  noteDraft: null,
   dealFilter: 'all',
   mode: 'deals',
   userCollapsed: false,
@@ -127,6 +130,17 @@ function bindGlobalEvents() {
   // 삭제 창은 닫기 속성이 다르다. 위 위임이 #new-deal-dialog 를 하드코딩해 닫으므로
   // 같은 속성을 쓰면 취소 버튼이 엉뚱한 창을 닫는다.
   $$('[data-close-delete-dialog]').forEach((button) => button.addEventListener('click', () => $('#delete-deal-dialog').close()));
+  // 회의록 창. 닫기 속성이 또 다른 이유는 위임이 창을 하드코딩해 닫기 때문이다 —
+  // data-close-dialog 를 그대로 쓰면 엉뚱한 창이 닫힌다(삭제 창에서 겪은 그 문제).
+  $('#open-notes')?.addEventListener('click', openNotesDialog);
+  $$('[data-close-notes]').forEach((button) => button.addEventListener('click', () => $('#notes-dialog').close()));
+  $('#notes-list')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-note]');
+    if (button) void openNote(button.dataset.note);
+  });
+  $('#note-new')?.addEventListener('click', () => fillNoteEditor(null));
+  $('#note-save')?.addEventListener('click', () => void saveNote());
+  $('#note-delete')?.addEventListener('click', () => void deleteNote());
   $('#delete-deal-button').addEventListener('click', () => {
     if (!state.deal) return;
     $('#delete-deal-customer').textContent = state.deal.customer;
@@ -591,6 +605,7 @@ function renderWorkspace() {
     deal.customer_contact_dept].filter(Boolean).join(' · ') || '—';
   $('#claim-button').classList.toggle('hidden', Boolean(deal.owner_id));
   $('#delete-deal-button').classList.toggle('hidden', !isOwner());
+  void loadNotes();
   renderStageRail();
   renderStage();
   renderReadiness();
@@ -828,6 +843,130 @@ function resultOpenChipMarkup(deal) {
     + '다시 열어 봤다면 관심이 살아 있다는 신호입니다.')}">결과 열람 ${dayPhrase(open.lastDays)}${again}</span>`;
 }
 
+/* ── 회의록 (050) ──────────────────────────────────────────────────────────
+ * **단계에 속하지 않는다.** 진단 중에도 견적 중에도 참조하는 딜 전체의 재료다.
+ *
+ * ⚠ customer_meta.notes(「고객 상황·요청 메모」)와 **저장소가 다르다.** 그쪽은 고객용
+ *   키트에 그대로 실리고, 여기는 내부용이다. 섞으면 내부 대화가 고객에게 간다.
+ *
+ * ⚠ 목록은 머리말만 받는다. 본문은 열 때 한 건씩 받는다.
+ */
+const NOTE_KIND_OPTIONS = Object.freeze([
+  ['meeting', '미팅'], ['call', '통화'], ['mail', '메일'], ['visit', '방문']
+]);
+const noteKindLabel = (value) => (NOTE_KIND_OPTIONS.find(([key]) => key === value) || [])[1] || '미팅';
+
+/** 오늘 날짜. 새 회의록의 기본값 — 대개 미팅한 날 적는다. */
+const today = () => new Date().toISOString().slice(0, 10);
+
+async function loadNotes() {
+  state.notes = [];
+  renderNotesSummary();
+  if (!state.deal) return;
+  try {
+    state.notes = await api(`/api/hub/deals/${state.deal.id}/notes`);
+  } catch (error) {
+    // 050 미적용 구간에는 503 이 온다. 딜 화면은 그대로 열려야 한다.
+    console.error('[hub] 회의록을 불러오지 못했습니다:', error.message);
+  }
+  renderNotesSummary();
+  if ($('#notes-dialog')?.open) renderNotesList();
+}
+
+function renderNotesSummary() {
+  const node = document.getElementById('notes-summary');
+  if (!node) return;
+  const notes = asArray(state.notes);
+  if (!notes.length) {
+    node.innerHTML = '<span class="notes-empty">아직 없습니다</span>';
+    return;
+  }
+  node.innerHTML = `<b>${notes.length}건</b> · 마지막 ${escapeHtml(notes[0].met_on)}`;
+}
+
+function renderNotesList() {
+  const list = document.getElementById('notes-list');
+  if (!list) return;
+  const notes = asArray(state.notes);
+  if (!notes.length) {
+    list.innerHTML = '<p class="notes-empty">회의록이 없습니다. 오른쪽에 붙여넣고 저장하세요.</p>';
+    return;
+  }
+  list.innerHTML = notes.map((note) => `<button type="button" class="note-item ${state.noteDraft?.id === note.id ? 'active' : ''}" data-note="${escapeHtml(note.id)}">
+    <span class="note-date">${escapeHtml(note.met_on)} <em>${escapeHtml(note.kind_label)}</em></span>
+    <span class="note-title">${escapeHtml(note.title || '(제목 없음)')}</span>
+    <span class="note-preview">${escapeHtml(note.preview)}</span>
+    <span class="note-len">${note.length.toLocaleString('en-US')}자</span>
+  </button>`).join('');
+}
+
+/** 편집칸을 채운다. 새 회의록이면 오늘 날짜로 시작한다. */
+function fillNoteEditor(note) {
+  state.noteDraft = note;
+  $('#note-met-on').value = note?.met_on || today();
+  $('#note-kind').value = note?.kind || 'meeting';
+  $('#note-title').value = note?.title || '';
+  $('#note-body').value = note?.body || '';
+  $('#notes-error').textContent = '';
+  $('#note-delete').classList.toggle('hidden', !note?.id);
+  renderNotesList();
+}
+
+async function openNote(id) {
+  try {
+    fillNoteEditor(await api(`/api/hub/deals/${state.deal.id}/notes/${id}`));
+  } catch (error) {
+    $('#notes-error').textContent = error.message;
+  }
+}
+
+async function saveNote() {
+  const payload = {
+    met_on: $('#note-met-on').value,
+    kind: $('#note-kind').value,
+    title: $('#note-title').value,
+    body: $('#note-body').value
+  };
+  const id = state.noteDraft?.id;
+  try {
+    const saved = await api(`/api/hub/deals/${state.deal.id}/notes${id ? `/${id}` : ''}`,
+      { method: id ? 'PATCH' : 'POST', body: JSON.stringify(payload) });
+    await loadNotes();
+    fillNoteEditor(saved);
+    toast(id ? '회의록을 저장했습니다.' : '회의록을 추가했습니다.');
+  } catch (error) {
+    $('#notes-error').textContent = error.message;
+  }
+}
+
+async function deleteNote() {
+  const id = state.noteDraft?.id;
+  if (!id) return;
+  try {
+    await api(`/api/hub/deals/${state.deal.id}/notes/${id}`, { method: 'DELETE' });
+    await loadNotes();
+    fillNoteEditor(null);
+    toast('회의록을 지웠습니다.');
+  } catch (error) {
+    $('#notes-error').textContent = error.message;
+  }
+}
+
+function openNotesDialog() {
+  const select = $('#note-kind');
+  if (select && !select.options.length) {
+    select.innerHTML = NOTE_KIND_OPTIONS.map(([value, label]) =>
+      `<option value="${value}">${label}</option>`).join('');
+  }
+  // 담당자가 아니면 읽기만. 딜 편집과 같은 규칙이다.
+  ['#note-met-on', '#note-kind', '#note-title', '#note-body', '#note-save', '#note-delete', '#note-new']
+    .forEach((selector) => { const node = $(selector); if (node) node.disabled = !isOwner(); });
+  fillNoteEditor(asArray(state.notes).length ? null : null);
+  renderNotesList();
+  $('#notes-dialog').showModal();
+  window.lucide?.createIcons();
+}
+
 /** 계산 결과만. 입력칸과 분리해야 문의 시점을 고칠 때 포커스를 잃지 않는다. */
 function stallSummaryMarkup() {
   const open = resultOpenChipMarkup(state.deal);
@@ -948,7 +1087,8 @@ function renderIntake() {
       ${inquiryProductsMarkup()}
       <div class="field"><label for="deal-security-stack">보안 게이트웨이 <small>(영업 확인)</small></label><select id="deal-security-stack" data-meta-field="securityStack" ${disabledAttr()}><option value="">미정</option><option value="none" ${meta.securityStack === 'none' ? 'selected' : ''}>별도 SWG 없음</option><option value="existing" ${meta.securityStack === 'existing' ? 'selected' : ''}>있으나 제품 미확인 (고객 응답)</option><option value="managed" ${meta.securityStack === 'managed' ? 'selected' : ''}>AI 전용 정책까지 운영 (고객 응답)</option><option value="zscaler" ${meta.securityStack === 'zscaler' ? 'selected' : ''}>Zscaler</option><option value="other-swg" ${meta.securityStack === 'other-swg' ? 'selected' : ''}>타사 SWG</option></select></div>
       <div class="field"><label for="deal-investment">투자 여력</label><select id="deal-investment" data-meta-field="investment" ${disabledAttr()}><option value="">미정</option><option value="low" ${meta.investment === 'low' ? 'selected' : ''}>제한적</option><option value="medium" ${meta.investment === 'medium' ? 'selected' : ''}>PoC 예산 확보</option><option value="high" ${meta.investment === 'high' ? 'selected' : ''}>전사 확장 가능</option></select></div>
-      <div class="field full"><label for="deal-notes">고객 상황·요청 메모</label><textarea id="deal-notes" data-meta-field="notes" ${disabledAttr()} placeholder="미팅에서 확인한 문제, 의사결정자, 일정 등을 적어주세요.">${escapeHtml(meta.notes || state.deal.lead_message || '')}</textarea></div>
+      <div class="field full"><label for="deal-notes">고객 상황·요청 메모 <small>(고객에게 그대로 전달됩니다)</small></label><textarea id="deal-notes" data-meta-field="notes" ${disabledAttr()} placeholder="미팅에서 확인한 문제, 의사결정자, 일정 등을 적어주세요.">${escapeHtml(meta.notes || state.deal.lead_message || '')}</textarea>
+      <p class="field-note">이 칸은 <b>고객용 키트에 그대로 실립니다.</b> 내부 판단·미팅 원문은 우측 「회의록」에 적으세요.</p></div>
     </div></div>`;
 }
 

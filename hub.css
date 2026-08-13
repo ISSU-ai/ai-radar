@@ -575,3 +575,26 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 .spam-tag { padding: 1px 7px; border-radius: 20px; background: rgba(139,149,162,.18); color: var(--dim); font-size: .68rem; font-weight: 700; }
 .spam-note { display: grid; gap: 4px; min-height: 0; padding: 10px 12px; align-items: start; }
 .spam-note span { font-size: .82rem; }
+
+
+/* 회의록 (050). 단계에 속하지 않아 우측 레일에 카드로 둔다 — 다섯 단계 어디서나 보인다. */
+.notes-card { display: flex; flex-direction: column; gap: 8px; }
+.notes-card .eyebrow small { font-weight: 500; opacity: .6; letter-spacing: 0; }
+.notes-summary { font-size: .8rem; }
+.notes-empty { opacity: .55; }
+#notes-dialog { width: min(1040px, 94vw); }
+/* 목록과 원문을 나란히. 원문에서 발췌할 때 목록이 안 사라져야 한다. */
+.notes-layout { display: grid; grid-template-columns: 260px 1fr; gap: 14px; min-height: 420px; }
+.notes-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; max-height: 60vh; }
+.note-item { display: grid; gap: 3px; text-align: left; padding: 8px 10px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); cursor: pointer; }
+.note-item:hover, .note-item.active { border-color: rgba(96,165,250,.5); background: rgba(96,165,250,.08); }
+.note-date { font-size: .72rem; opacity: .8; }
+.note-date em { font-style: normal; opacity: .6; }
+.note-title { font-size: .82rem; font-weight: 600; }
+.note-preview { font-size: .72rem; opacity: .6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-len { font-size: .66rem; opacity: .45; }
+.notes-editor { display: flex; flex-direction: column; gap: 8px; }
+.notes-editor-head { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; }
+/* 원문은 넓게. 줄바꿈을 그대로 보존하므로 폭이 좁으면 읽기 어렵다. */
+#note-body { flex: 1; min-height: 340px; resize: vertical; line-height: 1.6; }

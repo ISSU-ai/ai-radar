@@ -207,7 +207,7 @@ app.get('/api/hub/reference-data', (_req, res) => res.json({
 }));
 app.get('/api/hub/public/packages', (_req, res) => res.json(refs.packages.map(({ scale, ...pkg }) => pkg)));
 // 실제 서버와 같은 검증을 거친다. 목업이 무조건 201 을 주면 폼 오류를 화면에서 못 본다.
-const { validateLead, EDITABLE_DEAL_FIELDS } = require('../lib/hub-domain');
+const { validateLead, validateMeetingNote, EDITABLE_DEAL_FIELDS } = require('../lib/hub-domain');
 const mockLeads = [];
 app.post('/api/hub/public/leads', (req, res) => {
   let lead;
@@ -375,7 +375,62 @@ app.delete('/api/hub/deals/:id', (req, res) => {
     customer_contact_title: null, customer_contact_email: null,
     updated_at: new Date().toISOString()
   });
+  // 050. 회의록도 함께 지운다. 딜은 soft delete 라 cascade 가 안 걸린다 —
+  // 실서버와 같아야 「지웠는데 로컬에만 남아 있다」를 안 만든다.
+  for (let i = mockNotes.length - 1; i >= 0; i -= 1) {
+    if (mockNotes[i].deal_id === deal.id) mockNotes.splice(i, 1);
+  }
   res.json({ message: '딜을 삭제했습니다.' });
+});
+
+/**
+ * 회의록(050). 실서버와 같은 검증·같은 게이트·같은 응답 모양을 쓴다.
+ * **목록에 본문을 안 싣는다** — 여기서 어긋나면 "왜 응답이 이렇게 크지"를 로컬에서 못 본다.
+ */
+const { noteSummary, sortNotes } = require('../lib/meeting-notes');
+const mockNotes = [];
+const findDealForNotes = (req, res) => {
+  const deal = deals.find((item) => item.id === req.params.id && !item.deleted_at);
+  if (!deal) { res.status(404).json({ error: '딜을 찾을 수 없습니다.' }); return null; }
+  return deal;
+};
+app.get('/api/hub/deals/:id/notes', (req, res) => {
+  if (!findDealForNotes(req, res)) return;
+  res.json(sortNotes(mockNotes.filter((n) => n.deal_id === req.params.id)).map(noteSummary));
+});
+app.get('/api/hub/deals/:id/notes/:noteId', (req, res) => {
+  if (!findDealForNotes(req, res)) return;
+  const note = mockNotes.find((n) => n.id === req.params.noteId && n.deal_id === req.params.id);
+  note ? res.json(note) : res.status(404).json({ error: '회의록을 찾을 수 없습니다.' });
+});
+app.post('/api/hub/deals/:id/notes', (req, res) => {
+  if (!findDealForNotes(req, res)) return;
+  let note;
+  try { note = validateMeetingNote(req.body); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  const row = {
+    id: require('crypto').randomUUID(), deal_id: req.params.id, ...note,
+    created_by: user.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+  };
+  mockNotes.push(row);
+  res.status(201).json(row);
+});
+app.patch('/api/hub/deals/:id/notes/:noteId', (req, res) => {
+  if (!findDealForNotes(req, res)) return;
+  const index = mockNotes.findIndex((n) => n.id === req.params.noteId && n.deal_id === req.params.id);
+  if (index < 0) return res.status(404).json({ error: '회의록을 찾을 수 없습니다.' });
+  let note;
+  try { note = validateMeetingNote(req.body); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  mockNotes[index] = { ...mockNotes[index], ...note, updated_at: new Date().toISOString() };
+  res.json(mockNotes[index]);
+});
+app.delete('/api/hub/deals/:id/notes/:noteId', (req, res) => {
+  if (!findDealForNotes(req, res)) return;
+  const index = mockNotes.findIndex((n) => n.id === req.params.noteId && n.deal_id === req.params.id);
+  if (index < 0) return res.status(404).json({ error: '회의록을 찾을 수 없습니다.' });
+  mockNotes.splice(index, 1);
+  res.json({ message: '회의록을 지웠습니다.' });
 });
 app.get('/api/hub/events', (_req, res) => {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });

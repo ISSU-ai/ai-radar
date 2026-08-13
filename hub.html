@@ -87,6 +87,13 @@
                   <div><dt>고객 담당</dt><dd id="context-contact">—</dd></div>
                 </dl>
               </section>
+              <!-- 회의록(050)은 **단계에 속하지 않는다.** 진단 중에도 견적 중에도
+                   참조하는 딜 전체의 재료라 다섯 단계 어디서나 보이는 자리에 둔다. -->
+              <section class="panel-card notes-card">
+                <p class="eyebrow">MEETING NOTES <small>내부용</small></p>
+                <div id="notes-summary" class="notes-summary">—</div>
+                <button id="open-notes" class="ghost-button" type="button"><i data-lucide="notebook-pen"></i> 회의록</button>
+              </section>
               <section id="readiness-card" class="panel-card readiness-card"></section>
               <section class="panel-card guard-card">
                 <i data-lucide="shield-check"></i>
@@ -144,6 +151,34 @@
       <label>유입 경로<select name="source"><option value="manual">미팅·전화 직접 유입</option><option value="sheet">진단 시트 회수</option></select></label>
       <p id="new-deal-error" class="form-error"></p>
       <div class="dialog-actions"><button class="ghost-button" data-close-dialog type="button">취소</button><button class="primary-button" type="submit">딜 만들기</button></div>
+    </form>
+  </dialog>
+
+  <!-- 회의록. 원문을 **요약하지 않고 그대로** 담는다 — 요약하면 고객의 말이 영업의
+       말이 된다. 인계 브리프는 여기서 발췌한 인용을 근거로 단다.
+       ⚠ 닫기 속성이 다른 두 창과 또 다르다. 위임이 창을 하드코딩해 닫기 때문이다. -->
+  <dialog id="notes-dialog">
+    <form method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">MEETING NOTES</p><h2>회의록</h2></div><button class="workspace-icon-button" data-close-notes type="button" aria-label="회의록 창 닫기"><i data-lucide="x"></i></button></div>
+      <p class="dialog-lead"><b>내부용입니다.</b> 고객에게 나가는 문서는 이 내용을 읽지 않습니다.
+        고객 담당자의 이름·연락처는 적지 마세요 — 동의받은 항목이 아닙니다.</p>
+      <div class="notes-layout">
+        <div class="notes-list" id="notes-list"></div>
+        <div class="notes-editor">
+          <div class="notes-editor-head">
+            <input id="note-met-on" type="date" aria-label="미팅 일자">
+            <select id="note-kind" aria-label="종류"></select>
+            <input id="note-title" type="text" maxlength="120" placeholder="예: 킥오프 미팅" aria-label="제목">
+          </div>
+          <textarea id="note-body" placeholder="미팅에서 오간 이야기를 그대로 붙여넣으세요. 요약하지 않아도 됩니다."></textarea>
+          <p id="notes-error" class="form-error"></p>
+          <div class="dialog-actions">
+            <button id="note-delete" class="ghost-button" type="button">지우기</button>
+            <button id="note-new" class="ghost-button" type="button">새 회의록</button>
+            <button id="note-save" class="primary-button" type="button">저장</button>
+          </div>
+        </div>
+      </div>
     </form>
   </dialog>
 
