@@ -2730,6 +2730,52 @@ function buildStageReport(stageIndex) {
   return `${reportHeader(stageIndex)}\n${body ? body() : ''}`;
 }
 
+/**
+ * 인계 산출물. **문서 규칙은 lib/handoff-doc.js 한 곳에 있다** — 화면이 따로 짜면
+ * 영업이 보는 문서와 검사가 보는 문서가 갈린다.
+ *
+ * 넷을 한 번에 낸다 — 브리프 · 인터뷰 가이드 · 근거 격차 요약 · 스냅샷 JSON.
+ * 셋은 사람이 읽고 하나는 배포 단계(deployment-Brief)가 읽는다.
+ */
+function handoffContext() {
+  return {
+    deal: state.deal,
+    handoff: handoffOf(),
+    notes: asArray(state.notes),
+    openItems: collectOpenItems(),
+    today: new Date().toISOString().slice(0, 10)
+  };
+}
+
+function exportHandoff() {
+  const lib = window.IssuHandoff;
+  if (!lib) { toast('인계 문서 모듈을 불러오지 못했습니다.'); return; }
+  const ctx = handoffContext();
+  const base = `${state.deal.customer || '고객'}_${ctx.today}`;
+  const recommendation = lib.recommendApproach(ctx);
+  const full = { ...ctx, recommendation };
+
+  window.IssuReport.pdf(`${state.deal.customer} — ChatGPT Deployment Brief (초안)`, lib.buildBrief(full));
+  window.IssuReport.markdown(lib.buildInterviewGuide(full), `${base}_인터뷰가이드`);
+  window.IssuReport.markdown(lib.buildEvidenceSummary(full), `${base}_근거격차`);
+  downloadJson(lib.buildHandoffExport(full), `${base}_handoff`);
+
+  const readiness = lib.HANDOFF_FIELDS.length;
+  toast(`인계 문서 4종을 만들었습니다. 권고 — ${recommendation.label}`);
+  void readiness;
+}
+
+/** 스냅샷은 사람이 읽는 문서가 아니라 배포 단계가 읽는다. JSON 그대로 내려받는다. */
+function downloadJson(data, baseName) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${baseName}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 /* ── STEP 06 · 배포 인계 (051) ────────────────────────────────────────────
  * Deployment Brief §A 14필드 중 **시스템이 모르는 여섯 칸**만 받는다. 나머지는
  * 진단·구성·문의 제품·전제에서 끌어온다 — 이미 아는 것을 다시 물으면 아무도 안 채운다.
@@ -2883,6 +2929,8 @@ function bindStageEvents() {
     });
   }));
   // 「근거 가져오기」 → 회의록 창을 열고 발췌를 기다린다.
+  // 인계 산출물 셋 + 스냅샷. 규칙은 lib/handoff-doc.js 한 곳에 있다.
+  $('#handoff-brief')?.addEventListener('click', () => exportHandoff());
   $$('[data-pin-quote]').forEach((button) => button.addEventListener('click', () => {
     state.pinTarget = button.dataset.pinQuote;
     openNotesDialog();

@@ -393,7 +393,9 @@ app.use((req, res, next) => {
       || req.path.startsWith('/readiness.') || req.path.startsWith('/r/')
       || req.path === '/style.css' || req.path === '/report.js' || req.path === '/taxonomy.js'
       || req.path.startsWith('/assets/'),
-    hub: commonPath || radarPath || embeddedAdminPath || req.path === '/' || req.path === '/hub' || req.path.startsWith('/hub.') || req.path.startsWith('/api/hub/') || req.path.startsWith('/api/solutions'),
+    // ⚠ /lib/ 을 빠뜨리면 로컬(all)에서는 멀쩡하고 프로덕션에서만 인계 문서 스크립트가
+    //   404 로 죽는다. 화면은 조용히 버튼만 안 먹는다.
+    hub: commonPath || radarPath || embeddedAdminPath || req.path === '/' || req.path === '/hub' || req.path.startsWith('/hub.') || req.path.startsWith('/lib/') || req.path.startsWith('/api/hub/') || req.path.startsWith('/api/solutions'),
     admin: commonPath || req.path === '/' || req.path.startsWith('/admin') || req.path.startsWith('/api/admin/') || req.path.startsWith('/api/solutions')
   }[APP_SURFACE];
   if (!allowed) return res.status(404).send('Not found');
@@ -1867,7 +1869,13 @@ const publicFrontendAssets = Object.freeze({
 const authedFrontendAssets = Object.freeze({
   '/app.js': { file: 'app.js', canonicalPath: '/radar' },
   '/hub.css': { file: 'hub.css', canonicalPath: '/hub' },
-  '/hub.js': { file: 'hub.js', canonicalPath: '/hub' }
+  '/hub.js': { file: 'hub.js', canonicalPath: '/hub' },
+  // 인계 문서 규칙(Phase 4~6). 화면·서버·검사가 **같은 파일**을 쓴다 — 두 곳에 적으면
+  // 영업이 보는 문서와 검사가 보는 문서가 갈린다. 내부용이라 공개 자산이 아니다.
+  '/lib/handoff-fields.js': { file: 'lib/handoff-fields.js', canonicalPath: '/hub' },
+  '/lib/handoff-snapshot.js': { file: 'lib/handoff-snapshot.js', canonicalPath: '/hub' },
+  '/lib/meeting-notes.js': { file: 'lib/meeting-notes.js', canonicalPath: '/hub' },
+  '/lib/handoff-doc.js': { file: 'lib/handoff-doc.js', canonicalPath: '/hub' }
 });
 
 for (const [route, filename] of Object.entries(publicFrontendAssets)) {
