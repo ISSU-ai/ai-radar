@@ -212,3 +212,9 @@ test('브라우저에서 <script> 로 나란히 불러도 죽지 않는다', () 
   });
   assert.match(md, /Deployment Brief/);
 });
+
+test('인계 브리프 버튼이 단계 리포트 버튼과 무게가 다르다', () => {
+  // 이 버튼은 문서 넷을 한 번에 만든다. 옆의 PDF/Word/Markdown 은 지금 단계 하나다.
+  const css = read('hub.css');
+  assert.match(css, /#handoff-brief \{[^}]*min-width:/, '폭이 지정돼 있지 않다');
+});
