@@ -22,7 +22,8 @@ const packageAssessmentCoverage = (() => {
 })();
 
 const refs = {
-  stages: ['들어온 데이터', 'AI 준비도 진단', 'ISV 조합 추천', '딜 사이즈', '피치 준비'],
+  // 실서버는 PIPELINE_STAGES 를 그대로 내려보낸다. 여기서 따로 적으면 갈린다(051).
+  stages: require('../lib/hub-domain').PIPELINE_STAGES,
   // 034 시드에서 직접 읽는다. ask·warn 을 베껴 두면 세일즈 피치의 「확인할 것」이
   // 로컬에서만 비어 보인다 — 실제와 다른 목업은 화면 확인을 거짓말로 만든다.
   tracks: (() => {
@@ -207,7 +208,7 @@ app.get('/api/hub/reference-data', (_req, res) => res.json({
 }));
 app.get('/api/hub/public/packages', (_req, res) => res.json(refs.packages.map(({ scale, ...pkg }) => pkg)));
 // 실제 서버와 같은 검증을 거친다. 목업이 무조건 201 을 주면 폼 오류를 화면에서 못 본다.
-const { validateLead, validateMeetingNote, EDITABLE_DEAL_FIELDS } = require('../lib/hub-domain');
+const { validateLead, validateMeetingNote, normaliseDealPatch } = require('../lib/hub-domain');
 const mockLeads = [];
 app.post('/api/hub/public/leads', (req, res) => {
   let lead;
@@ -328,13 +329,11 @@ app.get('/api/hub/deals/:id', (req, res) => {
 app.patch('/api/hub/deals/:id', (req, res) => {
   const index = deals.findIndex((item) => item.id === req.params.id && !item.deleted_at);
   if (index < 0) return res.status(404).json({ error: '딜을 찾을 수 없습니다.' });
-  // 실서버는 normaliseDealPatch 의 **허용목록**을 거친다. 목업이 req.body 를 그대로
-  // 펼치면 거기 없는 컬럼(readiness_customer_scores·customer_meta_original 같은
-  // 「원본」)이 로컬에서만 덮어써지고, 근거 상태 확인이 거짓말이 된다.
-  const patch = {};
-  for (const field of EDITABLE_DEAL_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(req.body, field)) patch[field] = req.body[field];
-  }
+  // 실서버와 **같은 함수**를 쓴다. 허용목록만 흉내 내면 그 안의 검증(단계 범위·
+  // handoff 모양 강제)이 로컬에서만 빠지고, "저장됐는데 서버에서는 튕기는" 상태가 된다.
+  let patch;
+  try { patch = normaliseDealPatch(req.body); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
   // 단계가 실제로 바뀔 때만 정체 시계를 리셋한다. 실제 라우트와 같은 조건이라야
   // 「메모만 고쳤는데 정체가 풀렸다」를 로컬에서 잡을 수 있다.
   if (Object.prototype.hasOwnProperty.call(patch, 'stage') && patch.stage !== deals[index].stage) {

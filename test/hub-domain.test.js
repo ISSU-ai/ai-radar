@@ -100,7 +100,8 @@ test('deal validation permits only known patch shapes', () => {
     stage: 4, isv_combo: ['one']
   });
   assert.equal(clampStage(0), 0);
-  assert.throws(() => normaliseDealPatch({ stage: 5 }), /0부터 4/);
+  // 051 이 「배포 인계」를 6번째 단계로 넣었다. 범위는 PIPELINE_STAGES 를 따라간다.
+  assert.throws(() => normaliseDealPatch({ stage: 6 }), /0부터 5/);
   assert.throws(() => normaliseDealPatch({ owner_id: 'not-allowed' }), /변경사항/);
   assert.throws(() => normaliseDealPatch({ fqa_totals: { '<img src=x>': { score: 5 } } }), /변경사항/);
 });

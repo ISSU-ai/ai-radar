@@ -909,6 +909,17 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       if (!has041 && pending041.length) {
         return res.status(503).json({ error: '딜 확장 컬럼이 없습니다. 041 마이그레이션을 확인하세요.' });
       }
+      // 051 도 같다. 컬럼이 없는데 UPDATE 하면 42703 으로 patch 전체가 실패한다.
+      if (Object.prototype.hasOwnProperty.call(patch, 'handoff')
+        && !(hasColumn && await hasColumn('deals', 'handoff'))) {
+        return res.status(503).json({ error: '배포 인계 컬럼이 없습니다. 051 마이그레이션을 확인하세요.' });
+      }
+      // 051 미적용 구간에는 6단계로 못 올린다 — DB 제약(0~4)이 거절해 저장이 통째로
+      // 실패한다. 여기서 막아 무엇이 문제인지 알려준다.
+      if (patch.stage === PIPELINE_STAGES.length - 1
+        && !(hasColumn && await hasColumn('deals', 'handoff'))) {
+        return res.status(503).json({ error: '「배포 인계」 단계는 051 마이그레이션 적용 후 쓸 수 있습니다.' });
+      }
 
       // 단계가 **실제로 바뀔 때만** 정체 시계를 리셋한다. updated_at 은 메모 한 글자에도
       // 갱신되므로 정체를 못 잰다 — 그래서 이 컬럼이 따로 있다.

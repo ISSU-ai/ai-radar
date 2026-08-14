@@ -170,6 +170,10 @@
             <select id="note-kind" aria-label="종류"></select>
             <input id="note-title" type="text" maxlength="120" placeholder="예: 킥오프 미팅" aria-label="제목">
           </div>
+          <div id="notes-pin-row" class="notes-pin-row hidden">
+            <span>원문에서 문장을 드래그한 뒤 <b id="notes-pin-target"></b> 칸으로 가져오세요.</span>
+            <button id="note-pin" class="primary-button" type="button"><i data-lucide="quote"></i> 근거로 가져오기</button>
+          </div>
           <textarea id="note-body" placeholder="미팅에서 오간 이야기를 그대로 붙여넣으세요. 요약하지 않아도 됩니다."></textarea>
           <p id="notes-error" class="form-error"></p>
           <div class="dialog-actions">

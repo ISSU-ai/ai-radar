@@ -16,6 +16,8 @@ const state = {
   // 회의록(050). 목록은 머리말만이고 본문은 열 때 따로 받는다 — 다섯 건이면 수만 자다.
   notes: [],
   noteDraft: null,
+  // 「근거 가져오기」를 누른 칸. 회의록 창에서 발췌하면 여기로 꽂힌다.
+  pinTarget: null,
   dealFilter: 'all',
   mode: 'deals',
   userCollapsed: false,
@@ -133,7 +135,10 @@ function bindGlobalEvents() {
   // 회의록 창. 닫기 속성이 또 다른 이유는 위임이 창을 하드코딩해 닫기 때문이다 —
   // data-close-dialog 를 그대로 쓰면 엉뚱한 창이 닫힌다(삭제 창에서 겪은 그 문제).
   $('#open-notes')?.addEventListener('click', openNotesDialog);
-  $$('[data-close-notes]').forEach((button) => button.addEventListener('click', () => $('#notes-dialog').close()));
+  $$('[data-close-notes]').forEach((button) => button.addEventListener('click', () => {
+    state.pinTarget = null;
+    $('#notes-dialog').close();
+  }));
   $('#notes-list')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-note]');
     if (button) void openNote(button.dataset.note);
@@ -141,6 +146,7 @@ function bindGlobalEvents() {
   $('#note-new')?.addEventListener('click', () => fillNoteEditor(null));
   $('#note-save')?.addEventListener('click', () => void saveNote());
   $('#note-delete')?.addEventListener('click', () => void deleteNote());
+  $('#note-pin')?.addEventListener('click', pinSelectionToField);
   $('#delete-deal-button').addEventListener('click', () => {
     if (!state.deal) return;
     $('#delete-deal-customer').textContent = state.deal.customer;
@@ -637,7 +643,7 @@ function stageHeader(no, title, copy, action = '') {
     + `<div class="stage-actions">${action}${STAGE_REPORT_ACTIONS}</div></header>`;
 }
 
-const STAGE_RENDERERS = [renderIntake, renderFqa, renderSolutions, renderPackages, renderPitch];
+const STAGE_RENDERERS = [renderIntake, renderFqa, renderSolutions, renderPackages, renderPitch, renderHandoff];
 
 function renderStage() {
   const stage = state.activeStage;
@@ -647,7 +653,8 @@ function renderStage() {
     '↑ 들어온 데이터의 고객 맥락을 이어서 AI 준비도 진단을 시작합니다.',
     '↑ 진단 점수와 트랙을 이어서 ISV 조합을 확정합니다.',
     '↑ 선택한 ISV 조합을 이어서 패키지와 공수를 구성합니다.',
-    '↑ 앞 단계의 고객·진단·조합·패키지를 한 번에 이어받습니다.'
+    '↑ 앞 단계의 고객·진단·조합·패키지를 한 번에 이어받습니다.',
+    '↑ 여기까지의 근거를 배포팀이 이어받습니다. 미팅에서만 알 수 있는 것을 채웁니다.'
   ];
   // Never let a render exception leave the step blank/stuck: on error, show a
   // message and log the real error instead of silently aborting mid-render.
@@ -961,10 +968,57 @@ function openNotesDialog() {
   // 담당자가 아니면 읽기만. 딜 편집과 같은 규칙이다.
   ['#note-met-on', '#note-kind', '#note-title', '#note-body', '#note-save', '#note-delete', '#note-new']
     .forEach((selector) => { const node = $(selector); if (node) node.disabled = !isOwner(); });
-  fillNoteEditor(asArray(state.notes).length ? null : null);
+  fillNoteEditor(null);
   renderNotesList();
+  // 「근거 가져오기」로 열렸으면 발췌 줄을 띄운다. 그냥 열었으면 안 보인다.
+  const pin = $('#notes-pin-row');
+  if (pin) {
+    pin.classList.toggle('hidden', !state.pinTarget);
+    const label = HANDOFF_FIELDS.find((f) => f.key === state.pinTarget)?.label || '';
+    const target = $('#notes-pin-target');
+    if (target) target.textContent = label;
+  }
   $('#notes-dialog').showModal();
   window.lucide?.createIcons();
+}
+
+/**
+ * 원문에서 드래그한 문장을 인계 칸에 꽂는다.
+ *
+ * ⚠ **출처가 없으면 안 꽂는다.** 되짚을 수 없는 인용은 근거가 아니라 그냥 옮겨 적은
+ *   문장이다 — lib/meeting-notes.js 의 buildQuote 와 같은 규칙을 화면에서도 지킨다.
+ *
+ * ⚠ 인용은 **복사한다.** 원문 참조만 두면 원문이 고쳐졌을 때 근거가 조용히 바뀐다.
+ */
+const QUOTE_LIMIT = 400;
+function pinSelectionToField() {
+  const field = state.pinTarget;
+  const note = state.noteDraft;
+  const raw = String(window.getSelection?.() || '').replace(/\s+/g, ' ').trim();
+  if (!field) return;
+  if (!note?.id || !note?.met_on) {
+    $('#notes-error').textContent = '먼저 왼쪽에서 회의록을 고르세요.';
+    return;
+  }
+  if (!raw) {
+    $('#notes-error').textContent = '원문에서 가져올 문장을 드래그한 뒤 눌러주세요.';
+    return;
+  }
+  saveHandoff((next) => {
+    const entry = next[field] && typeof next[field] === 'object' ? next[field] : {};
+    next[field] = {
+      value: entry.value || '',
+      quote: {
+        quote: raw.length > QUOTE_LIMIT ? `${raw.slice(0, QUOTE_LIMIT)}…` : raw,
+        note_id: note.id, met_on: note.met_on,
+        note_title: note.title || '', source: 'human'
+      }
+    };
+  });
+  state.pinTarget = null;
+  $('#notes-dialog').close();
+  renderStage();
+  toast('근거를 가져왔습니다.');
 }
 
 /** 계산 결과만. 입력칸과 분리해야 문의 시점을 고칠 때 포커스를 잃지 않는다. */
@@ -2676,6 +2730,128 @@ function buildStageReport(stageIndex) {
   return `${reportHeader(stageIndex)}\n${body ? body() : ''}`;
 }
 
+/* ── STEP 06 · 배포 인계 (051) ────────────────────────────────────────────
+ * Deployment Brief §A 14필드 중 **시스템이 모르는 여섯 칸**만 받는다. 나머지는
+ * 진단·구성·문의 제품·전제에서 끌어온다 — 이미 아는 것을 다시 물으면 아무도 안 채운다.
+ *
+ * ⚠ **비어 있는 것이 정상이다.** 미팅 전에는 채울 수가 없다. 「미입력」을 경고로
+ *   그리면 안 된다 — 못 채운 칸은 인터뷰 질문으로 바뀌어 나간다.
+ *
+ * ⚠ 값 옆에 **근거(회의록 인용)** 를 같이 둔다. 값만 남기면 인계받은 사람이 전부
+ *   다시 묻고, 그러면 인계 문서가 시간을 아끼는 게 아니라 한 벌 더 만드는 일이 된다.
+ */
+const HANDOFF_FIELDS = Object.freeze([
+  { key: 'workflow', brief: 4, label: '우선 워크플로',
+    hint: '무엇을 · 누가 · 얼마나 자주 · 사람이 어디서 검토하는가',
+    placeholder: '예: 신규 계약 검토 요약. 법무 12명, 주 40건. 최종 발송 전 팀장 승인.' },
+  { key: 'pilotGroup', brief: 2, label: '초기 사용자 그룹',
+    hint: '규모와 조직 범위, 그리고 확정 여부',
+    placeholder: '예: 법무팀 12명 (확정) / 재무팀 30명은 검토 중' },
+  { key: 'successCriteria', brief: 6, label: '성공 기준',
+    hint: '기준값 → 목표값 → 측정 방법',
+    placeholder: '예: 요약 작성 40분 → 25분, 4주간 품질 검토 예외 증가 없음' },
+  { key: 'stakeholders', brief: 7, label: '이해관계자',
+    hint: '경영진 스폰서 · 비즈니스 성과 책임자 · 워크스페이스 관리자',
+    placeholder: '예: 스폰서 CFO / 성과 책임 법무팀장 / 워크스페이스 IT인프라팀' },
+  { key: 'scope', brief: 8, label: '범위 경계',
+    hint: '포함 / 제외 / 나중에 볼 것',
+    placeholder: '예: 포함 — 계약 요약. 제외 — 법률 자문·외부 발송. 보류 — 타 언어' },
+  { key: 'nextSteps', brief: 14, label: '즉시 다음 단계',
+    hint: '조치 · 책임자 · 기한',
+    placeholder: '예: 8/28 보안 검토 회의 (IT 김OO) / 9/5 파일럿 계정 발급' }
+]);
+
+/** 사용사례 품질 점검 (문서2 §F). 판정만 받는다 — 여섯 줄이라 부담이 없다. */
+const QUALITY_CHECKS = Object.freeze([
+  { key: 'realWorkflow', label: '실제 워크플로', question: '사람들이 지금 실제로 하는 업무인가?' },
+  { key: 'frequency', label: '빈도 · 업무 마찰', question: '검증을 정당화할 만큼 자주 발생하거나 부담이 큰가?' },
+  { key: 'observable', label: '관찰 가능성', question: '첫 합의 기간 안에 유용성·품질을 관찰할 수 있는가?' },
+  { key: 'pilotFit', label: '초기 사용자 적합성', question: '대상 사용자가 접근 가능하고 피드백을 줄 수 있는가?' },
+  { key: 'dependencies', label: '관리 가능한 의존성', question: '소스·정책·접근·거버넌스 의존성이 감당 가능한가?' },
+  { key: 'decisionBasis', label: '후속 의사결정 근거', question: '진행·개선·범위조정·중단을 정할 근거가 나오는가?' }
+]);
+/** 문서 원문 표기 그대로(§F). */
+const QUALITY_LEVELS = Object.freeze([['met', '충족'], ['partial', '부분 충족'], ['unmet', '미충족']]);
+
+const handoffOf = () => (state.deal?.handoff && typeof state.deal.handoff === 'object'
+  ? state.deal.handoff : {});
+
+/** 꽂힌 인용. 회의록이 지워졌으면 **버리지 않고 끊겼다고 표시한다.** */
+function quoteMarkup(anchor) {
+  if (!anchor?.quote) return '';
+  const alive = asArray(state.notes).some((note) => note.id === anchor.note_id);
+  const where = `${anchor.met_on} ${anchor.note_title || '회의록'}`;
+  return `<div class="handoff-quote ${alive ? '' : 'orphan'}">
+    <blockquote>${escapeHtml(anchor.quote)}</blockquote>
+    <span>${escapeHtml(where)}${alive ? '' : ' · 원문이 삭제됨'}</span>
+    <button type="button" class="link-button" data-clear-quote="${escapeHtml(anchor.__key || '')}" ${disabledAttr()}>근거 지우기</button>
+  </div>`;
+}
+
+function renderHandoff() {
+  const handoff = handoffOf();
+  const fields = HANDOFF_FIELDS.map((field) => {
+    const entry = handoff[field.key] && typeof handoff[field.key] === 'object' ? handoff[field.key] : {};
+    const anchor = entry.quote ? { ...entry.quote, __key: field.key } : null;
+    return `<div class="field full handoff-field">
+      <label for="handoff-${field.key}">${escapeHtml(field.label)}
+        <small>Brief §A ${field.brief} · ${escapeHtml(field.hint)}</small></label>
+      <textarea id="handoff-${field.key}" data-handoff-field="${field.key}" rows="3"
+        placeholder="${escapeHtml(field.placeholder)}" ${disabledAttr()}>${escapeHtml(entry.value || '')}</textarea>
+      ${quoteMarkup(anchor)}
+      <button type="button" class="link-button pin-quote" data-pin-quote="${field.key}" ${disabledAttr()}>
+        <i data-lucide="quote"></i> 회의록에서 근거 가져오기</button>
+    </div>`;
+  }).join('');
+
+  const quality = handoff.quality && typeof handoff.quality === 'object' ? handoff.quality : {};
+  const checks = QUALITY_CHECKS.map((check) => `<tr>
+    <th scope="row">${escapeHtml(check.label)}<small>${escapeHtml(check.question)}</small></th>
+    ${QUALITY_LEVELS.map(([value, label]) => `<td><label class="quality-radio">
+      <input type="radio" name="quality-${check.key}" value="${value}"
+        data-quality="${check.key}" ${quality[check.key] === value ? 'checked' : ''} ${disabledAttr()}>
+      <span>${label}</span></label></td>`).join('')}
+  </tr>`).join('');
+
+  return `${stageHeader('06', '배포 인계', 'ChatGPT Deployment Brief 가 요구하는 것 중 미팅에서만 알 수 있는 것을 채웁니다. 비워 두면 인터뷰 질문으로 바뀌어 나갑니다.',
+    '<button id="handoff-brief" class="primary-button" type="button"><i data-lucide="file-output"></i> 인계 브리프</button>')}
+    <div id="handoff-progress" class="handoff-progress">${handoffProgressMarkup()}</div>
+    <div class="field-group"><h3>근거 여섯 칸</h3><div class="form-grid">${fields}</div></div>
+    <div class="field-group"><h3>사용 사례 품질 점검 <small>(Brief §F)</small></h3>
+      <div class="quality-scroll"><table class="quality-table">
+        <thead><tr><th scope="col">기준</th>${QUALITY_LEVELS.map(([, label]) =>
+          `<th scope="col">${label}</th>`).join('')}</tr></thead>
+        <tbody>${checks}</tbody>
+      </table></div>
+      <p class="field-note">판정만 남깁니다. <b>여섯 칸을 안 채우고 체크만 하면 준비된 것이 아닙니다</b> — 위 진행도는 칸만 셉니다.</p>
+    </div>`;
+}
+
+/** 여섯 칸 중 몇 개가 찼는지. **체크박스는 안 센다** — 섞으면 빈 딜이 준비된 것처럼 보인다. */
+function handoffProgressMarkup() {
+  const handoff = handoffOf();
+  const filled = HANDOFF_FIELDS.filter((f) => String(handoff[f.key]?.value || '').trim());
+  const sourced = filled.filter((f) => handoff[f.key]?.quote?.note_id);
+  const missing = HANDOFF_FIELDS.filter((f) => !String(handoff[f.key]?.value || '').trim());
+  return `<b>${filled.length} / ${HANDOFF_FIELDS.length}</b> 칸 · 근거 있는 칸 ${sourced.length}`
+    + (missing.length
+      ? ` <span class="handoff-missing">남은 것 — ${missing.map((f) => escapeHtml(f.label)).join(' · ')}</span>`
+      : ' <span class="handoff-done">여섯 칸이 모두 찼습니다.</span>');
+}
+
+function renderHandoffProgress() {
+  const node = document.getElementById('handoff-progress');
+  if (node) node.innerHTML = handoffProgressMarkup();
+}
+
+/** 인계 칸 저장. 값과 근거가 같은 객체라 통째로 보낸다. */
+function saveHandoff(mutate) {
+  const next = JSON.parse(JSON.stringify(handoffOf()));
+  mutate(next);
+  state.deal.handoff = next;
+  scheduleSave({ handoff: next });
+}
+
 function renderPitch() {
   // 「고객용 키트」는 피치와 **다른 문서**다. 피치는 영업 대본(내부 준비용)이고
   // 키트는 고객에게 보내는 것이라, 버튼을 나란히 두되 산출물을 섞지 않는다.
@@ -2689,6 +2865,34 @@ function bindStageEvents() {
   $$('[data-deal-field]').forEach((input) => input.addEventListener('input', () => {
     state.deal[input.dataset.dealField] = input.value;
     scheduleSave({ [input.dataset.dealField]: input.value });
+  }));
+  // 배포 인계(051). 값만 바꾸고 renderStage() 를 안 부른다 — 부르면 타이핑 중
+  // 포커스를 잃는다. 진행도는 좁은 갱신 함수로 따로 고친다.
+  $$('[data-handoff-field]').forEach((input) => input.addEventListener('input', () => {
+    const key = input.dataset.handoffField;
+    saveHandoff((next) => {
+      const entry = next[key] && typeof next[key] === 'object' ? next[key] : {};
+      next[key] = entry.quote ? { value: input.value, quote: entry.quote } : { value: input.value };
+    });
+    renderHandoffProgress();
+  }));
+  $$('[data-quality]').forEach((radio) => radio.addEventListener('change', () => {
+    saveHandoff((next) => {
+      const quality = next.quality && typeof next.quality === 'object' ? next.quality : {};
+      next.quality = { ...quality, [radio.dataset.quality]: radio.value };
+    });
+  }));
+  // 「근거 가져오기」 → 회의록 창을 열고 발췌를 기다린다.
+  $$('[data-pin-quote]').forEach((button) => button.addEventListener('click', () => {
+    state.pinTarget = button.dataset.pinQuote;
+    openNotesDialog();
+  }));
+  $$('[data-clear-quote]').forEach((button) => button.addEventListener('click', () => {
+    const key = button.dataset.clearQuote;
+    saveHandoff((next) => {
+      if (next[key]) delete next[key].quote;
+    });
+    renderStage();
   }));
   // 문의 제품. renderStage() 를 부르지 않는다 — 부르면 <details> 가 접히고 스크롤이 튄다.
   $$('[data-inquiry-product]').forEach((box) => box.addEventListener('change', () => {

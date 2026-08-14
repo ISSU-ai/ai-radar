@@ -126,8 +126,10 @@ test('원본 컬럼은 PATCH 로 못 고친다', () => {
   }
   // 목업도 같은 허용목록을 거쳐야 한다 — 안 그러면 로컬에서만 원본이 덮어써진다.
   const mock = read('scripts/mock-ui-server.js');
-  assert.ok(mock.includes('for (const field of EDITABLE_DEAL_FIELDS)'),
-    '목업 PATCH 가 허용목록을 안 쓴다');
+  // 목업은 실서버와 **같은 함수**를 쓴다. 허용목록만 흉내 내면 그 안의 검증이
+  // 로컬에서만 빠져 "저장됐는데 서버에서는 튕기는" 상태가 된다.
+  assert.ok(mock.includes('patch = normaliseDealPatch(req.body)'),
+    '목업 PATCH 가 실서버 검증을 안 거친다');
 });
 
 test('접수 때 원본을 얼리고 hasColumn 으로 가린다', () => {

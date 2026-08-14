@@ -56,7 +56,9 @@ const MIGRATIONS = [
   // 049 는 컬럼 하나. 기존 딜은 null 로 남는다 — 소급해 채우면 거짓 원본이 된다.
   '049_deal_customer_meta_original.sql',
   // 050 은 빈 표만 만든다. 내용은 허브 딜 화면에서 넣는다.
-  '050_meeting_notes.sql'
+  '050_meeting_notes.sql',
+  // 051 은 컬럼 하나 + stage 제약을 0~5 로 넓힌다. 좁히는 게 아니라 안전하다.
+  '051_deal_handoff.sql'
 ];
 
 async function main() {

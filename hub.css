@@ -598,3 +598,29 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 .notes-editor-head { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; }
 /* 원문은 넓게. 줄바꿈을 그대로 보존하므로 폭이 좁으면 읽기 어렵다. */
 #note-body { flex: 1; min-height: 340px; resize: vertical; line-height: 1.6; }
+
+
+/* 배포 인계 STEP06 (051) */
+.handoff-progress { margin: 0 0 14px; padding: 9px 12px; border-radius: 10px; font-size: .8rem;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); }
+.handoff-missing { opacity: .65; margin-left: 6px; }
+.handoff-done { color: #30a46c; margin-left: 6px; }
+.handoff-field label small { display: block; font-weight: 400; opacity: .6; margin-top: 2px; }
+.handoff-field textarea { min-height: 74px; }
+/* 근거는 값과 시각적으로 갈라야 한다 — 인용은 고객이 한 말이고 값은 우리가 적은 것이다. */
+.handoff-quote { margin-top: 6px; padding: 8px 10px; border-left: 2px solid rgba(96,165,250,.6);
+  background: rgba(96,165,250,.06); border-radius: 0 8px 8px 0; font-size: .78rem; }
+.handoff-quote blockquote { margin: 0 0 4px; line-height: 1.55; }
+.handoff-quote span { opacity: .6; font-size: .72rem; }
+.handoff-quote.orphan { border-left-color: rgba(245,165,36,.7); background: rgba(245,165,36,.07); }
+.pin-quote { margin-top: 4px; font-size: .74rem; opacity: .75; }
+.notes-pin-row { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 10px; border-radius: 8px; font-size: .78rem;
+  background: rgba(96,165,250,.1); border: 1px solid rgba(96,165,250,.3); }
+.quality-scroll { overflow-x: auto; }
+.quality-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.quality-table th[scope="col"] { text-align: center; font-weight: 600; opacity: .7; padding: 6px 8px; white-space: nowrap; }
+.quality-table th[scope="row"] { text-align: left; font-weight: 600; padding: 8px 10px 8px 0; }
+.quality-table th[scope="row"] small { display: block; font-weight: 400; opacity: .55; margin-top: 2px; }
+.quality-table td { text-align: center; border-top: 1px solid rgba(255,255,255,.06); }
+.quality-radio { display: inline-flex; align-items: center; gap: 5px; padding: 8px; cursor: pointer; }

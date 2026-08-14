@@ -144,7 +144,8 @@ test('회의록은 딜 목록에 실리지 않는다', () => {
 });
 
 test('회의록은 딜 편집 허용목록에 없다', () => {
-  for (const field of ['meeting_notes', 'notes', 'handoff']) {
+  // handoff(051)는 허용목록에 **있다** — 모양은 normaliseHandoff 가 강제한다.
+  for (const field of ['meeting_notes', 'notes', 'body']) {
     assert.ok(!EDITABLE_DEAL_FIELDS.includes(field), `${field} 가 PATCH 로 새어 들어간다`);
   }
 });

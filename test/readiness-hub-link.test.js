@@ -373,7 +373,8 @@ test('단계 이름이 42문항 기준이다', () => {
   const { PIPELINE_STAGES } = require('../lib/hub-domain');
   assert.equal(PIPELINE_STAGES[1], 'AI 준비도 진단');
   assert.ok(!PIPELINE_STAGES.includes('PoC 검증'));
-  assert.match(read('scripts/mock-ui-server.js'), /'AI 준비도 진단'/,
+  // 목업은 PIPELINE_STAGES 를 그대로 쓴다(051) — 따로 적으면 갈린다.
+  assert.match(read('scripts/mock-ui-server.js'), /stages: require\('\.\.\/lib\/hub-domain'\)\.PIPELINE_STAGES/,
     '목업 단계 이름이 어긋나면 화면 확인이 거짓말이 된다');
   assert.match(read('hub.js'), /stageHeader\('03', 'ISV 조합 추천'/);
 });
