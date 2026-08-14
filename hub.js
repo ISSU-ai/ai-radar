@@ -2764,14 +2764,20 @@ function exportHandoff() {
   const recommendation = lib.recommendApproach(ctx);
   const full = { ...ctx, recommendation };
 
-  window.IssuReport.pdf(`${state.deal.customer} — ChatGPT Deployment Brief (초안)`, lib.buildBrief(full));
-  window.IssuReport.markdown(lib.buildInterviewGuide(full), `${base}_인터뷰가이드`);
-  window.IssuReport.markdown(lib.buildEvidenceSummary(full), `${base}_근거격차`);
+  // ⚠ **문서 셋을 한 장으로 이어 붙인다.** IssuReport.pdf 는 팝업을 열어 인쇄하는데
+  //   브라우저가 팝업을 하나만 허용한다 — 따로 부르면 둘째부터 조용히 막힌다.
+  //   PRINT_CSS 의 h1:not(:first-of-type) 이 각 문서를 새 페이지에서 시작시킨다.
+  const paper = [
+    lib.buildBrief(full),
+    lib.buildInterviewGuide(full),
+    lib.buildEvidenceSummary(full)
+  ].join('\n\n');
+  window.IssuReport.pdf(`${state.deal.customer} — 배포 인계 (브리프·인터뷰·근거격차)`, paper);
+  // 스냅샷만 따로 내려받는다. 사람이 읽는 문서가 아니라 배포 단계가 읽는 데이터라
+  // PDF 로 만들면 쓸 수 없다.
   downloadJson(lib.buildHandoffExport(full), `${base}_handoff`);
 
-  const readiness = lib.HANDOFF_FIELDS.length;
-  toast(`인계 문서 4종을 만들었습니다. 권고 — ${recommendation.label}`);
-  void readiness;
+  toast(`인계 브리프를 만들었습니다 (PDF 3부 + 스냅샷). 권고 — ${recommendation.label}`);
 }
 
 /** 스냅샷은 사람이 읽는 문서가 아니라 배포 단계가 읽는다. JSON 그대로 내려받는다. */
@@ -2869,7 +2875,7 @@ function renderHandoff() {
   </tr>`).join('');
 
   return `${stageHeader('06', '배포 인계', 'ChatGPT Deployment Brief 가 요구하는 것 중 미팅에서만 알 수 있는 것을 채웁니다. 비워 두면 인터뷰 질문으로 바뀌어 나갑니다.',
-    '<button id="handoff-brief" class="primary-button" type="button"><i data-lucide="file-output"></i> 인계 브리프</button>')}
+    '<button id="handoff-brief" class="primary-button" type="button"><i data-lucide="file-output"></i> 인계 브리프 4종</button>')}
     <div id="handoff-progress" class="handoff-progress">${handoffProgressMarkup()}</div>
     <div class="field-group"><h3>근거 여섯 칸</h3><div class="form-grid">${fields}</div></div>
     <div class="field-group"><h3>사용 사례 품질 점검 <small>(Brief §F)</small></h3>
@@ -3049,15 +3055,14 @@ function bindStageEvents() {
   });
   // 고객용 키트. 리포트 버튼과 같은 경로(IssuReport)로 내보내되 내용은 다른 문서다.
   $('#customer-kit')?.addEventListener('click', () => {
-    const markdown = buildCustomerKit();
-    const baseName = `${state.deal.customer || '고객'}_검토정리_${new Date().toISOString().slice(0, 10)}`;
-    window.IssuReport.pdf(`${state.deal.customer} — AI 도입 검토 정리`, markdown);
+    // PDF 만 낸다. 고객에게 보내는 문서라 편집 가능한 형식으로 주지 않는다 —
+    // Word 로 주면 우리 문구가 고쳐진 채로 돌아다닌다.
+    window.IssuReport.pdf(`${state.deal.customer} — AI 도입 검토 정리`, buildCustomerKit());
     const open = collectOpenItems();
     // 아직 확인 안 된 것이 있으면 알려 준다. 문서에는 안 들어가지만 영업은 알아야 한다.
     toast(open.length
       ? `고객용 키트를 만들었습니다. 미확인 ${open.length}건은 문서에 넣지 않았습니다.`
       : '고객용 키트를 만들었습니다.');
-    void baseName;
   });
   // 다섯 단계가 같은 버튼을 쓴다. 지금 보고 있는 단계의 내용이 나온다.
   $$('[data-report]').forEach((button) => button.addEventListener('click', () => {

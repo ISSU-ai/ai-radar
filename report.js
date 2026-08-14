@@ -353,6 +353,9 @@
              word-break: keep-all; overflow-wrap: anywhere; }
     th { background: #f3f5f8; font-weight: 700; }
     h1, h2, h3 { break-after: avoid; }
+    /* 문서 여럿을 한 장으로 이어 붙일 때 각자 새 페이지에서 시작한다.
+       인쇄는 팝업 한 개만 열 수 있어 여러 문서를 따로 못 띄운다. */
+    h1:not(:first-of-type) { break-before: page; }
     ul { break-inside: avoid; }
     /* 표 전체에 break-inside: avoid 를 걸면 한 장을 넘는 표가 통째로 밀려 잘린다.
        행 단위로만 막고, 머리글은 페이지마다 반복시킨다. */

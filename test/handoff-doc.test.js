@@ -161,6 +161,31 @@ test('상태 어휘가 handoff-snapshot 과 같다', () => {
   }
 });
 
+test('인쇄 팝업을 한 번만 연다', () => {
+  // ⚠ IssuReport.pdf 는 팝업을 열어 인쇄한다. 브라우저가 팝업을 하나만 허용하므로
+  //   따로 부르면 **둘째부터 조용히 막힌다** — 화면에는 아무 표시도 안 난다.
+  const hub = read('hub.js');
+  const fn = hub.slice(hub.indexOf('function exportHandoff'), hub.indexOf('function downloadJson'));
+  assert.equal((fn.match(/IssuReport\.pdf\(/g) || []).length, 1, '인쇄 팝업을 여러 번 연다');
+  // 셋을 이어 붙여 한 장으로 낸다.
+  for (const doc of ['buildBrief', 'buildInterviewGuide', 'buildEvidenceSummary']) {
+    assert.ok(fn.includes(`lib.${doc}(full)`), `${doc} 가 빠졌다`);
+  }
+  // 스냅샷은 기계가 읽는다. PDF 로 만들면 쓸 수 없다.
+  assert.match(fn, /downloadJson\(lib\.buildHandoffExport/);
+  // 이어 붙인 문서가 새 페이지에서 시작해야 한 장에 겹치지 않는다.
+  assert.match(read('report.js'), /h1:not\(:first-of-type\) \{ break-before: page; \}/);
+});
+
+test('고객에게 나가는 문서는 PDF 만 낸다', () => {
+  // Word·Markdown 으로 주면 우리 문구가 고쳐진 채로 돌아다닌다.
+  const hub = read('hub.js');
+  const at = hub.indexOf("$('#customer-kit')?.addEventListener");
+  const fn = hub.slice(at, at + 800);
+  assert.match(fn, /IssuReport\.pdf\(/);
+  assert.ok(!/IssuReport\.(docx|markdown)\(/.test(fn), '고객용 키트가 편집 가능한 형식으로 나간다');
+});
+
 test('화면이 문서 규칙을 따로 짜지 않는다', () => {
   // 두 곳에 적으면 영업이 보는 문서와 검사가 보는 문서가 갈린다.
   const hub = read('hub.js');
