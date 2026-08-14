@@ -173,3 +173,24 @@ test('타이핑 중 renderStage 를 부르지 않는다', () => {
   assert.ok(!block.includes('renderStage()'), '입력 중 renderStage 를 부른다');
   assert.match(block, /renderHandoffProgress\(\)/);
 });
+
+test('단계 자막이 단계 수와 같아 undefined 가 안 찍힌다', () => {
+  // 051 로 여섯 번째가 늘었을 때 자막 배열이 다섯이라 화면에 「undefined」가 찍혔다.
+  const hub = read('hub.js');
+  const at = hub.indexOf('const STAGE_SUBTITLES');
+  assert.ok(at > 0, '자막을 인라인 배열로 두면 단계가 늘 때 또 어긋난다');
+  const literal = hub.slice(at, hub.indexOf(']);', at));
+  assert.equal((literal.match(/'/g) || []).length / 2, PIPELINE_STAGES.length,
+    '자막 수가 단계 수와 다르다');
+  // 그래도 undefined 를 그리지 않는다 — 배열이 짧아도 빈 칸으로 둔다.
+  assert.match(hub, /STAGE_SUBTITLES\[index\] \|\| ''/);
+});
+
+test('단계 레일이 몇 개가 되든 한 줄이다', () => {
+  // repeat(5) 로 개수를 박았더니 여섯 번째가 두 줄로 접혔다.
+  const css = read('hub.css');
+  const rail = css.slice(css.indexOf('.stage-rail {'), css.indexOf('.stage-rail::'));
+  assert.ok(!/repeat\(\d+/.test(rail), '단계 수를 CSS 에 박으면 늘 때마다 접힌다');
+  assert.match(rail, /grid-auto-flow: column/);
+  assert.match(rail, /overflow-x: auto/, '좁은 화면에서 넘칠 자리가 있어야 한다');
+});

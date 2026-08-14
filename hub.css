@@ -132,11 +132,15 @@ input::placeholder, textarea::placeholder { color: #768596; opacity: 1; }
 .primary-button:hover { filter: brightness(1.08); }
 .secondary-button:hover, .ghost-button:hover { color: var(--ink); border-color: var(--line2); background: var(--raised); }
 .primary-button svg, .secondary-button svg, .ghost-button svg { width: 14px; }
-.stage-rail { position: relative; z-index: 15; display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)); gap: 6px; min-width: 0; padding: 11px 18px; overflow-x: auto; border-bottom: 1px solid var(--line); background: var(--surface); scrollbar-width: none; }
+/* 단계 수를 박지 않는다. repeat(5) 였을 때 051 로 여섯 번째가 늘자 두 줄로 접혔다.
+   auto-flow: column 이면 몇 개가 되든 한 줄이고, 좁으면 가로 스크롤로 넘어간다. */
+.stage-rail { position: relative; z-index: 15; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(96px, 1fr); gap: 6px; min-width: 0; padding: 11px 18px; overflow-x: auto; border-bottom: 1px solid var(--line); background: var(--surface); scrollbar-width: none; }
 .stage-rail::-webkit-scrollbar { display: none; }
 .stage-button { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; height: 51px; padding: 6px 9px; color: var(--faint); border: 1px solid transparent; border-radius: 9px; background: transparent; text-align: left; cursor: pointer; }
 .stage-button:not(:last-child)::after { content: '›'; position: absolute; z-index: 2; right: -6px; top: 50%; color: var(--faint); font: 600 15px var(--font-mono); transform: translate(50%, -50%); }
-.stage-button > span { display: grid; place-items: center; width: 26px; height: 26px; color: var(--faint); border: 1px solid var(--line2); border-radius: 8px; background: var(--surface2); font: 700 9px var(--font-mono); }
+/* 단계가 늘수록 칸이 좁아진다. 번호를 줄여 이름이 먼저 잘리지 않게 한다. */
+.stage-button { grid-template-columns: 24px minmax(0, 1fr); gap: 7px; padding: 6px 8px; }
+.stage-button > span { display: grid; place-items: center; width: 24px; height: 24px; color: var(--faint); border: 1px solid var(--line2); border-radius: 8px; background: var(--surface2); font: 700 9px var(--font-mono); }
 .stage-button strong { display: block; overflow: hidden; color: var(--dim); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .stage-button small { display: block; overflow: hidden; margin-top: 2px; color: var(--faint); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .stage-button:hover { border-color: var(--line2); background: rgba(255, 255, 255, .025); }

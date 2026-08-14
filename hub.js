@@ -619,10 +619,19 @@ function renderWorkspace() {
   window.lucide?.createIcons();
 }
 
+/**
+ * 단계 자막. **PIPELINE_STAGES 와 개수가 같아야 한다** — 051 로 여섯 번째가 늘었을 때
+ * 여기가 다섯 개라 「undefined」가 화면에 찍혔다. 없으면 빈 칸으로 두고 절대 undefined 를
+ * 그리지 않는다.
+ */
+const STAGE_SUBTITLES = Object.freeze([
+  '리드·고객 맥락', '42문항·성숙도', '카탈로그·포컬', '패키지·공수', '제안 스크립트', '근거·브리프'
+]);
+
 function renderStageRail() {
   const rail = $('#stage-rail');
   rail.innerHTML = state.refs.stages.map((label, index) => `<button type="button" class="stage-button ${index === state.activeStage ? 'active' : ''} ${index < state.deal.stage ? 'done' : ''}" data-stage="${index}" aria-current="${index === state.activeStage ? 'step' : 'false'}">
-    <span>${index + 1}</span><div><strong>${escapeHtml(label)}</strong><small>${['리드·고객 맥락','42문항·성숙도','카탈로그·포컬','패키지·공수','제안 스크립트'][index]}</small></div>
+    <span>${index + 1}</span><div><strong>${escapeHtml(label)}</strong><small>${escapeHtml(STAGE_SUBTITLES[index] || '')}</small></div>
   </button>`).join('');
 }
 
