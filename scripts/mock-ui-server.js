@@ -873,7 +873,18 @@ app.get('/admin', (_req, res) => res.sendFile(path.join(__dirname, '..', 'admin.
 // index.html(=/radar 영업 화면)이 대신 뜨지 않는다 — 그러면 로컬 확인이 거짓말이 된다.
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, '..', 'offering.html')));
 
-app.use(express.static(path.join(__dirname, '..')));
+/**
+ * ⚠ **캐시를 아예 끈다.** 목업은 「고친 것이 실제로 그렇게 보이는가」를 확인하려고
+ * 있는데, 브라우저가 옛 번들을 붙들고 있으면 그 확인이 거짓말이 된다. 실제로 고친
+ * 화면을 세 번 연속 옛 화면으로 확인했다. 개발용 서버라 성능은 상관없다.
+ *
+ * ETag 도 끈다 — 조건부 요청에 304 를 주면 그것도 옛 파일이다.
+ */
+app.use((_req, res, next) => {
+  res.set('Cache-Control', 'no-store, must-revalidate');
+  next();
+});
+app.use(express.static(path.join(__dirname, '..'), { etag: false, lastModified: false }));
 app.get('/hub', (_req, res) => res.sendFile(path.join(__dirname, '..', 'hub.html')));
 app.get(['/offering', '/offering.html'], (_req, res) => res.sendFile(path.join(__dirname, '..', 'offering.html')));
 app.get(['/radar', '/radar/'], (_req, res) => res.sendFile(path.join(__dirname, '..', 'index.html')));
