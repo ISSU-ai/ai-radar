@@ -265,10 +265,27 @@ function renderDealList() {
   window.lucide?.createIcons();
 }
 
+/**
+ * 새 딜. **딜이 두 개씩 만들어지던 자리다.**
+ *
+ * ⚠ `event.currentTarget` 은 **첫 await 뒤 null 이 된다.** 이벤트 디스패치가 끝났기
+ *   때문이다. 예전 코드는 await 뒤에 currentTarget.reset() 을 불러 TypeError 가 났고,
+ *   그게 catch 로 떨어지면서 **딜은 만들어졌는데 화면은 실패한 것처럼 굴었다** —
+ *   토스트도 없고, 목록도 안 늘고, 딜도 안 열렸다. 영업은 "안 됐네" 하고 한 번 더
+ *   눌렀고 그래서 둘이 됐다. readiness.js 의 submitLead 가 이 함정을 이미 적어 뒀다.
+ *
+ * ⚠ 제출 버튼도 잠근다. 응답이 오는 동안 버튼이 살아 있으면 두 번 눌린다 —
+ *   서버는 같은 요청 둘을 그대로 둘 다 만든다(고객사가 같아도 다른 딜일 수 있어서
+ *   서버가 임의로 합칠 수 없다).
+ */
 async function createDeal(event) {
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
+  const formEl = event.currentTarget;
+  const form = new FormData(formEl);
+  const button = $('button[type="submit"]', formEl);
   $('#new-deal-error').textContent = '';
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
   try {
     const deal = await api('/api/hub/deals', {
       method: 'POST',
@@ -282,12 +299,14 @@ async function createDeal(event) {
       })
     });
     $('#new-deal-dialog').close();
-    event.currentTarget.reset();
+    formEl.reset();
     toast('새 딜을 만들었습니다.');
     await loadDeals();
     await openDeal(deal.id, { historyMode: 'push' });
   } catch (error) {
     $('#new-deal-error').textContent = error.message;
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 

@@ -54,6 +54,25 @@ lsof -ti:4173 | xargs kill 2>/dev/null
   `apply-migrations.js` 요약 쿼리라 **다음 적용이 통째로 실패**할 자리였다
 - **콤마 조인 + 명시적 join** → `42P01`. 콤마가 둘일 때는 안 걸려서 더 헷갈린다
 
+## `event.currentTarget` 은 첫 `await` 뒤 null 이다
+
+이벤트 디스패치가 끝나기 때문이다. **딜이 두 개씩 만들어지던 원인이 이것이었다.**
+
+```js
+async function createDeal(event) {
+  const form = new FormData(event.currentTarget);
+  await api('/api/hub/deals', { ... });   // 여기서 디스패치가 끝난다
+  event.currentTarget.reset();            // ✗ TypeError → catch 로 떨어진다
+}
+```
+
+무서운 건 실패 모양이다 — **딜은 만들어졌는데** 토스트도 목록 갱신도 딜 열기도
+안 돌아서 화면은 「안 됐네」로 보인다. 그래서 한 번 더 누른다.
+
+핸들러 맨 위에서 참조를 잡아 둔다. 그리고 **보내는 동안 제출 버튼을 잠근다**(`finally`
+로 푼다) — 서버는 같은 요청 둘을 그대로 둘 다 만든다. 고객사가 같아도 다른 딜일 수
+있어서 서버가 임의로 합칠 수 없다.
+
 ## 코드를 잘라낼 때
 
 라우트를 지우려고 "다음 `app.<verb>(` 까지"를 잘랐더니 **옆 함수가 통째로 날아갔다**

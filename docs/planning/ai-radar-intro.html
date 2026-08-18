@@ -1,0 +1,403 @@
+<title>AI Radar 소개 — 영업용</title>
+<style>
+  /* ── 토큰. 제품(hub.css)의 팔레트를 그대로 쓴다 — 소개 자료와 실물이 같은 세계여야 한다. */
+  :root {
+    --bg: #0f141a;
+    --surface: #161d26;
+    --raised: #1d2631;
+    --line: #2a3542;
+    --line2: #37444f;
+    --ink: #eaf0f6;
+    --dim: #9daab8;
+    --faint: #71808f;
+    --gold: #d4a438;
+    --gold-dim: #b08a2e;
+    --gold-soft: rgba(212, 164, 56, .12);
+    --blue: #4c9aff;
+    --blue-soft: rgba(76, 154, 255, .1);
+    --green: #4fb477;
+    --amber: #f5a524;
+    --red: #e5484d;
+    --shadow: 0 1px 0 rgba(255,255,255,.03) inset;
+
+    --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo",
+            "Malgun Gothic", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", "Menlo", "Consolas", monospace;
+  }
+  /* 밝은 방에서 쏘거나 인쇄할 때. 제품의 청회색 기조를 유지한 종이색이다. */
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #eef1f5; --surface: #ffffff; --raised: #f5f7fa;
+      --line: #d9dfe7; --line2: #c3ccd7;
+      --ink: #131a22; --dim: #4c5a68; --faint: #71808f;
+      --gold: #9a7414; --gold-dim: #7d5e10; --gold-soft: rgba(154, 116, 20, .1);
+      --blue: #1e63c9; --blue-soft: rgba(30, 99, 201, .08);
+      --green: #1f7a4a; --amber: #a35d00; --red: #b3282d;
+      --shadow: 0 1px 2px rgba(19,26,34,.05);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #eef1f5; --surface: #ffffff; --raised: #f5f7fa;
+    --line: #d9dfe7; --line2: #c3ccd7;
+    --ink: #131a22; --dim: #4c5a68; --faint: #71808f;
+    --gold: #9a7414; --gold-dim: #7d5e10; --gold-soft: rgba(154, 116, 20, .1);
+    --blue: #1e63c9; --blue-soft: rgba(30, 99, 201, .08);
+    --green: #1f7a4a; --amber: #a35d00; --red: #b3282d;
+    --shadow: 0 1px 2px rgba(19,26,34,.05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f141a; --surface: #161d26; --raised: #1d2631;
+    --line: #2a3542; --line2: #37444f;
+    --ink: #eaf0f6; --dim: #9daab8; --faint: #71808f;
+    --gold: #d4a438; --gold-dim: #b08a2e; --gold-soft: rgba(212, 164, 56, .12);
+    --blue: #4c9aff; --blue-soft: rgba(76, 154, 255, .1);
+    --green: #4fb477; --amber: #f5a524; --red: #e5484d;
+    --shadow: 0 1px 0 rgba(255,255,255,.03) inset;
+  }
+
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 17px; line-height: 1.75;
+    -webkit-font-smoothing: antialiased; word-break: keep-all;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 64px 0; border-top: 1px solid var(--line); }
+  section:first-of-type { border-top: 0; }
+  .eyebrow {
+    margin: 0 0 14px; font-family: var(--mono); font-size: 11px; font-weight: 700;
+    letter-spacing: .16em; text-transform: uppercase; color: var(--gold);
+  }
+  h1, h2, h3 { text-wrap: balance; margin: 0; letter-spacing: -.03em; }
+  h1 { font-size: clamp(34px, 5.2vw, 54px); line-height: 1.18; font-weight: 800; }
+  h2 { font-size: clamp(25px, 3.4vw, 34px); line-height: 1.3; font-weight: 750; }
+  h3 { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+  p { margin: 0; max-width: 66ch; }
+  .lead { color: var(--dim); font-size: 18px; }
+  .stack { display: flex; flex-direction: column; gap: 18px; }
+  .stack-tight { display: flex; flex-direction: column; gap: 10px; }
+  b, strong { font-weight: 750; }
+  em { font-style: normal; color: var(--gold); font-weight: 700; }
+
+  /* 표지 */
+  .cover { padding: 84px 0 64px; }
+  .cover h1 { max-width: 20ch; }
+  .cover .kicker {
+    display: inline-flex; align-items: center; gap: 9px; margin-bottom: 26px;
+    padding: 6px 13px; border: 1px solid var(--line2); border-radius: 999px;
+    font-family: var(--mono); font-size: 12px; letter-spacing: .08em; color: var(--dim);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); }
+
+  /* 숫자 셋 */
+  .figures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+    margin-top: 40px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .figure { padding: 22px 20px; background: var(--surface); }
+  .figure b { display: block; font-family: var(--mono); font-size: 38px; font-weight: 700;
+    line-height: 1; letter-spacing: -.04em; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .figure span { display: block; margin-top: 9px; font-size: 14px; color: var(--dim); line-height: 1.55; }
+  .figure small { display: block; margin-top: 8px; font-size: 11.5px; color: var(--faint); font-family: var(--mono); }
+
+  /* 세 순간 */
+  .moments { display: grid; gap: 16px; margin-top: 34px; }
+  .moment { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 24px;
+    padding: 24px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: var(--shadow); }
+  .moment-when { font-family: var(--mono); font-size: 12.5px; font-weight: 700;
+    letter-spacing: .1em; color: var(--gold); padding-top: 3px; }
+  .pain { margin: 0 0 14px; padding-left: 15px; border-left: 2px solid var(--line2);
+    color: var(--dim); font-size: 15.5px; }
+  .moment h3 { margin-bottom: 7px; }
+  .said { margin-top: 14px; padding: 13px 16px; border-radius: 9px;
+    background: var(--gold-soft); border: 1px solid rgba(212,164,56,.2);
+    font-size: 15.5px; font-weight: 700; }
+
+  /* 화면 캡쳐 자리 */
+  .shot { margin-top: 16px; padding: 18px 20px; border: 1px dashed var(--line2);
+    border-radius: 10px; background: var(--raised); }
+  .shot p { margin: 0; font-size: 13.5px; color: var(--dim); }
+  .shot .tag { display: inline-block; margin-bottom: 8px; padding: 3px 9px; border-radius: 5px;
+    background: var(--line); font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: .1em; color: var(--faint); }
+
+  /* 제품 UI 조각 (실물 스타일 그대로) */
+  .rail { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0,1fr); gap: 6px;
+    margin-top: 26px; padding: 11px 12px; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+  .rail-step { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 7px;
+    align-items: center; padding: 6px 8px; border-radius: 9px; border: 1px solid transparent; }
+  .rail-step > i { display: grid; place-items: center; width: 24px; height: 24px; font-style: normal;
+    border: 1px solid var(--line2); border-radius: 7px; background: var(--raised);
+    font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--faint); }
+  .rail-step b { display: block; font-size: 12.5px; font-weight: 650; color: var(--dim); white-space: nowrap; }
+  .rail-step small { display: block; font-size: 10px; color: var(--faint); white-space: nowrap; }
+  .rail-step.on { border-color: rgba(212,164,56,.5); background: var(--gold-soft); }
+  .rail-step.on > i { color: #171b20; border-color: var(--gold); background: var(--gold); }
+  .rail-step.on b { color: var(--ink); }
+
+  /* 실제 산출물 */
+  .doc { margin-top: 26px; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--surface); overflow: hidden; }
+  .doc-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 11px 18px; border-bottom: 1px solid var(--line); background: var(--raised); }
+  .doc-bar span { font-family: var(--mono); font-size: 11.5px; letter-spacing: .06em; color: var(--faint); }
+  .doc-body { padding: 22px 24px; overflow-x: auto; }
+  .doc-body h4 { margin: 0 0 4px; font-size: 15px; font-weight: 750; letter-spacing: -.01em; }
+  .doc-body h4 + .meta { margin-bottom: 9px; }
+  .doc-item + .doc-item { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .doc-body p { font-size: 15px; }
+  .meta { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 5px;
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+  .chip.ok { color: var(--green); background: rgba(79,180,119,.14); }
+  .chip.maybe { color: var(--blue); background: var(--blue-soft); }
+  .chip.open { color: var(--faint); background: var(--line); }
+  blockquote { margin: 11px 0 0; padding: 10px 14px; border-left: 2px solid var(--blue);
+    background: var(--blue-soft); border-radius: 0 8px 8px 0; font-size: 14.5px; color: var(--dim); }
+  .empty { color: var(--faint); font-style: italic; font-size: 14.5px; }
+
+  /* 목록 */
+  ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 11px; }
+  ul li { display: grid; grid-template-columns: 18px minmax(0,1fr); gap: 11px; font-size: 16px; }
+  ul li::before { content: ''; width: 6px; height: 6px; margin-top: 11px; margin-left: 5px;
+    border-radius: 50%; background: var(--gold-dim); }
+  ul.plain li::before { content: none; }
+  ul.plain li { grid-template-columns: minmax(0,1fr); }
+
+  /* 안 되는 것 */
+  .honest { padding: 26px 28px; border: 1px solid var(--line2); border-radius: 12px;
+    background: var(--surface); margin-top: 26px; }
+  .honest ul li::before { background: var(--amber); }
+
+  /* 마무리 */
+  .ask { margin-top: 30px; padding: 30px; border-radius: 14px;
+    border: 1px solid rgba(212,164,56,.35); background: var(--gold-soft); }
+  .ask h2 { margin-bottom: 10px; }
+  .ask code { display: inline-block; margin-top: 14px; padding: 7px 14px; border-radius: 8px;
+    background: var(--bg); border: 1px solid var(--line2);
+    font-family: var(--mono); font-size: 15px; color: var(--gold); }
+
+  footer { padding: 40px 0 72px; color: var(--faint); font-size: 13px; }
+  footer p { max-width: none; }
+
+  @media (max-width: 720px) {
+    body { font-size: 16px; }
+    section { padding: 48px 0; }
+    .figures { grid-template-columns: 1fr; }
+    .moment { grid-template-columns: minmax(0,1fr); gap: 12px; }
+    .rail-step small { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    a { transition: color .15s ease; }
+  }
+  a { color: var(--gold); }
+  a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+</style>
+
+<div class="wrap">
+
+  <header class="cover">
+    <div class="kicker"><span class="dot"></span> ISSU AI RADAR · 영업 소개</div>
+    <h1>지난주, 미팅 끝나고<br>자료 만드는 데 몇 시간 쓰셨습니까?</h1>
+    <div class="figures">
+      <div class="figure">
+        <b>30%</b>
+        <span>영업이 실제로 <b>파는 데</b> 쓰는 시간. 나머지 70%는 판매가 아니다</span>
+        <small>Landbase 2026</small>
+      </div>
+      <div class="figure">
+        <b>68%</b>
+        <span>그중 가장 시간을 먹는 1위로 <b>기록과 입력</b>을 지목</span>
+        <small>Everstage 2026</small>
+      </div>
+      <div class="figure">
+        <b>42%</b>
+        <span><b>툴이 너무 많다</b>고 느낀다. 딜 하나에 평균 8개</span>
+        <small>Salesforce State of Sales</small>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <p class="eyebrow">전제</p>
+    <div class="stack">
+      <h2>이건 아홉 번째 툴이 아닙니다</h2>
+      <p class="lead">
+        영업이 툴을 안 쓰는 1번 이유는 <b>복잡해서</b>이고, 2번은 <b>가치가 안 보여서</b>입니다.
+        그래서 AI Radar 는 새로 할 일을 만들지 않습니다.
+        <em>지금 손으로 하던 걸 없애는 쪽</em>만 합니다.
+      </p>
+      <p class="lead">
+        하는 일은 셋뿐입니다 — 미팅 전에 고객을 알고 들어가게, 미팅 중에 대답할 수 있게,
+        미팅 후에 자료를 안 만들게.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">영업의 하루</p>
+    <h2>아픈 순간 셋</h2>
+
+    <div class="moments">
+      <article class="moment">
+        <div class="moment-when">미팅 전</div>
+        <div>
+          <p class="pain">"미팅은 잡혔는데, 이 고객이 뭘 원하는지 모른 채 들어간다."</p>
+          <h3>고객이 답을 미리 적어서 보내옵니다</h3>
+          <p>
+            진단 링크를 보내면 고객이 42문항에 답합니다. 딜을 열면
+            <b>6대 영역 점수 · 가장 약한 축 · 문항별 「무엇부터」</b>가 이미 들어와 있습니다.
+            여러분이 입력한 게 아닙니다.
+          </p>
+          <div class="said">"고객이 자기 숙제를 하고 옵니다."</div>
+          <div class="shot">
+            <span class="tag">캡쳐 ①</span>
+            <p><code>/hub</code> → 포탈로 들어온 딜 → <b>STEP02</b>. 6축 막대와 우선 개선 영역이 채워진 화면.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="moment">
+        <div class="moment-when">미팅 중</div>
+        <div>
+          <p class="pain">"고객이 'Zscaler 도 되나요?' 물었는데 대답을 못 했다."</p>
+          <h3>17종을 외우지 않습니다</h3>
+          <p>
+            <code>/radar</code> 에서 제품 하나를 3초 만에 찾습니다. 여덟 탭에 개요·강점·활용 예·
+            도입 체크리스트·<b>벤더 공시가</b>가 출처와 함께 있습니다. 폰에서 열립니다.
+          </p>
+          <div class="said">"공시가가 없는 제품은 「협의」라고 나옵니다. 지어내지 않습니다."</div>
+          <div class="shot">
+            <span class="tag">캡쳐 ②</span>
+            <p><code>/radar</code> → 아무 제품 → <b>「가격」 탭</b>. 공시가와 출처가 같이 보이는 화면.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="moment">
+        <div class="moment-when">미팅 후</div>
+        <div>
+          <p class="pain">"자료 만드는 데 두세 시간. 매번."</p>
+          <h3>버튼 하나로 고객용 PDF 가 나옵니다</h3>
+          <p>
+            진단 요약 · 이렇게 이해했습니다 · 문의하신 제품 · 권고 구성 · 예상 규모 · 다음 단계.
+            딜에 이미 있는 것으로 조립합니다.
+          </p>
+          <div class="said">"세 시간이 10초가 됩니다."</div>
+          <div class="shot">
+            <span class="tag">캡쳐 ③ — 가장 중요</span>
+            <p><b>STEP05 → 「고객용 키트」</b> 를 누른 직후 PDF 미리보기. 발표에서는 <b>실시간으로</b> 누르세요.</p>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">딜 하나가 지나가는 길</p>
+    <h2>여섯 단계, 그런데 다 채울 필요는 없습니다</h2>
+    <div class="rail" role="img" aria-label="딜 파이프라인 여섯 단계">
+      <div class="rail-step"><i>1</i><div><b>들어온 데이터</b><small>리드·고객 맥락</small></div></div>
+      <div class="rail-step"><i>2</i><div><b>AI 준비도 진단</b><small>42문항·성숙도</small></div></div>
+      <div class="rail-step"><i>3</i><div><b>ISV 조합 추천</b><small>카탈로그·포컬</small></div></div>
+      <div class="rail-step"><i>4</i><div><b>딜 사이즈</b><small>패키지·공수</small></div></div>
+      <div class="rail-step on"><i>5</i><div><b>피치 준비</b><small>제안 스크립트</small></div></div>
+      <div class="rail-step"><i>6</i><div><b>배포 인계</b><small>근거·브리프</small></div></div>
+    </div>
+    <p class="lead" style="margin-top:20px">
+      1~2 는 고객이 진단을 답하면 저절로 찹니다. 3~4 는 화면에서 고르는 것이고,
+      5 에서 고객용 자료가 나옵니다. <b>6 은 딜이 넘어갈 때</b> — 구축·PS 가 받는 자리라
+      영업이 매번 볼 필요는 없습니다.
+    </p>
+  </section>
+
+  <section>
+    <p class="eyebrow">차별점</p>
+    <h2>모르는 건 비워 둡니다</h2>
+    <p class="lead">
+      다른 툴은 빈칸을 그럴듯하게 채웁니다. 그러면 <b>영업이 고객 앞에서 못 지킬 약속</b>을
+      하게 됩니다. AI Radar 는 모르면 모른다고 적고, 대신
+      <em>무엇을 물어야 하는지</em>를 알려줍니다.
+    </p>
+
+    <div class="doc">
+      <div class="doc-bar">
+        <span>실제 산출물 — 온누리제조 · 배포 인계 브리프</span>
+        <span>PDF</span>
+      </div>
+      <div class="doc-body">
+        <div class="doc-item">
+          <h4>4. ChatGPT 지원 워크플로</h4>
+          <p class="meta"><span class="chip maybe">가능성 높음</span> 출처 2026-08-14 킥오프</p>
+          <p>신규 계약 검토 요약. 법무 12명, 주 40건.</p>
+          <blockquote>"법무팀은 지금 신규 계약 검토 요약을 수작업으로 합니다."</blockquote>
+        </div>
+        <div class="doc-item">
+          <h4>5. 제품 경험 및 통제 의존성</h4>
+          <p class="meta"><span class="chip ok">확인됨</span> 출처 42문항 · 인테이크</p>
+          <p>보안 게이트웨이 — zscaler / 신뢰·안전(G) 응답 있음 / 시스템·인프라(T) 응답 있음</p>
+        </div>
+        <div class="doc-item">
+          <h4>3. 비즈니스 성과 책임자</h4>
+          <p class="meta"><span class="chip open">미해결</span></p>
+          <p class="empty">아직 확인되지 않았습니다.</p>
+          <p class="meta" style="margin-top:10px">→ 인터뷰 가이드 Q2 로 나갑니다</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="lead" style="margin-top:22px">
+      비워 둔 칸은 <b>다음 미팅에서 물을 질문</b>이 되어 같이 나옵니다.
+      이미 아는 것은 묻지 않습니다.
+    </p>
+    <div class="doc" style="margin-top:14px">
+      <div class="doc-bar"><span>같이 나오는 인터뷰 가이드</span><span>30~45분</span></div>
+      <div class="doc-body">
+        <p><b>Q1. 성공 기준</b> <span class="meta">Brief §A 6</span></p>
+        <p class="lead" style="font-size:15px">어떤 지표가 개선되어야 하며, 지금 기준값은 얼마이고 누가 측정합니까?</p>
+        <p style="margin-top:16px"><b>Q2. 이해관계자</b> <span class="meta">Brief §A 7</span></p>
+        <p class="lead" style="font-size:15px">결과를 책임지고 다음 의사결정을 내리는 사람은 누구이며, 워크스페이스는 누가 관리합니까?</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">먼저 말씀드릴 것</p>
+    <h2>아직 안 되는 것</h2>
+    <div class="honest">
+      <ul>
+        <li><b>레퍼런스 사례가 비어 있습니다.</b> 「비슷한 사례」 절이 아직 안 나옵니다 — 여러분 딜에서 채워야 합니다.</li>
+        <li><b>서비스 실단가가 미확정입니다.</b> 금액은 「별도협의」로만 나갑니다. 벤더 공시가는 실제 값입니다.</li>
+        <li><b>진단 결과 링크를 자동으로 못 보냅니다.</b> 지금은 영업이 직접 전달합니다.</li>
+        <li><b>Salesforce 를 대체하지 않습니다.</b> SF 에 없는 것(제품 판정·고객 진단·자료 조립)만 합니다. 나중에 붙입니다.</li>
+      </ul>
+    </div>
+    <p class="lead" style="margin-top:20px">
+      그리고 하나 — <b>딜 진행 상태를 관리자에게 보고하는 기능은 없습니다.</b>
+      정체 표시는 <b>본인 딜에만</b> 뜹니다.
+    </p>
+  </section>
+
+  <section>
+    <p class="eyebrow">부탁</p>
+    <div class="ask">
+      <h2>다음 주에 딱 하나만</h2>
+      <p class="lead">
+        딜을 등록하지 않으셔도 됩니다. <b>담당 고객 한 곳에 진단 링크를 보내주세요.</b>
+        고객이 답하면 그 딜은 여러분이 아무것도 안 해도 채워집니다.
+      </p>
+      <code>https://ai-radar-7pg2.onrender.com/readiness</code>
+    </div>
+    <ul class="plain" style="margin-top:26px">
+      <li class="lead">계정은 발표 전에 만들어 두었습니다. 로그인해서 <code>/radar</code> 를 폰 홈화면에 추가해 두세요.</li>
+      <li class="lead">2주 뒤에 실제로 써본 분의 이야기를 공유하겠습니다.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p><b>발표자 메모</b> — 캡쳐 ①②③ 자리는 실제 화면으로 채우세요. 특히 ③은 스크린샷 말고
+    <b>발표 중에 실시간으로</b> 누르는 편이 훨씬 강합니다. "데모용으로 만든 거 아냐?"를 없앱니다.</p>
+    <p style="margin-top:12px">숫자 출처 — Landbase(2026, 영업 시간 배분) · Everstage(2026, 생산성) ·
+    Salesforce State of Sales · RevenueGrid(툴 채택 장벽).</p>
+  </footer>
+
+</div>
