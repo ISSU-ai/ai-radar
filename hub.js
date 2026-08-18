@@ -246,7 +246,14 @@ function renderDealList() {
     // 스팸 신호는 회색이다. 「걸렀다」가 아니라 「한 번 보라」는 뜻이라 눈에 덜 띄어야 한다.
     const spam = Number(deal.spam_count) > 0
       ? `<span class="spam-tag">확인 필요 ${deal.spam_count}</span>` : '';
-    const tags = (deal.msp_status === 'yes' ? '<span class="msp-tag">MSP</span>' : '') + spam + stallChipsMarkup(deal);
+    // ⚠ 정체 칩은 **본인 딜에만** 띄운다. 목록은 담당자 게이트가 없어 승인된 전 직원이
+    // 보는데, 남의 딜이 빨간 것까지 보이면 「내 딜이 빨간 걸 다들 보네」가 된다.
+    // 채택 초기에 감시 도구로 한 번 읽히면 되돌리는 데 몇 배가 든다.
+    // 관리자도 목록에서는 안 본다 — 예외를 두면 그 예외가 곧 그 인식이다.
+    // 딜을 열면(담당자·admin·미배정) 상세와 컨텍스트 카드에서 그대로 본다.
+    const mine = deal.owner_id && deal.owner_id === state.user?.id;
+    const tags = (deal.msp_status === 'yes' ? '<span class="msp-tag">MSP</span>' : '') + spam
+      + (mine ? stallChipsMarkup(deal) : '');
     return `<button class="deal-card ${selected ? 'selected' : ''}" type="button" data-deal-id="${deal.id}" aria-current="${selected ? 'true' : 'false'}">
       <span class="deal-card-head"><span class="deal-card-customer"><strong>${escapeHtml(deal.customer)}</strong>${isNew ? '<span class="new-tag">신규</span>' : ''}</span><span class="track-badge" data-track="${escapeHtml(deal.track || '')}">${escapeHtml(deal.track || '미정')}</span></span>
       <span class="deal-card-sub">${escapeHtml(sub)}</span>
@@ -654,6 +661,19 @@ function stageHeader(no, title, copy, action = '') {
 
 const STAGE_RENDERERS = [renderIntake, renderFqa, renderSolutions, renderPackages, renderPitch, renderHandoff];
 
+/**
+ * 남의 딜·미배정 딜은 모든 입력이 disabled 다. 규칙은 맞지만 **이유가 화면에 없어서**
+ * 「전부 회색인데 고장 났나」로 읽힌다. 실제로 첫 사용에서 여기서 멈춘다.
+ */
+function readOnlyNoticeMarkup() {
+  if (!state.deal || isOwner()) return '';
+  return state.deal.owner_id
+    ? `<div class="readonly-banner"><i data-lucide="lock"></i>
+        <span><b>${escapeHtml(state.deal.owner_name || '다른 담당자')}</b>의 딜이라 읽기 전용입니다. 내용은 볼 수 있습니다.</span></div>`
+    : `<div class="readonly-banner claimable"><i data-lucide="user-plus"></i>
+        <span><b>아직 담당자가 없는 딜입니다.</b> 우상단 <b>「담당하기」</b>를 누르면 수정할 수 있습니다.</span></div>`;
+}
+
 function renderStage() {
   const stage = state.activeStage;
   const content = $('#stage-content');
@@ -671,7 +691,7 @@ function renderStage() {
     const carryBadge = $('#carry-badge')?.querySelector('span');
     if (carryBadge) carryBadge.textContent = carryMessages[stage] || '';
     const renderer = STAGE_RENDERERS[stage];
-    content.innerHTML = renderer ? renderer() : '';
+    content.innerHTML = readOnlyNoticeMarkup() + (renderer ? renderer() : '');
     bindStageEvents();
     window.lucide?.createIcons();
     // STEP 03 에 들어오면 추천을 한 번 계산한다. 렌더 안에서 부르면 재귀가 되므로
@@ -1227,6 +1247,32 @@ function customerAnsweredCount() {
  * 그 값이 그대로 추천의 근거가 된다. 고객이 답한 값과 영업이 고친 값은 배지로
  * 구분한다 — 제안 근거가 고객 응답인지 영업 추정인지 구분이 안 되면 못 쓴다.
  */
+/**
+ * 응답이 하나도 없는 딜에 **먼저 보여주는 것.**
+ *
+ * 영업이 직접 만든 딜은 아홉 칸이 전부 비어서 시작한다. 그 상태로 STEP02 에 들어오면
+ * **42문항짜리 벽**을 만나고 거기서 끝난다 — 실제 채택이 여기서 멈춘다.
+ *
+ * 이 시스템의 정상 경로는 **고객이 진단을 답하고 들어오는 것**이다. 영업이 42개를
+ * 대신 찍는 건 차선책이라, 화면이 그 순서를 먼저 말해야 한다.
+ */
+function readinessInviteMarkup() {
+  const link = `${location.origin}/readiness`;
+  return `<section class="rd-invite">
+    <div>
+      <b>아직 진단 응답이 없습니다.</b>
+      <p>이 딜은 <b>고객이 42문항을 답하면 저절로 채워집니다</b> — 축 점수·우선 개선 영역·
+         추천 후보가 한 번에 들어옵니다. 링크를 고객에게 보내주세요.</p>
+      <code>${escapeHtml(link)}</code>
+    </div>
+    <div class="rd-invite-actions">
+      <button type="button" id="copy-readiness-link" class="primary-button" data-link="${escapeHtml(link)}"><i data-lucide="link"></i> 링크 복사</button>
+      <a class="ghost-button" href="/readiness" target="_blank" rel="noopener"><i data-lucide="external-link"></i> 미리 보기</a>
+    </div>
+    <p class="field-note">미팅에서 직접 확인한 값이 있으면 아래 「직접 채우기」를 펼쳐 넣어도 됩니다.</p>
+  </section>`;
+}
+
 function renderReadinessQuestions() {
   const areas = asArray(state.refs.readinessAreas);
   const items = asArray(state.refs.readinessItems);
@@ -1322,12 +1368,19 @@ function renderReadinessGaps() {
 }
 
 function renderFqa() {
+  // 고객 응답이든 영업이 넣은 값이든, 하나라도 있으면 「채우는 중」이라 문항을 펼친다.
+  const answered = Object.keys(state.deal.readiness_scores || {}).length > 0;
   const trackOptions = state.refs.tracks.map((track) => `<option value="${track.id}" ${state.deal.track === track.id ? 'selected' : ''}>${track.id} · ${escapeHtml(track.name)}</option>`).join('');
-  return `${stageHeader('02', 'AI 준비도 진단', '6대 영역 42문항으로 고객의 현재 수준을 확인합니다. 고객이 포탈에서 답했으면 그 값이 들어와 있고, 아니면 여기서 함께 채웁니다.')}
+  return `${stageHeader('02', 'AI 준비도 진단', '6대 영역 42문항으로 고객의 현재 수준을 확인합니다. 고객이 진단 링크로 답하면 여기가 저절로 채워집니다.')}
     ${renderReadinessPanel()}
     <div class="field" style="margin-bottom:18px"><label for="deal-track">딜 트랙</label><select id="deal-track" ${disabledAttr()}><option value="">트랙 선택</option>${trackOptions}</select></div>
     ${renderReadinessGaps()}
-    <div class="rd-groups">${renderReadinessQuestions()}</div>`;
+    ${answered ? `<div class="rd-groups">${renderReadinessQuestions()}</div>`
+    // 응답이 없으면 42문항을 접는다. 펼쳐 두면 그게 「지금 할 일」로 보인다.
+    : `${readinessInviteMarkup()}
+      <details class="rd-manual"><summary>직접 채우기 <small>(42문항)</small></summary>
+        <div class="rd-groups">${renderReadinessQuestions()}</div>
+      </details>`}`;
 }
 
 
@@ -2946,6 +2999,10 @@ function bindStageEvents() {
   // 「근거 가져오기」 → 회의록 창을 열고 발췌를 기다린다.
   // 인계 산출물 셋 + 스냅샷. 규칙은 lib/handoff-doc.js 한 곳에 있다.
   $('#handoff-brief')?.addEventListener('click', () => exportHandoff());
+  $('#copy-readiness-link')?.addEventListener('click', async (event) => {
+    await navigator.clipboard.writeText(event.currentTarget.dataset.link);
+    toast('진단 링크를 복사했습니다. 고객에게 보내주세요.');
+  });
   $$('[data-pin-quote]').forEach((button) => button.addEventListener('click', () => {
     state.pinTarget = button.dataset.pinQuote;
     openNotesDialog();

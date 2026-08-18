@@ -631,3 +631,25 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
 .quality-table th[scope="row"] small { display: block; font-weight: 400; opacity: .55; margin-top: 2px; }
 .quality-table td { text-align: center; border-top: 1px solid rgba(255,255,255,.06); }
 .quality-radio { display: inline-flex; align-items: center; gap: 5px; padding: 8px; cursor: pointer; }
+
+
+/* 빈 딜의 STEP02 — 42문항 대신 먼저 보는 것 */
+.rd-invite { display: grid; grid-template-columns: 1fr auto; gap: 14px 18px; align-items: center;
+  margin: 18px 0; padding: 16px 18px; border-radius: 12px;
+  border: 1px solid rgba(96,165,250,.3); background: rgba(96,165,250,.07); }
+.rd-invite b { font-size: .95rem; }
+.rd-invite p { margin: 6px 0 8px; font-size: .84rem; line-height: 1.6; opacity: .85; }
+.rd-invite code { display: inline-block; padding: 3px 8px; border-radius: 6px;
+  background: rgba(0,0,0,.25); font-size: .78rem; }
+.rd-invite-actions { display: flex; flex-direction: column; gap: 8px; }
+.rd-invite .field-note { grid-column: 1 / -1; margin: 0; }
+/* 42문항은 접어 둔다. 펼쳐 두면 그게 「지금 할 일」로 보인다. */
+.rd-manual > summary { cursor: pointer; padding: 10px 0; font-weight: 650; font-size: .88rem; }
+.rd-manual > summary small { font-weight: 400; opacity: .6; }
+
+/* 읽기 전용 이유를 화면에 적는다 — 없으면 「고장 났나」로 읽힌다 */
+.readonly-banner { display: flex; align-items: center; gap: 9px; margin-bottom: 18px;
+  padding: 10px 13px; border-radius: 9px; font-size: .84rem;
+  border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); }
+.readonly-banner.claimable { border-color: rgba(212,164,56,.35); background: rgba(212,164,56,.08); }
+.readonly-banner svg { width: 16px; flex: none; opacity: .8; }
