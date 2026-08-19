@@ -720,6 +720,11 @@ input::placeholder, textarea::placeholder {
 .modal-card {
   width: 100%;
   max-width: 960px;
+  /* ⚠ 고정 크기다. max-height 만 있으면 탭마다 콘텐츠 길이대로 카드가 줄었다
+     늘었다 한다 — 짧은 탭(9. 가격)에서 작아졌다가 긴 탭(8. 영업팁)에서 커지면
+     같은 자리를 보는데도 매번 다시 눈을 맞춰야 한다. 긴 내용은 아래
+     tab-content-container 가 이미 세로 스크롤로 받는다. */
+  height: 85vh;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
@@ -735,6 +740,13 @@ input::placeholder, textarea::placeholder {
   position: absolute;
   top: 1.5rem;
   right: 1.5rem;
+  /* 크기를 명시한다 — 없으면 브라우저 기본 버튼 여백에 따라 폭이 흔들려서
+     옆 title-row 의 여유 공간을 얼마나 둬야 하는지 계산할 수가 없다. */
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: none;
   color: var(--text-secondary);
@@ -759,6 +771,11 @@ input::placeholder, textarea::placeholder {
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
+  /* 닫기 버튼이 모달 카드 기준 절대 위치(top/right 1.5rem, 32px)로 떠 있다.
+     이 줄은 카드 안쪽 패딩(2rem) 기준이라 오른쪽 끝이 닫기 버튼과 같은
+     구역을 침범한다 — Export 버튼이 거기서 겹쳐 보였다. 닫기 버튼의
+     inset(1.5rem) + 너비(32px) + 여유를 둔 만큼 오른쪽을 비운다. */
+  padding-right: calc(1.5rem + 32px + 0.75rem);
 }
 
 .modal-priority-badge {
