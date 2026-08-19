@@ -143,6 +143,21 @@
   const visualWidth = (text) => [...String(text)]
     .reduce((sum, ch) => sum + (/[\u1100-\u11ff\u2e80-\ua4cf\ua960-\ua97f\uac00-\ud7ff\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60]/.test(ch) ? 2 : 1), 0);
 
+  /**
+   * 지면 상수. **CSS 와 열 너비 계산이 같은 값을 봐야 한다.**
+   * 따로 두면 폰트를 키웠을 때 CSS 만 커지고 너비 계산은 옛 크기로 남아
+   * 머리글이 접힌다 — 실제로 그렇게 됐다.
+   */
+  const PAGE = Object.freeze({
+    widthMm: 210,      // A4
+    marginMm: 14,      // 좌·우
+    tablePt: 10.5,     // 표 글자 크기
+    cellPadMm: 2.6     // 칸 좌·우 안여백
+  });
+  const BODY_MM = PAGE.widthMm - PAGE.marginMm * 2;
+  /** visualWidth 한 단위(영숫자 한 글자)의 실제 폭. 1pt = 0.3528mm, 한글은 두 단위다. */
+  const UNIT_MM = (PAGE.tablePt * 0.3528) / 2;
+
   function columnWidths(rows) {
     const columns = Math.max(...rows.map((r) => r.length));
     const weights = [];
@@ -156,7 +171,13 @@
         : 0;
       weights.push(Math.max(head, avg, 2));
     }
-    const MIN = 6;
+    // ⚠ 최소 너비를 하나로 정하면 안 된다. 「양호」 같은 두 글자 머리글이 들어가는
+    //    폭과 「패키지」가 들어가는 폭이 다르다. **열마다 자기 머리글만큼**을 바닥으로 둔다.
+    // 글자 폭은 서체마다 달라 근사치다. 딱 맞게 주면 반올림이나 서체 차이 한 번에
+    // 접힌다 — 한 글자만큼 여유를 둔다.
+    const floors = rows[0].map((cell) =>
+      (((visualWidth(cell) + 1) * UNIT_MM + PAGE.cellPadMm * 2) / BODY_MM) * 100);
+    const MIN = (i) => Math.max(6, floors[i] || 6);
     const MAX = 55;
     const total = weights.reduce((a2, b2) => a2 + b2, 0) || 1;
     let pct = weights.map((w) => (w / total) * 100);
@@ -164,10 +185,10 @@
     // 조인 뒤 다시 정규화하면 조였던 값이 한계를 도로 넘는다. 한계에 걸린 열은
     // 고정해 두고 남은 몫만 나머지 열에 나눠 몇 번 수렴시킨다.
     for (let pass = 0; pass < 4; pass += 1) {
-      pct = pct.map((w) => Math.min(MAX, Math.max(MIN, w)));
+      pct = pct.map((w, i) => Math.min(MAX, Math.max(MIN(i), w)));
       const sum = pct.reduce((a2, b2) => a2 + b2, 0);
       if (Math.abs(sum - 100) < 0.05) break;
-      const free = pct.map((w) => w > MIN && w < MAX);
+      const free = pct.map((w, i) => w > MIN(i) && w < MAX);
       const freeSum = pct.reduce((acc, w, i) => acc + (free[i] ? w : 0), 0);
       if (!freeSum) break;
       const delta = 100 - sum;
@@ -402,63 +423,63 @@
    *   ③ **끊기면 안 되는 것을 묶는다.** 제목 뒤 첫 줄, 표 행, 인용 한 덩이
    */
   const PRINT_CSS = `
-    @page { size: A4; margin: 16mm 14mm 14mm; }
+    @page { size: A4; margin: 16mm ${PAGE.marginMm}mm 14mm; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body { font-family: "Pretendard","맑은 고딕","Malgun Gothic",sans-serif;
-           font-size: 10.5pt; line-height: 1.65; color: #16181d; margin: 0;
+           font-size: 11.5pt; line-height: 1.7; color: #14161a; margin: 0;
            word-break: keep-all; }
 
     /* ── 문서 머리 ── 제목과 첫 메타 표를 한 덩이로 묶는다 */
-    h1 { font-size: 20pt; line-height: 1.25; margin: 0 0 3mm; letter-spacing: -.02em;
-         padding-bottom: 3mm; border-bottom: 2px solid #16181d; }
+    h1 { font-size: 21pt; line-height: 1.25; margin: 0 0 3mm; letter-spacing: -.02em;
+         padding-bottom: 3mm; border-bottom: 2px solid #14161a; }
     /* ⚠ 이 표는 머리글 줄이 없는 표다 — <th> 가 아예 안 생긴다.
        th 셀렉터로 잡으면 아무 일도 안 일어난다. 첫 칸을 자리로 잡는다.
        너비는 colgroup 이 이미 정한다(table-layout: fixed) — 여기서 또 주지 않는다. */
     h1 + table { margin-top: 0; }
-    h1 + table td { border: 0; border-bottom: 1px solid #eceef2;
-         padding: 1.4mm 0; font-size: 9.5pt; }
-    h1 + table td:first-child { color: #6b7280; font-weight: 600; }
+    h1 + table td { border: 0; border-bottom: 1px solid #e3e6ec;
+         padding: 1.7mm 0; font-size: 10.5pt; }
+    h1 + table td:first-child { color: #4b5563; font-weight: 600; }
 
-    h2 { font-size: 13pt; margin: 8mm 0 2.5mm; padding-bottom: 1.5mm;
-         border-bottom: 1px solid #d8dbe2; letter-spacing: -.01em; }
-    h3 { font-size: 11.5pt; margin: 5mm 0 1.5mm; letter-spacing: -.01em; }
+    h2 { font-size: 14.5pt; margin: 8mm 0 2.8mm; padding-bottom: 1.6mm;
+         border-bottom: 1px solid #c9ced8; letter-spacing: -.01em; }
+    h3 { font-size: 12.5pt; margin: 5.5mm 0 1.8mm; letter-spacing: -.01em; }
     p { margin: 0 0 2.5mm; }
     ul { margin: 0 0 3mm; padding-left: 5mm; }
     li { margin-bottom: 1mm; }
-    li::marker { color: #9aa2ad; }
+    li::marker { color: #6b7280; }
     hr { border: 0; border-top: 1px solid #e3e6ec; margin: 6mm 0; }
     strong { font-weight: 700; }
-    em { font-style: normal; color: #6b7280; }
+    em { font-style: normal; color: #4b5563; }
 
     /* ── 상태 배지 ── 인계 브리프의 시각적 핵심. 흑백에서도 읽히게 테두리를 준다 */
-    code { display: inline-block; padding: .4mm 1.6mm; border-radius: 2px;
-           border: 1px solid #c9ced8; background: #f3f5f8;
-           font-family: inherit; font-size: 8.8pt; font-weight: 700;
+    code { display: inline-block; padding: .5mm 1.8mm; border-radius: 2px;
+           border: 1px solid #a8b0bd; background: #eef1f6; color: #24282e;
+           font-family: inherit; font-size: 10pt; font-weight: 700;
            letter-spacing: -.01em; white-space: nowrap; }
 
     /* ── 기밀 표시 ── 「고객에게 주지 마세요」가 표 안 한 줄이면 인쇄해서 섞였을 때
        못 알아본다. 사방 테두리로 본문에서 떼어 낸다. 흑백으로 뽑아도 테두리와
        굵기로 읽히고, 배경색은 print-color-adjust 로 지켜진다. */
-    .confidential { margin: 0 0 4mm; padding: 2.6mm 3.5mm; font-size: 9.8pt;
-                    border: 1px solid #b4413c; border-left-width: 3px;
-                    background: #fdf5f4; color: #7d2b27; break-inside: avoid; }
+    .confidential { margin: 0 0 4mm; padding: 2.8mm 3.6mm; font-size: 10.8pt;
+                    border: 1px solid #b4413c; border-left-width: 4px;
+                    background: #fdf3f2; color: #6f2622; break-inside: avoid; }
     .confidential strong { color: #9c322d; }
 
     /* ── 인용 ── 회의록 발췌와 문서 안내가 이걸로 들어온다 */
-    blockquote { margin: 0 0 3mm; padding: 2mm 0 2mm 4mm;
-                 border-left: 2px solid #b9c0cb; color: #43474e; font-size: 9.8pt;
+    blockquote { margin: 0 0 3mm; padding: 2mm 0 2mm 4.5mm;
+                 border-left: 3px solid #a8b0bd; color: #333940; font-size: 10.8pt;
                  break-inside: avoid; }
 
     /* table-layout: fixed 가 colgroup 너비를 실제로 강제한다. 없으면 브라우저가
        내용 길이로 다시 계산해 89자짜리 칸이 표를 A4 밖으로 밀어낸다. */
     table { width: 100%; table-layout: fixed; border-collapse: collapse;
-            margin: 0 0 4mm; font-size: 9.5pt; }
-    th, td { border: 1px solid #ccd0d8; padding: 1.8mm 2.5mm; text-align: left;
+            margin: 0 0 4mm; font-size: ${PAGE.tablePt}pt; }
+    th, td { border: 1px solid #b9c0cb; padding: 2mm ${PAGE.cellPadMm}mm; text-align: left;
              vertical-align: top;
              /* 한국어는 단어 안에서 끊지 않는 편이 읽기 좋다. 띄어쓰기 없는 긴
                 토큰만 예외적으로 끊는다. */
              word-break: keep-all; overflow-wrap: anywhere; }
-    th { background: #f3f5f8; font-weight: 700; }
+    th { background: #eef1f6; font-weight: 700; }
     /* 구분 행의 콜론이 지정한 정렬. 숫자 열은 자릿수가 세로로 맞아야 읽힌다 —
        tabular-nums 가 없으면 1 과 8 의 폭이 달라 금액이 들쭉날쭉해진다. */
     th.c, td.c { text-align: center; }
@@ -481,11 +502,11 @@
     /* ⚠ 세로형 락업(심볼 위 · 워드마크 아래)이라 7mm 로는 글자가 2mm 도 안 돼
        안 읽힌다. 12mm 로 잡아야 「MEGAZONE CLOUD」가 인쇄에서 보인다. */
     .brand img { height: 12mm; width: auto; }
-    .brand span { font-size: 8.5pt; color: #8b929c; letter-spacing: .04em; }
+    .brand span { font-size: 9pt; color: #6b7280; letter-spacing: .04em; }
 
     /* ── 꼬리 ── 인쇄물에는 안 나온다. 화면에서만 저장 방법을 알려준다 */
-    .hint { margin-top: 8mm; padding-top: 3mm; border-top: 1px solid #e3e6ec;
-            font-size: 8.5pt; color: #6b7280; }
+    .hint { margin-top: 8mm; padding-top: 3mm; border-top: 1px solid #d8dbe2;
+            font-size: 9pt; color: #4b5563; }
     @media print { .hint { display: none; } }`;
 
   function openPrint(title, markdown) {
@@ -536,6 +557,9 @@
     },
     pdf(title, markdown) {
       openPrint(title, markdown);
-    }
+    },
+    /** 인쇄 미리보기와 검사가 **실제로 쓰이는 것과 같은** CSS 를 보게 한다. */
+    printCss: PRINT_CSS,
+    page: PAGE
   };
 })(window);

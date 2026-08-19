@@ -30,12 +30,6 @@ function loadReport() {
   return sandbox.IssuReport;
 }
 
-/** PRINT_CSS 는 export 되지 않는다 — 소스에서 그대로 꺼낸다. 베끼지 않는다. */
-function printCss() {
-  const source = fs.readFileSync(path.join(root, 'report.js'), 'utf8');
-  return source.match(/const PRINT_CSS = `([\s\S]*?)`;/)[1];
-}
-
 // ── 표본 딜 ────────────────────────────────────────────────────────────────
 // 실제 값이 아니다. **모양을 보기 위한 것**이라 빈칸과 찬칸이 섞여 있어야 한다 —
 // 전부 채우면 「아직 확인되지 않았습니다」가 어떻게 보이는지 못 본다.
@@ -76,9 +70,10 @@ function main() {
   // 로고는 file:// 로 열리므로 저장소 안의 실제 파일을 상대 경로로 건다.
   const logo = path.relative(path.dirname(out), path.join(root, 'assets/megazone-cloud.png'));
   const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8">`
-    + `<title>인쇄 미리보기 — 배포 인계</title><style>${printCss()}</style>`
-    // 화면에서 A4 폭을 눈으로 가늠할 수 있게 한다. @page 는 인쇄에만 걸린다.
-    + `<style>@media screen { body { max-width: 182mm; margin: 12mm auto; padding: 0 4mm; } }</style>`
+    + `<title>인쇄 미리보기 — 배포 인계</title><style>${R.printCss}</style>`
+    // 화면에서 A4 본문 폭을 눈으로 가늠할 수 있게 한다. @page 는 인쇄에만 걸린다.
+    + `<style>@media screen { body { max-width: ${R.page.widthMm - R.page.marginMm * 2}mm;`
+    + ` margin: 12mm auto; padding: 0 4mm; } }</style>`
     + `</head><body>`
     + `<div class="brand"><img src="${logo}" alt="메가존클라우드" onerror="this.remove()">`
     + `<span>${CTX.today}</span></div>`

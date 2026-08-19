@@ -261,7 +261,7 @@ test('인쇄 CSS 가 배경색을 지키고 색에만 기대지 않는다', () =
   const badge = source.slice(source.indexOf('code { display: inline-block'));
   assert.match(badge.slice(0, 300), /border: 1px solid/);
   // 인용은 왼쪽 막대로 구분한다.
-  assert.ok(/blockquote \{[^}]*border-left: 2px solid/.test(source), '인용 막대가 없다');
+  assert.ok(/blockquote \{[^}]*border-left: [\d.]+px solid/.test(source), '인용 막대가 없다');
 });
 
 test('고객이 받는 문서에 어디서 온 것인지가 있다', () => {
@@ -340,7 +340,7 @@ test('인쇄 CSS 에 대상 없는 규칙이 없다', () => {
   const R = loadReport().IssuReport;
   const rendered = [...realDocs(), quoteTable()].map((md) => R.toHtml(md)).join('\n');
 
-  const css = read('report.js').match(/const PRINT_CSS = `([\s\S]*?)`;/)[1];
+  const css = R.printCss;
   const selectors = new Set();
   css.replace(/\/\*[\s\S]*?\*\//g, '').split('}').forEach((chunk) => {
     const brace = chunk.indexOf('{');
@@ -464,23 +464,34 @@ test('한글 머리글이 두 줄로 접히지 않을 만큼 열을 준다', () 
   /**
    * `.length` 로 열 너비를 잡으면 「기준MD」(4자)가 「Billing」(7자)보다 좁게 잡힌다.
    * 실제로는 한글이 두 배 넓어서 머리글이 접혔다 — 무슨 열인지 못 읽는다.
+   *
+   * ⚠ 기준값을 여기 적어 두지 않는다. **CSS 에서 읽는다.** 폰트를 키우면 필요한
+   *   자리도 같이 커지는데, 상수를 박아 두면 검사만 옛 크기를 지킨다.
    */
   const R = loadReport().IssuReport;
-  const html = R.toHtml(quoteTable());
-  const widths = [...html.matchAll(/width:([\d.]+)%/g)].map((m) => Number(m[1]));
-  const headers = [...html.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map((m) => m[1]);
-  assert.equal(widths.length, headers.length);
+  const { widthMm, marginMm, tablePt, cellPadMm } = R.page;
+  const bodyMm = widthMm - marginMm * 2;
+  const roomOf = (pct) => (bodyMm * pct) / 100 - cellPadMm * 2;
+  const cjkMm = tablePt * 0.3528;                    // 1pt = 0.3528mm · 한글은 한 칸을 꽉 쓴다
+  const widthOf = (text) => [...text].reduce((sum, ch) =>
+    sum + (/[가-힣ㄱ-ㅎ]/.test(ch) ? cjkMm : /\s/.test(ch) ? cjkMm * 0.35 : cjkMm * 0.55), 0);
 
-  const BODY_MM = 182;          // A4 210 − 좌우 여백 28
-  const PADDING_MM = 5;         // 칸 좌우 2.5mm
-  const CJK_MM = 3.35;          // 9.5pt 기준 대략치
-  const LATIN_MM = 1.9;
-  headers.forEach((text, i) => {
-    const room = (BODY_MM * widths[i]) / 100 - PADDING_MM;
-    const need = [...text].reduce((sum, ch) =>
-      sum + (/[가-힣]/.test(ch) ? CJK_MM : /\s/.test(ch) ? 1.2 : LATIN_MM), 0);
-    assert.ok(need <= room, `머리글 「${text}」 가 접힌다 — 자리 ${room.toFixed(1)}mm < 필요 ${need.toFixed(1)}mm`);
-  });
+  for (const md of [...realDocs(), quoteTable()]) {
+    const html = R.toHtml(md);
+    for (const table of html.match(/<table>[\s\S]*?<\/table>/g) || []) {
+      const widths = [...table.matchAll(/width:([\d.]+)%/g)].map((m) => Number(m[1]));
+      const headers = [...table.matchAll(/<th[^>]*>(.*?)<\/th>/g)]
+        .map((m) => m[1].replace(/<[^>]+>/g, ''));
+      if (!headers.length) continue;
+      assert.equal(widths.length, headers.length);
+      headers.forEach((text, i) => {
+        const room = roomOf(widths[i]);
+        const need = widthOf(text);
+        assert.ok(need <= room,
+          `머리글 「${text}」 가 접힌다 — 자리 ${room.toFixed(1)}mm < 필요 ${need.toFixed(1)}mm`);
+      });
+    }
+  }
 });
 
 test('정렬이 Word 로도 간다', () => {
