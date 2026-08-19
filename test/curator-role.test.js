@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * curator(ISSU) 역할의 경계를 고정한다.
+ * curator(ISV BU) 역할의 경계를 고정한다.
  *
  * curator 는 카탈로그를 편집하되 회원 승인·실단가 확정·롤백은 못 한다. 이 경계가
  * 프론트 숨김이 아니라 서버 미들웨어와 필드 단위 가드로 서 있는지 검사한다.
@@ -76,7 +76,7 @@ test('가격 필드는 admin 만 바꾼다 — 세 경로 전부 막혀 있다',
 });
 
 test('내부 본문(opinion·sections_internal)은 curator 에게 열려 있다', () => {
-  // ISSU 가 등록할 때 마진 코멘트까지 한 번에 쓰도록 열기로 결정했다.
+  // ISV BU 가 등록할 때 마진 코멘트까지 한 번에 쓰도록 열기로 결정했다.
   // 042 로 COMMON 에도 선택 컬럼(list_price)이 생겨 목록이 필터를 거친다.
   // viewer 가 ADMIN_ONLY 를 못 받는다는 규약은 그대로다.
   assert.match(source, /if \(!isCatalogEditor\(\{ role \}\)\) return common;/);

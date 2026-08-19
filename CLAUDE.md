@@ -1,4 +1,4 @@
-# ISSU AI Radar
+# ISV BU AI Radar
 
 영업 인에이블먼트 SaaS. Node/Express + Postgres(Supabase) · 빌드 없는 바닐라 JS · 한국어.
 `npm run mock` 으로 DB 없이 화면을 띄운다(`127.0.0.1:4173`).

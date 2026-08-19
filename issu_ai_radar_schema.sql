@@ -1,5 +1,5 @@
 -- =====================================================================
--- ISSU AI Radar — Supabase schema (DDL)
+-- ISV BU AI Radar — Supabase schema (DDL)
 -- 실행: Supabase 대시보드 > SQL Editor 에 붙여넣고 실행
 -- 순서: 1) 이 schema.sql  →  2) seed.sql (솔루션 데이터)
 -- =====================================================================

@@ -82,7 +82,7 @@ function getCookieHeader(response) {
 
 async function runTests() {
   console.log('==================================================');
-  console.log(' Starting ISSU AI Radar Backend API Verification...');
+  console.log(' Starting ISV BU AI Radar Backend API Verification...');
   console.log('==================================================');
 
   let testCount = 0;

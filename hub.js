@@ -725,7 +725,7 @@ function renderStage() {
 
 function disabledAttr() { return isOwner() ? '' : 'disabled'; }
 
-/** 카탈로그를 손보는 사람(ISSU·관리자). 보강 신호는 이 사람들만 본다. */
+/** 카탈로그를 손보는 사람(ISV BU·관리자). 보강 신호는 이 사람들만 본다. */
 function isCatalogEditor() { return ['admin', 'curator'].includes(state.user?.role); }
 
 /** 추천 후보가 될 최소 조건. 이게 없으면 근거를 댈 수 없다. */
@@ -1705,7 +1705,7 @@ function renderSolutions() {
   // 판정 데이터가 없는 솔루션은 영업에게 감춘다. 콘텐츠가 껍데기라 골라도 근거를
   // 댈 수 없고, 추천에도 안 잡혀 "왜 여기 있나" 혼란만 준다.
   // 이미 조합에 들어간 것은 남긴다 — 눈앞에서 사라지면 그게 더 혼란스럽다.
-  // ISSU·관리자에게는 전부 보인다(보강 대상을 봐야 하므로).
+  // ISV BU·관리자에게는 전부 보인다(보강 대상을 봐야 하므로).
   const visible = state.refs.solutions.filter((solution) =>
     isCatalogEditor() || selected.has(solution.id) || hasJudgementData(solution));
   const filtered = visible.filter((solution) => `${solution.name} ${solution.category} ${solution.jtbd}`.toLowerCase().includes(query));

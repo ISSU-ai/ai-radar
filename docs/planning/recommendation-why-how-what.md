@@ -42,7 +42,7 @@ ISV 라이선스는 재판매 마진이 거의 없다. 수익은 MZC 의 SI·MSP
       ▼
 딜 (source=portal, 미배정)  ──claim──▶  STEP 02 에서 영업이 취합·수정
                                               │
-ISSU 카탈로그 ─ 판정 데이터 ──────────────────┤
+ISV BU 카탈로그 ─ 판정 데이터 ──────────────────┤
   slot · fqa_coverage · prerequisites          ▼
   red_flags · bundle_potential            추천 엔진 ──▶ STEP 03
   패키지 role · readiness_lift                  │

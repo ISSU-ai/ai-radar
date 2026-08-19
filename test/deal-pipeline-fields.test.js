@@ -380,8 +380,8 @@ test('솔루션 조사 서식이 admin 폼·마이그레이션에서 항목을 �
   // 조사자에게 JSON 을 쓰게 하지 않는다
   assert.match(gen, /평문으로/);
   // 내부 분류 체계는 조사자가 못 채운다 — 표시해 두지 않으면 빈 칸인지 모르는 칸인지 갈린다
-  assert.ok((gen.match(/\[ISSU 분류\]/g) || []).length >= 10, '내부 분류 칸 표시가 빠졌다');
-  assert.match(gen, /비워두시면 ISSU 가 채웁니다/);
+  assert.ok((gen.match(/\[ISV BU 분류\]/g) || []).length >= 10, '내부 분류 칸 표시가 빠졌다');
+  assert.match(gen, /비워두시면 ISV BU 가 채웁니다/);
   assert.ok(!/kind":"fqa|"signal":/.test(gen), 'JSON 예시를 조사 서식에 넣었다');
 });
 

@@ -1,4 +1,4 @@
-# ISSU AI Radar + Enablement Hub
+# ISV BU AI Radar + Enablement Hub
 
 외부 고객용 Offering 포탈과 내부 영업용 Deal Hub·AI Radar·관리자 기능을 하나의 Supabase 데이터 흐름으로 연결한 Node.js 애플리케이션입니다.
 

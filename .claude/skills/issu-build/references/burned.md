@@ -36,7 +36,7 @@ lsof -ti:4173 | xargs kill 2>/dev/null
 ## 검사가 주석에 걸린 다섯 번
 
 `change.operation` · `customer_contact` · `readiness_offering_weights` · `unit_price` ·
-`ISSU 분류` — 전부 **주석이 그 단어를 설명하고 있을 뿐**인데 검사가 실패했다.
+`ISV BU 분류` — 전부 **주석이 그 단어를 설명하고 있을 뿐**인데 검사가 실패했다.
 주석 줄을 걷어내고 실제 코드 참조 형태로 좁힌다. → `testing.md`
 
 그리고 반대 방향도 있었다 — 어드민 커버리지 편집기가 **엔진이 못 읽는 모양으로

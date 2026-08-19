@@ -227,7 +227,7 @@ test('처방문에 제품·오퍼링 이름이 없다', () => {
 test('처방과 오퍼링을 가른다', () => {
   const routes = fs.readFileSync(path.join(__dirname, '..', 'routes', 'hub.js'), 'utf8');
   // 축→패키지는 이미 DB 에 있는 readiness_coverage 를 읽는다.
-  // readiness_offering_weights(ISSU 검토 병목)를 기다리지 않는다.
+  // readiness_offering_weights(ISV BU 검토 병목)를 기다리지 않는다.
   assert.match(routes, /const coveringPackages = async/);
   assert.match(routes, /hasColumn\('packages', 'readiness_coverage'\)/);
   // 주석으로 「기다리지 않는다」를 적는 건 괜찮다. 실제 조회만 막는다.

@@ -615,8 +615,8 @@ const mockSolutions = [
 app.get('/api/auth/me', (_req, res) => res.json({ user }));
 app.post('/api/auth/logout', (_req, res) => res.json({ message: 'ok' }));
 app.get('/api/admin/slots', (_req, res) => res.json(mockSlots));
-app.get('/api/admin/focal-contacts', (_req, res) => res.json([{ id: 'f1', name: '박포컬', org: 'ISSU' }]));
-app.get('/api/admin/profiles', (_req, res) => res.json([{ id: user.id, email: user.email, full_name: user.name, team: 'ISSU', role: 'admin', approved: true }]));
+app.get('/api/admin/focal-contacts', (_req, res) => res.json([{ id: 'f1', name: '박포컬', org: 'ISV BU' }]));
+app.get('/api/admin/profiles', (_req, res) => res.json([{ id: user.id, email: user.email, full_name: user.name, team: 'ISV BU', role: 'admin', approved: true }]));
 app.get('/api/admin/packages', (_req, res) => res.json(refs.packages.map((p) => ({ ...p, base_md: 20, unit_price: 0, price_is_placeholder: true }))));
 /**
  * 레퍼런스·사례 (047). 목업은 메모리에 둔다.

@@ -1,4 +1,4 @@
--- Production release hardening for the ISSU AI Radar / Enablement Hub.
+-- Production release hardening for the ISV BU AI Radar / Enablement Hub.
 -- Run after 001_enablement_hub.sql.
 
 begin;

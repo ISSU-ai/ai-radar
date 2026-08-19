@@ -1,4 +1,4 @@
--- ISSU Enablement Hub / AI Radar extension
+-- ISV BU Enablement Hub / AI Radar extension
 -- Target: Supabase PostgreSQL (run after issu_ai_radar_schema.sql)
 
 begin;

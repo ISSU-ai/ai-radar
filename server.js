@@ -477,7 +477,7 @@ const authenticateToken = async (req, res, next) => {
 
 // 역할 정의.
 //   viewer  영업(hub 사용자) — 딜 작업 + 추천 소비 + 카탈로그 읽기
-//   curator ISSU — 솔루션 등록·수정·발행, 내부 본문(opinion/sections_internal) 편집
+//   curator ISV BU — 솔루션 등록·수정·발행, 내부 본문(opinion/sections_internal) 편집
 //   admin   시스템 관리 — 위 전부 + 회원 승인 + 실단가 확정 + 롤백
 // 가격·회원·롤백을 curator 에서 뺀 이유: ISV 담당자에게 계정 승인 권한까지 주는 것은 과하다.
 const CATALOG_EDITOR_ROLES = Object.freeze(['admin', 'curator']);
@@ -1393,7 +1393,7 @@ app.patch('/api/admin/profiles/:id', authenticateToken, adminOnly, async (req, r
  *   nodata 판정 데이터가 없어 빠짐    → 보강 우선순위 (딜에서 걸린 횟수 순)
  */
 /**
- * 레퍼런스·사례 (047). 편집은 카탈로그 편집자(ISSU·admin)만.
+ * 레퍼런스·사례 (047). 편집은 카탈로그 편집자(ISV BU·admin)만.
  *
  * ⚠ 목록 응답에는 실명을 그대로 준다 — 여기는 /admin 이고 승인 여부를 눈으로 봐야
  *   관리가 된다. **고객 문서로 나가는 경로는 routes/hub.js 의 matchCaseStudies 이고,
@@ -2010,7 +2010,7 @@ app.use((req, res) => {
 // Start server
 const server = app.listen(PORT, () => {
   console.log(`====================================================`);
-  console.log(` ISSU AI Radar Server running on http://localhost:${PORT}`);
+  console.log(` ISV BU AI Radar Server running on http://localhost:${PORT}`);
   console.log(` APP_SURFACE: ${APP_SURFACE}`);
   console.log(` OPINION_EXPOSE_POLICY: ${OPINION_EXPOSE_POLICY}`);
   console.log(` BUILD: ${BUILD_VERSION}  (started ${STARTED_AT})`);

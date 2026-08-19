@@ -76,7 +76,7 @@ test('admin 에 리포트 탭이 있고 curator 도 본다', () => {
   assert.match(adminHtml, /data-tab="reco-report"/);
   assert.match(adminHtml, /id="tab-admin-reco-report"/);
   assert.match(adminHtml, /function loadRecoReport/);
-  // 콘텐츠 보강 우선순위라 ISSU(curator)가 봐야 한다 — data-role-admin 이 없어야 한다.
+  // 콘텐츠 보강 우선순위라 ISV BU(curator)가 봐야 한다 — data-role-admin 이 없어야 한다.
   // 해당 <button> 요소만 잘라낸다(앞 버튼까지 걸치면 오탐이 난다).
   const marker = adminHtml.indexOf('data-tab="reco-report"');
   const tabButton = adminHtml.slice(adminHtml.lastIndexOf('<button', marker),

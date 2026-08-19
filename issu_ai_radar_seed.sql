@@ -1,5 +1,5 @@
 -- =====================================================================
--- ISSU AI Radar — seed: solutions (generated from isv_data.js)
+-- ISV BU AI Radar — seed: solutions (generated from isv_data.js)
 -- 실행: schema.sql 이후 SQL Editor 에 붙여넣어 실행
 -- 재실행 안전: on conflict (slug) do nothing
 -- =====================================================================

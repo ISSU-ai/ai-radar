@@ -167,7 +167,7 @@ test('bundle_potential 은 1~3 이다', () => {
 });
 
 test('012 는 apply-migrations 자동 실행 대상이 아니다', () => {
-  // ISSU 가 /admin 에서 수정한 값을 재실행으로 덮어쓰면 안 된다.
+  // ISV BU 가 /admin 에서 수정한 값을 재실행으로 덮어쓰면 안 된다.
   const applyScript = fs.readFileSync(path.join(root, 'scripts', 'apply-migrations.js'), 'utf8');
   assert.doesNotMatch(applyScript, /012_seed_recommendation_rules/);
 });

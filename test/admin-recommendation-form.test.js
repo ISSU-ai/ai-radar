@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * 판정 데이터 입력 폼(2-2b). ISSU 가 slot·assessment_coverage·prerequisites·red_flags 를
+ * 판정 데이터 입력 폼(2-2b). ISV BU 가 slot·assessment_coverage·prerequisites·red_flags 를
  * 화면에서 넣을 수 있어야 등록이 성립한다. API 만 있으면 아무도 못 쓴다.
  *
  * 폼 필드와 저장 payload, 서버의 저장 경로가 서로 어긋나면 값이 조용히 사라진다 —
@@ -28,7 +28,7 @@ test('판정 데이터 입력 요소가 전부 있다', () => {
 
 test('폼이 슬롯 목록을 서버에서 받아 채운다', () => {
   assert.match(adminHtml, /fetch\('\/api\/admin\/slots'\)/);
-  // 후보 수와 경쟁 여부를 같이 보여줘야 ISSU 가 빈 슬롯을 안다.
+  // 후보 수와 경쟁 여부를 같이 보여줘야 ISV BU 가 빈 슬롯을 안다.
   assert.match(adminHtml, /후보 \$\{slot\.candidates\}종/);
   assert.match(serverSource, /app\.get\('\/api\/admin\/slots', authenticateToken, catalogEditorOnly/);
 });

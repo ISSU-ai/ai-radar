@@ -1,7 +1,7 @@
 {
   "name": "issu-ai-radar",
   "version": "1.0.0",
-  "description": "ISSU AI Radar GTM Portal",
+  "description": "ISV BU AI Radar GTM Portal",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

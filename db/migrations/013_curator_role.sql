@@ -1,11 +1,11 @@
--- curator 역할 추가 — ISSU(ISV 담당부서)가 카탈로그를 직접 관리하기 위한 역할.
+-- curator 역할 추가 — ISV BU(ISV 담당부서)가 카탈로그를 직접 관리하기 위한 역할.
 -- Run after 012. Apply in the Supabase SQL Editor (dfbx).
 --
--- 지금까지 역할은 admin|viewer 둘뿐이라, ISSU 담당자에게 카탈로그 편집을 주려면
+-- 지금까지 역할은 admin|viewer 둘뿐이라, ISV BU 담당자에게 카탈로그 편집을 주려면
 -- admin 을 줘야 했다. admin 은 회원 승인·실단가 확정·롤백까지 가능해 과하다.
 --
 --   viewer   영업 전원. hub 딜 작업 + 추천 소비 + 카탈로그 읽기
---   curator  ISSU. 솔루션 등록·수정·발행, 판정 데이터 입력, 내부 본문(opinion/
+--   curator  ISV BU. 솔루션 등록·수정·발행, 판정 데이터 입력, 내부 본문(opinion/
 --            sections_internal) 열람·편집. 회원 승인·실단가 확정·롤백은 불가
 --   admin    시스템 관리. 전부
 --
@@ -18,7 +18,7 @@ alter type app_role add value if not exists 'curator';
 
 begin;
 
-comment on type app_role is 'viewer=영업(hub 사용자) / curator=ISSU 카탈로그 관리 / admin=시스템 관리';
+comment on type app_role is 'viewer=영업(hub 사용자) / curator=ISV BU 카탈로그 관리 / admin=시스템 관리';
 
 -- RLS 정책 중 role='admin' 을 직접 보는 것이 있으면 curator 도 통과시켜야 한다.
 -- 앱은 postgres 풀(owner)로 접근해 RLS 를 우회하므로 런타임 영향은 없지만,

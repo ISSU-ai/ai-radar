@@ -15,7 +15,7 @@
 --   POC          → B 개발환경 + D 업무문제 (검증 성격이라 강도 2)
 --
 -- ISV 와 달리 패키지에는 prerequisites 를 넣지 않는다. MZC 가 직접 수행하는 서비스라
--- 고객 환경 전제 조건이 ISV 만큼 강하지 않다. 필요해지면 ISSU 가 /admin 에서 추가한다.
+-- 고객 환경 전제 조건이 ISV 만큼 강하지 않다. 필요해지면 ISV BU 가 /admin 에서 추가한다.
 -- 012 와 마찬가지로 1회성 시드다 — apply-migrations.js 에 넣지 않는다.
 
 begin;

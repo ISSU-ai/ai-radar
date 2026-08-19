@@ -100,7 +100,7 @@ node scripts/build-pending-sql.js          # db/migrations/_combined_apply.sql �
 |---|---|
 | `010` | 추천 엔진 스키마 — `solution_slots`, `fqa_coverage`, `prerequisites`, `red_flags`, `recommendation_config` |
 | `011` | 슬롯 23개 시드 + 22종 배정 + **레이어 정정 4건**(Zscaler·Check Point L1→L4, FollowerRabbit L2→L4, Tigergraph L4→L0) |
-| `012` | 상세 작성 9종의 판정 데이터 (**1회성 시드** — 재실행하면 ISSU 수정본을 덮어씀) |
+| `012` | 상세 작성 9종의 판정 데이터 (**1회성 시드** — 재실행하면 ISV BU 수정본을 덮어씀) |
 | `013` | `curator` 역할 추가 |
 
 실행 후 각 구간 끝의 검증 쿼리 결과를 확인합니다.
@@ -129,7 +129,7 @@ curl -s https://<host>/healthz
 ### 3. Render Blueprint 연결
 
 1. Render Dashboard에서 **New > Blueprint**를 선택합니다.
-2. GitHub의 `ISSU-ai/ai-radar` 저장소를 연결하고 `render.yaml`을 선택합니다.
+2. GitHub의 `ISV BU-ai/ai-radar` 저장소를 연결하고 `render.yaml`을 선택합니다.
 3. 아래 세 서비스가 생성되는지 확인합니다.
    - `issu-ai-radar-offering` (`APP_SURFACE=offering`)
    - `issu-ai-radar-hub` (`APP_SURFACE=hub`)

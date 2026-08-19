@@ -321,7 +321,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
    *   그 아래 따로 붙인다.
    *
    * 038 이 심은 packages.readiness_coverage 를 그대로 읽는다 — 6축을 전부 덮으므로
-   * ISSU 가중치 검토(readiness_offering_weights)를 기다릴 필요가 없다.
+   * ISV BU 가중치 검토(readiness_offering_weights)를 기다릴 필요가 없다.
    * 가격은 싣지 않는다. 공개 화면이고 단가는 아직 미정이다.
    */
   const coveringPackages = async (axes) => {
@@ -735,7 +735,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
    * 입력으로 쓰므로 상세와 같은 수준의 보호가 필요하다.
    *
    * 판정 데이터가 없는 후보는 조용히 빠지지 않고 "판정 데이터 미입력" 사유로 제외
-   * 목록에 남는다. 영업에게는 "안 맞아서 제외"와 구분돼야 하고, ISSU 에게는 어떤
+   * 목록에 남는다. 영업에게는 "안 맞아서 제외"와 구분돼야 하고, ISV BU 에게는 어떤
    * 솔루션을 먼저 채워야 하는지 신호가 된다.
    */
   router.get('/deals/:id/recommendations', async (req, res) => {

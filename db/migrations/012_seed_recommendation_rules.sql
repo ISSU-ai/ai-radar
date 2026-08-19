@@ -3,8 +3,8 @@
 --
 -- ⚠ 이 파일의 값은 sections §3.1 / §7.1 / §7.3 에서 뽑은 **초안**이다.
 --   원문은 PreSales 가 작성한 산문이고, 여기 구조화한 것은 그 해석이다.
---   ISSU(ISV 담당부서)가 /admin 에서 검토·수정하는 것을 전제로 한다.
---   on conflict 없이 직접 update 하므로, ISSU 가 수정한 뒤 이 파일을 재실행하면 덮어쓴다.
+--   ISV BU(ISV 담당부서)가 /admin 에서 검토·수정하는 것을 전제로 한다.
+--   on conflict 없이 직접 update 하므로, ISV BU 가 수정한 뒤 이 파일을 재실행하면 덮어쓴다.
 --   1회성 시드로만 쓸 것 (apply-migrations.js 에서 제외).
 --
 -- 대상 9종만 넣는다. 나머지 13종은 sections 가 템플릿 껍데기(7종은 {name} 미치환)이거나

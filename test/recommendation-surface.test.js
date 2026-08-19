@@ -5,7 +5,7 @@
  *
  * 추천은 딜 데이터(FQA·업종·예산)를 입력으로 쓰므로 딜 상세와 같은 수준으로
  * 보호돼야 한다. 그리고 판정 데이터가 없어 빠진 후보는 "안 맞아서 제외"와
- * 구분돼 보여야 한다 — 영업에게는 다른 뜻이고, ISSU 에게는 보강 신호다.
+ * 구분돼 보여야 한다 — 영업에게는 다른 뜻이고, ISV BU 에게는 보강 신호다.
  */
 
 const test = require('node:test');
@@ -82,7 +82,7 @@ test('"판정 데이터 없음"과 "안 맞아서 제외"를 나눈다', () => {
   assert.match(hubClient, /이 고객에게 맞지 않아 제외/);
   assert.match(hubClient, /판정 데이터가 없어 후보에서 빠짐/);
   assert.match(hubClient, /보강 우선순위로 삼으세요/);
-  // 이 목록은 ISSU·관리자 전용이다. 영업에게는 미완성 솔루션을 보여주지 않는다.
+  // 이 목록은 ISV BU·관리자 전용이다. 영업에게는 미완성 솔루션을 보여주지 않는다.
   assert.match(hubClient, /noData\.length && isCatalogEditor\(\)/);
 });
 

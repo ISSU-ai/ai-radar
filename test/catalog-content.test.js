@@ -87,7 +87,7 @@ test('모르는 것을 아는 척 쓰지 않았다', () => {
 test('022 는 1회성 시드라 자동 실행 목록에 없다', () => {
   const runner = fs.readFileSync(path.join(root, 'scripts', 'apply-migrations.js'), 'utf8');
   assert.ok(!runner.includes('022_portal26_content.sql'),
-    'ISSU 가 어드민에서 고친 본문을 덮어쓴다');
+    'ISV BU 가 어드민에서 고친 본문을 덮어쓴다');
 });
 
 test('목업이 022 본문을 그대로 읽는다', () => {
