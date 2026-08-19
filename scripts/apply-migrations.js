@@ -88,7 +88,7 @@ async function main() {
       console.log('FAILED');
       console.error(`\n  ${error.message}`);
       if (/relation .* does not exist|function .* does not exist/i.test(error.message)) {
-        console.error('\n  Looks like the base schema is missing. Apply issu_ai_radar_schema.sql');
+        console.error('\n  Looks like the base schema is missing. Apply docs/issu_ai_radar_schema.sql');
         console.error('  first (Supabase SQL Editor), then re-run this script.');
       }
       await client.end();

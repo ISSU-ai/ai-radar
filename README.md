@@ -15,8 +15,8 @@
 1. `.env.example`을 `.env`로 복사합니다.
 2. `SUPABASE_ANON_KEY`, `DATABASE_URL`, 32자 이상의 새 `JWT_SECRET`을 로컬 환경에만 입력합니다.
 3. Supabase SQL Editor에서 아래 순서로 실행합니다.
-   - `issu_ai_radar_schema.sql`
-   - `issu_ai_radar_seed.sql`
+   - `docs/issu_ai_radar_schema.sql`
+   - `docs/issu_ai_radar_seed.sql`
    - `db/migrations/001_enablement_hub.sql`
    - `db/migrations/002_release_hardening.sql`
 4. `npm install` 후 `npm run dev`를 실행합니다.
