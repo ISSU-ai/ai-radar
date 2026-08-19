@@ -386,7 +386,7 @@ function buildMarkdown() {
     const rows = r.answers.filter((a) => a.area === area.area)
       .map((a) => `| ${a.code} | ${a.text} | ${a.score}점 | ${a.rubric} |`).join('\n');
     return `### ${area.area} · ${area.name} — ${area.score.toFixed(2)}점\n\n`
-      + `| 번호 | 문항 | 점수 | 선택한 상태 |\n|---|---|---|---|\n${rows}`;
+      + `| 번호 | 문항 | 점수 | 선택한 상태 |\n|---|---|--:|---|\n${rows}`;
   }).join('\n\n');
 
   return `# AI 준비도 진단 결과
@@ -401,7 +401,7 @@ function buildMarkdown() {
 ## 영역별 점수
 
 | 영역 | 점수 | 판정 |
-|---|---|---|
+|---|--:|:--:|
 ${areaRows}
 
 ## 종합 소견

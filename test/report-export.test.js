@@ -308,6 +308,19 @@ function realDocs() {
   return [HANDOFF.buildBrief(ctx), HANDOFF.buildInterviewGuide(ctx), HANDOFF.buildEvidenceSummary(ctx)];
 }
 
+/**
+ * 가견적 표. `packagesReport()` 는 hub.js 안이라 여기서 실행할 수 없어 **표 규격만**
+ * 소스에서 뽑아 쓴다 — 베껴 오면 hub.js 가 바뀌었을 때 검사만 옛 모양을 지킨다.
+ */
+function quoteTable() {
+  const hub = read('hub.js');
+  const spec = hub.match(/\| 패키지 \| 기준MD \|[^\n]*\n\|[-:|]+\|/);
+  assert.ok(spec, 'hub.js 에서 가견적 표 규격을 못 찾았다');
+  return `${spec[0].replace(/\\n/g, '\n')}
+| OpenAI Ready | 20 | +5 | 25 MD | 1,200,000원 | 30,000,000원 |
+| Billing & Managed Service | 4 | 0 | 4 MD | 별도협의 | 별도협의 |`;
+}
+
 test('문서 머리의 메타 표는 <th> 가 없다 — 라벨 열을 td 로 잡아야 한다', () => {
   const html = loadReport().IssuReport.toHtml(realDocs()[0]);
   const head = html.match(/<h1>[\s\S]*?<\/table>/);
@@ -325,7 +338,7 @@ test('문서 머리의 메타 표는 <th> 가 없다 — 라벨 열을 td 로 �
 
 test('인쇄 CSS 에 대상 없는 규칙이 없다', () => {
   const R = loadReport().IssuReport;
-  const rendered = realDocs().map((md) => R.toHtml(md)).join('\n');
+  const rendered = [...realDocs(), quoteTable()].map((md) => R.toHtml(md)).join('\n');
 
   const css = read('report.js').match(/const PRINT_CSS = `([\s\S]*?)`;/)[1];
   const selectors = new Set();
@@ -356,6 +369,10 @@ test('인쇄 CSS 에 대상 없는 규칙이 없다', () => {
       if (!region) return false;
       return inner ? new RegExp(`<${inner}[ >]`).test(region[0]) : true;
     }
+    // `td.r` — 태그에 클래스가 붙은 모양.
+    const tagged = clean.match(/^([a-z0-9]+)\.([a-z0-9-]+)$/);
+    if (tagged) return new RegExp(`<${tagged[1]} [^>]*class="[^"]*\\b${tagged[2]}\\b`).test(rendered);
+
     const parts = clean.split(/\s+/);
     if (!parts.every((p) => /^\.?[a-z0-9-]+$/.test(p))) return null;   // 검사 못 하는 모양
     // `.confidential` 처럼 클래스로 잡는 것 — 그 클래스를 단 요소가 실제로 있어야 한다.
@@ -416,4 +433,59 @@ test('고객이 받는 문서에는 기밀 상자가 없다', () => {
   assert.ok(kit.length > 500, 'buildCustomerKit 을 못 찾았다');
   assert.ok(!kit.includes('[!기밀]'), '고객용 키트가 기밀 표시를 단다');
   assert.ok(!kit.includes('내부용'), '고객용 키트에 내부용 문구가 있다');
+});
+
+test('구분 행의 콜론이 정렬이 된다', () => {
+  // 안 읽으면 금액이 왼쪽에 붙어 자릿수가 안 맞는다. 가견적에서 그대로 나갔다.
+  const R = loadReport().IssuReport;
+  const html = R.toHtml('| 항목 | 상태 | 금액 |\n|---|:--:|--:|\n| A | 확인됨 | 1,200,000원 |');
+  assert.match(html, /<th class="c">상태<\/th>/);
+  assert.match(html, /<th class="r">금액<\/th>/);
+  assert.match(html, /<td class="r">1,200,000원<\/td>/);
+  assert.match(html, /<td>A<\/td>/, '지정 없는 열에 정렬이 붙었다');
+
+  const css = read('report.js');
+  assert.match(css, /th\.r, td\.r \{[^}]*text-align: right/);
+  // 1 과 8 의 폭이 다르면 금액이 들쭉날쭉해진다.
+  assert.match(css, /th\.r, td\.r \{[^}]*tabular-nums/);
+  // ⚠ text-align 은 <col> 에 안 먹는다 — 칸에 걸려 있어야 한다.
+  assert.ok(!/<col style="width:\$\{w\}%;[^"]*text-align/.test(css), 'col 에 정렬을 걸었다');
+});
+
+test('금액·점수 열은 문서에서 오른쪽 정렬을 지정한다', () => {
+  // 규격이 문서 쪽에 있어야 한다. 렌더러가 「금액 같으면 오른쪽」을 추측하면 언젠가 틀린다.
+  const quoteSpec = read('hub.js').match(/\| 패키지 \| 기준MD \|[^\n]*\n\|([-:|]+)\|/);
+  assert.ok(quoteSpec, '가견적 표를 못 찾았다');
+  assert.equal(quoteSpec[1], '---|--:|--:|--:|--:|--:', '가견적 숫자 열이 왼쪽 정렬이다');
+  assert.match(read('readiness.js'), /\| 영역 \| 점수 \| 판정 \|\n\|---\|--:\|:--:\|/);
+});
+
+test('한글 머리글이 두 줄로 접히지 않을 만큼 열을 준다', () => {
+  /**
+   * `.length` 로 열 너비를 잡으면 「기준MD」(4자)가 「Billing」(7자)보다 좁게 잡힌다.
+   * 실제로는 한글이 두 배 넓어서 머리글이 접혔다 — 무슨 열인지 못 읽는다.
+   */
+  const R = loadReport().IssuReport;
+  const html = R.toHtml(quoteTable());
+  const widths = [...html.matchAll(/width:([\d.]+)%/g)].map((m) => Number(m[1]));
+  const headers = [...html.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map((m) => m[1]);
+  assert.equal(widths.length, headers.length);
+
+  const BODY_MM = 182;          // A4 210 − 좌우 여백 28
+  const PADDING_MM = 5;         // 칸 좌우 2.5mm
+  const CJK_MM = 3.35;          // 9.5pt 기준 대략치
+  const LATIN_MM = 1.9;
+  headers.forEach((text, i) => {
+    const room = (BODY_MM * widths[i]) / 100 - PADDING_MM;
+    const need = [...text].reduce((sum, ch) =>
+      sum + (/[가-힣]/.test(ch) ? CJK_MM : /\s/.test(ch) ? 1.2 : LATIN_MM), 0);
+    assert.ok(need <= room, `머리글 「${text}」 가 접힌다 — 자리 ${room.toFixed(1)}mm < 필요 ${need.toFixed(1)}mm`);
+  });
+});
+
+test('정렬이 Word 로도 간다', () => {
+  // 한쪽만 맞으면 같은 문서가 두 모양으로 돌아다닌다.
+  const docx = read('report.js');
+  const table = docx.slice(docx.indexOf("if (b.type === 'table')"));
+  assert.match(table.slice(0, 1200), /w:jc w:val="\$\{b\.align\[col\]\}"/);
 });

@@ -2494,7 +2494,7 @@ function buildCustomerKit() {
   const diagnosis = Number.isFinite(avg)
     ? `| | |\n|---|---|\n| 종합 점수 | **${avg.toFixed(2)} / 5.00** |`
       + (totals.maturity ? `\n| 성숙도 | **Level ${totals.maturity.level}. ${totals.maturity.name}** — ${totals.maturity.note} |` : '')
-      + (areaRows ? `\n\n| 영역 | 점수 | 판정 |\n|---|---|---|\n${areaRows}` : '')
+      + (areaRows ? `\n\n| 영역 | 점수 | 판정 |\n|---|--:|:--:|\n${areaRows}` : '')
       + (totals.insight ? `\n\n${totals.insight}` : '')
       + (priorities ? `\n\n### 우선 개선 영역\n\n${priorities}` : '')
     : '_진단이 아직 완료되지 않았습니다._';
@@ -2717,7 +2717,7 @@ function readinessReport() {
 ${totals.maturity?.note ? `\n> ${totals.maturity.note}` : ''}
 
 | 영역 | 점수 | 응답 | 판정 |
-|---|---|---|---|
+|---|--:|--:|:--:|
 ${areaRows}
 
 ${totals.insight || ''}
@@ -2733,7 +2733,7 @@ ${gaps ? `## 보완이 필요한 영역\n\n${gaps}` : '## 보완이 필요한 �
 ## 문항별 응답
 
 | 문항 | 영역 | 내용 | 점수 | 선택한 상태 | 출처 |
-|---|---|---|---|---|---|
+|---|---|---|--:|---|---|
 ${answerRows}`;
 }
 
@@ -2797,7 +2797,7 @@ function packagesReport() {
 > 내부 참고용입니다. 고객 제시 금액이 아닙니다.
 
 | 패키지 | 기준MD | 조정MD | 합계 | MD 단가 | 금액 |
-|---|---|---|---|---|---|
+|---|--:|--:|--:|--:|--:|
 ${lines}
 
 **합계 (VAT 별도, 확정 단가만) — ${hasPlaceholder && total === 0 ? '별도협의' : formatKRW(total)}**

@@ -78,11 +78,18 @@
         const cells = (row) => row.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
         const rows = [cells(trimmed)];
         i += 1;
+        // 구분 행(`|---|--:|`)의 콜론이 정렬이다. 안 읽으면 금액이 왼쪽에 붙어
+        // 자릿수가 안 맞는다 — 가견적에서 그게 그대로 나갔다.
+        const align = cells(lines[i]).map((rule) => {
+          const right = rule.endsWith(':');
+          const left = rule.startsWith(':');
+          return right && left ? 'center' : right ? 'right' : '';
+        });
         while (i + 1 < lines.length && lines[i + 1].trim().startsWith('|')) {
           i += 1;
           rows.push(cells(lines[i]));
         }
-        blocks.push({ type: 'table', rows });
+        blocks.push({ type: 'table', rows, align });
         continue;
       }
 
@@ -128,14 +135,24 @@
    * 머리글 길이와 본문 평균 길이 중 큰 쪽을 무게로 쓰고, 한 열이 표를 독식하거나
    * 사라지지 않도록 6~55% 로 조인 뒤 다시 정규화한다.
    */
+  /**
+   * 글자 수가 아니라 **눈에 보이는 폭**을 센다. 한글·한자·가나는 영숫자의 두 배다.
+   * `.length` 로 세면 「기준MD」(4자)가 「Billing」(7자)보다 좁게 잡히는데 실제로는
+   * 더 넓다. 가견적 표의 머리글이 그래서 두 줄로 접혔다.
+   */
+  const visualWidth = (text) => [...String(text)]
+    .reduce((sum, ch) => sum + (/[\u1100-\u11ff\u2e80-\ua4cf\ua960-\ua97f\uac00-\ud7ff\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60]/.test(ch) ? 2 : 1), 0);
+
   function columnWidths(rows) {
     const columns = Math.max(...rows.map((r) => r.length));
     const weights = [];
     for (let i = 0; i < columns; i += 1) {
-      const head = (rows[0][i] || '').length;
+      // 머리글은 **접히면 안 된다** — 무슨 열인지 못 읽는다. 본문은 평균으로 보고
+      // 넘치면 줄바꿈에 맡긴다.
+      const head = visualWidth(rows[0][i] || '');
       const body = rows.slice(1);
       const avg = body.length
-        ? body.reduce((sum, r) => sum + (r[i] || '').length, 0) / body.length
+        ? body.reduce((sum, r) => sum + visualWidth(r[i] || ''), 0) / body.length
         : 0;
       weights.push(Math.max(head, avg, 2));
     }
@@ -274,7 +291,8 @@
           const tc = cells.map((cell, col) =>
             `<w:tc><w:tcPr><w:tcW w:w="${Math.round((widths[col] || 0) * 50)}" w:type="pct"/>`
             + (isHead ? '<w:shd w:val="clear" w:fill="F2F2F2"/>' : '')
-            + `</w:tcPr><w:p>${docxRuns(isHead && cell ? `**${cell}**` : cell)}</w:p></w:tc>`
+            + `</w:tcPr><w:p>${b.align && b.align[col] ? `<w:pPr><w:jc w:val="${b.align[col]}"/></w:pPr>` : ''}`
+            + `${docxRuns(isHead && cell ? `**${cell}**` : cell)}</w:p></w:tc>`
           ).join('');
           // 머리글 행은 페이지가 넘어가도 반복된다. 42행짜리 표에서 이게 없으면
           // 둘째 장부터 무슨 열인지 알 수 없다.
@@ -360,10 +378,12 @@
         const body = headed ? rest : b.rows.slice(1);
         const cols = columnWidths(b.rows)
           .map((w) => `<col style="width:${w}%">`).join('');
+        // ⚠ text-align 은 <col> 에 안 먹는다. 칸마다 걸어야 한다.
+        const at = (col) => (b.align && b.align[col] ? ` class="${b.align[col][0]}"` : '');
         out.push('<table>' + `<colgroup>${cols}</colgroup>`
-          + (headed ? `<thead><tr>${head.map((c) => `<th>${htmlRuns(c)}</th>`).join('')}</tr></thead>` : '')
+          + (headed ? `<thead><tr>${head.map((c, i2) => `<th${at(i2)}>${htmlRuns(c)}</th>`).join('')}</tr></thead>` : '')
           + '<tbody>'
-          + body.map((r) => `<tr>${r.map((c) => `<td>${htmlRuns(c)}</td>`).join('')}</tr>`).join('')
+          + body.map((r) => `<tr>${r.map((c, i2) => `<td${at(i2)}>${htmlRuns(c)}</td>`).join('')}</tr>`).join('')
           + '</tbody></table>');
       } else out.push(`<p>${htmlRuns(b.text)}</p>`);
     }
@@ -439,6 +459,10 @@
                 토큰만 예외적으로 끊는다. */
              word-break: keep-all; overflow-wrap: anywhere; }
     th { background: #f3f5f8; font-weight: 700; }
+    /* 구분 행의 콜론이 지정한 정렬. 숫자 열은 자릿수가 세로로 맞아야 읽힌다 —
+       tabular-nums 가 없으면 1 과 8 의 폭이 달라 금액이 들쭉날쭉해진다. */
+    th.c, td.c { text-align: center; }
+    th.r, td.r { text-align: right; font-variant-numeric: tabular-nums; }
 
     h1, h2, h3 { break-after: avoid; }
     ul { break-inside: avoid; }
