@@ -227,3 +227,48 @@ test('인쇄 CSS 가 표를 페이지 단위로 자르지 않는다', () => {
   assert.match(css, /table-layout:\s*fixed/, 'colgroup 너비를 강제하려면 필요하다');
   assert.match(css, /word-break:\s*keep-all/, '한국어는 단어 안에서 끊지 않는다');
 });
+
+test('인쇄 문서가 인용·상태배지·기울임을 렌더한다', () => {
+  // ⚠ 셋 다 파싱이 없어서 백틱·꺾쇠·밑줄이 **문자 그대로 인쇄되고 있었다.**
+  //   인계 브리프의 시각적 핵심이 거기 있는데.
+  const html = loadReport().IssuReport.toHtml([
+    '> 이 문서는 최소 근거 패키지입니다.', '',
+    '`가능성 높음` · 출처 2026-08-14 킥오프', '',
+    '  > 법무팀은 수작업으로 합니다.', '',
+    '_아직 확인되지 않았습니다._'
+  ].join('\n'));
+  assert.match(html, /<blockquote>이 문서는 최소 근거 패키지입니다\.<\/blockquote>/);
+  assert.match(html, /<code>가능성 높음<\/code>/);
+  assert.match(html, /<blockquote>법무팀은 수작업으로 합니다\.<\/blockquote>/);
+  assert.match(html, /<em>아직 확인되지 않았습니다\.<\/em>/);
+  // 백틱·꺾쇠가 본문에 남으면 안 된다.
+  assert.ok(!html.includes('&gt; '), '인용 꺾쇠가 본문에 남았다');
+  assert.ok(!/`/.test(html), '백틱이 본문에 남았다');
+});
+
+test('밑줄이 든 낱말을 기울임으로 잘못 먹지 않는다', () => {
+  // field_key 가 brief_a_4 · snake_case 컬럼명이 문서에 자주 나온다.
+  const html = loadReport().IssuReport.toHtml('필드 brief_a_4 와 customer_meta_original 을 봅니다.');
+  assert.ok(!html.includes('<em>'), 'snake_case 를 기울임으로 먹었다');
+  assert.match(html, /brief_a_4/);
+});
+
+test('인쇄 CSS 가 배경색을 지키고 색에만 기대지 않는다', () => {
+  const source = read('report.js');
+  // 없으면 브라우저가 배경을 통째로 지운다 — 배지도 인용 막대도 안 보인다.
+  assert.match(source, /print-color-adjust: exact/);
+  // 흑백으로 뽑는 사람이 있다. 상태 배지는 테두리로도 구분되어야 한다.
+  const badge = source.slice(source.indexOf('code { display: inline-block'));
+  assert.match(badge.slice(0, 300), /border: 1px solid/);
+  // 인용은 왼쪽 막대로 구분한다.
+  assert.ok(/blockquote \{[^}]*border-left: 2px solid/.test(source), '인용 막대가 없다');
+});
+
+test('고객이 받는 문서에 어디서 온 것인지가 있다', () => {
+  const source = read('report.js');
+  assert.match(source, /assets\/megazone-cloud\.png/);
+  // 인쇄 창은 about:blank 라 상대 경로가 안 먹는다.
+  assert.match(source, /global\.location\.origin/);
+  // 이미지가 못 뜨면 자리만 비고 문서는 멀쩡해야 한다.
+  assert.match(source, /onerror="this\.remove\(\)"/);
+});

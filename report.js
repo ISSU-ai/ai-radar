@@ -47,6 +47,19 @@
         continue;
       }
 
+      // 인용. 문서마다 「이 문서는 …입니다」 안내와 회의록 발췌가 이걸로 들어온다.
+      // 안 다루면 &gt; 가 본문에 그대로 찍힌다.
+      if (/^>\s?/.test(trimmed)) {
+        flush();
+        const quote = [trimmed.replace(/^>\s?/, '')];
+        while (i + 1 < lines.length && /^\s*>\s?/.test(lines[i + 1])) {
+          i += 1;
+          quote.push(lines[i].trim().replace(/^>\s?/, ''));
+        }
+        blocks.push({ type: 'quote', text: quote.filter(Boolean).join(' ') });
+        continue;
+      }
+
       if (/^[-*•]\s+/.test(trimmed)) {
         flush();
         blocks.push({ type: 'li', text: trimmed.replace(/^[-*•]\s+/, '') });
@@ -76,14 +89,23 @@
   }
 
   /** **굵게** 만 인식해 [{text, bold}] 로 쪼갠다. */
+  /**
+   * 인라인 조각. **굵게·코드·기울임 셋을 한 번에 훑는다.**
+   *
+   * 코드 스팬을 안 다루면 인계 브리프의 상태 배지(`확인됨` 같은 것)가 백틱 문자
+   * 그대로 인쇄된다 — 문서의 시각적 핵심이 거기 있는데.
+   * docx 도 이 함수를 쓰므로 `bold` 는 그대로 두고 플래그만 늘린다.
+   */
   function runs(text) {
     const out = [];
-    const re = /\*\*(.+?)\*\*/g;
+    const re = /\*\*(.+?)\*\*|`([^`]+)`|(?<![A-Za-z0-9])_([^_]+)_(?![A-Za-z0-9])/g;
     let last = 0;
     let m;
     while ((m = re.exec(text))) {
       if (m.index > last) out.push({ text: text.slice(last, m.index), bold: false });
-      out.push({ text: m[1], bold: true });
+      if (m[1] !== undefined) out.push({ text: m[1], bold: true });
+      else if (m[2] !== undefined) out.push({ text: m[2], bold: false, code: true });
+      else out.push({ text: m[3], bold: false, italic: true });
       last = re.lastIndex;
     }
     if (last < text.length) out.push({ text: text.slice(last), bold: false });
@@ -298,8 +320,12 @@
   }
 
   // ── 인쇄 뷰 (→ PDF 저장) ────────────────────────────────────────────────
-  const htmlRuns = (text) => runs(text)
-    .map((r) => (r.bold ? `<strong>${esc(r.text)}</strong>` : esc(r.text))).join('');
+  const htmlRuns = (text) => runs(text).map((r) => {
+    if (r.bold) return `<strong>${esc(r.text)}</strong>`;
+    if (r.code) return `<code>${esc(r.text)}</code>`;
+    if (r.italic) return `<em>${esc(r.text)}</em>`;
+    return esc(r.text);
+  }).join('');
 
   function toHtml(blocks) {
     const out = [];
@@ -312,6 +338,7 @@
       closeList();
       if (b.type === 'h') out.push(`<h${b.level}>${htmlRuns(b.text)}</h${b.level}>`);
       else if (b.type === 'hr') out.push('<hr>');
+      else if (b.type === 'quote') out.push(`<blockquote>${htmlRuns(b.text)}</blockquote>`);
       else if (b.type === 'table') {
         const headed = b.rows[0].some((cell) => cell.trim());
         const [head, ...rest] = b.rows;
@@ -329,19 +356,53 @@
     return out.join('\n');
   }
 
+  /**
+   * 인쇄 스타일. **PDF 로 저장되는 그 모양이다.**
+   *
+   * 고객용 키트는 대외 문서라 여기가 회사 얼굴이다. 그래서 셋을 지킨다.
+   *   ① **색에만 기대지 않는다.** 흑백으로 뽑는 사람이 있다 — 상태는 색 + 테두리로,
+   *      표 머리는 색 + 굵기로 구분한다
+   *   ② **print-color-adjust: exact.** 없으면 브라우저가 배경색을 통째로 지운다.
+   *      배지도 인용 막대도 안 보인다
+   *   ③ **끊기면 안 되는 것을 묶는다.** 제목 뒤 첫 줄, 표 행, 인용 한 덩이
+   */
   const PRINT_CSS = `
-    @page { size: A4; margin: 16mm 14mm; }
-    * { box-sizing: border-box; }
+    @page { size: A4; margin: 16mm 14mm 14mm; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body { font-family: "Pretendard","맑은 고딕","Malgun Gothic",sans-serif;
-           font-size: 10.5pt; line-height: 1.65; color: #16181d; margin: 0; }
-    h1 { font-size: 19pt; margin: 0 0 4mm; }
-    h2 { font-size: 13.5pt; margin: 7mm 0 2.5mm; padding-bottom: 1.5mm;
-         border-bottom: 1px solid #d8dbe2; }
-    h3 { font-size: 11.5pt; margin: 5mm 0 2mm; }
+           font-size: 10.5pt; line-height: 1.65; color: #16181d; margin: 0;
+           word-break: keep-all; }
+
+    /* ── 문서 머리 ── 제목과 첫 메타 표를 한 덩이로 묶는다 */
+    h1 { font-size: 20pt; line-height: 1.25; margin: 0 0 3mm; letter-spacing: -.02em;
+         padding-bottom: 3mm; border-bottom: 2px solid #16181d; }
+    h1 + table { margin-top: 0; }
+    h1 + table th, h1 + table td { border: 0; border-bottom: 1px solid #eceef2;
+         padding: 1.4mm 0; font-size: 9.5pt; }
+    h1 + table th { background: transparent; width: 30%; color: #6b7280; font-weight: 600; }
+
+    h2 { font-size: 13pt; margin: 8mm 0 2.5mm; padding-bottom: 1.5mm;
+         border-bottom: 1px solid #d8dbe2; letter-spacing: -.01em; }
+    h3 { font-size: 11.5pt; margin: 5mm 0 1.5mm; letter-spacing: -.01em; }
     p { margin: 0 0 2.5mm; }
     ul { margin: 0 0 3mm; padding-left: 5mm; }
     li { margin-bottom: 1mm; }
-    hr { border: 0; border-top: 1px solid #e3e6ec; margin: 5mm 0; }
+    li::marker { color: #9aa2ad; }
+    hr { border: 0; border-top: 1px solid #e3e6ec; margin: 6mm 0; }
+    strong { font-weight: 700; }
+    em { font-style: normal; color: #6b7280; }
+
+    /* ── 상태 배지 ── 인계 브리프의 시각적 핵심. 흑백에서도 읽히게 테두리를 준다 */
+    code { display: inline-block; padding: .4mm 1.6mm; border-radius: 2px;
+           border: 1px solid #c9ced8; background: #f3f5f8;
+           font-family: inherit; font-size: 8.8pt; font-weight: 700;
+           letter-spacing: -.01em; white-space: nowrap; }
+
+    /* ── 인용 ── 회의록 발췌와 문서 안내가 이걸로 들어온다 */
+    blockquote { margin: 0 0 3mm; padding: 2mm 0 2mm 4mm;
+                 border-left: 2px solid #b9c0cb; color: #43474e; font-size: 9.8pt;
+                 break-inside: avoid; }
+
     /* table-layout: fixed 가 colgroup 너비를 실제로 강제한다. 없으면 브라우저가
        내용 길이로 다시 계산해 89자짜리 칸이 표를 A4 밖으로 밀어낸다. */
     table { width: 100%; table-layout: fixed; border-collapse: collapse;
@@ -352,15 +413,26 @@
                 토큰만 예외적으로 끊는다. */
              word-break: keep-all; overflow-wrap: anywhere; }
     th { background: #f3f5f8; font-weight: 700; }
+    td strong { color: #0f1115; }
+
     h1, h2, h3 { break-after: avoid; }
+    ul { break-inside: avoid; }
     /* 문서 여럿을 한 장으로 이어 붙일 때 각자 새 페이지에서 시작한다.
        인쇄는 팝업 한 개만 열 수 있어 여러 문서를 따로 못 띄운다. */
     h1:not(:first-of-type) { break-before: page; }
-    ul { break-inside: avoid; }
     /* 표 전체에 break-inside: avoid 를 걸면 한 장을 넘는 표가 통째로 밀려 잘린다.
        행 단위로만 막고, 머리글은 페이지마다 반복시킨다. */
     tr { break-inside: avoid; }
     thead { display: table-header-group; }
+
+    /* ── 브랜드 ── 고객이 받는 문서라 어디서 온 문서인지가 첫 줄에 있어야 한다.
+       이미지가 못 뜨면(오프라인 인쇄 등) 자리만 비고 문서는 멀쩡하다 */
+    .brand { display: flex; align-items: center; justify-content: space-between;
+             gap: 6mm; margin-bottom: 6mm; }
+    .brand img { height: 7mm; width: auto; }
+    .brand span { font-size: 8.5pt; color: #8b929c; letter-spacing: .04em; }
+
+    /* ── 꼬리 ── 인쇄물에는 안 나온다. 화면에서만 저장 방법을 알려준다 */
     .hint { margin-top: 8mm; padding-top: 3mm; border-top: 1px solid #e3e6ec;
             font-size: 8.5pt; color: #6b7280; }
     @media print { .hint { display: none; } }`;
@@ -371,8 +443,12 @@
       global.alert('팝업이 차단되어 인쇄 화면을 열지 못했습니다. 이 사이트의 팝업을 허용해주세요.');
       return;
     }
+    // 로고는 절대 경로로 넣는다. 인쇄 창은 about:blank 라 상대 경로가 안 먹는다.
+    const logo = `${global.location.origin}/assets/megazone-cloud.png`;
     win.document.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8">`
       + `<title>${esc(title)}</title><style>${PRINT_CSS}</style></head><body>`
+      + `<div class="brand"><img src="${logo}" alt="메가존클라우드" onerror="this.remove()">`
+      + `<span>${esc(new Date().toISOString().slice(0, 10))}</span></div>`
       + toHtml(parse(markdown))
       + `<p class="hint">인쇄 대화상자에서 대상을 <strong>PDF로 저장</strong>으로 선택하세요.</p>`
       + `</body></html>`);
