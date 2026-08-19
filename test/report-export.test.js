@@ -272,3 +272,108 @@ test('고객이 받는 문서에 어디서 온 것인지가 있다', () => {
   // 이미지가 못 뜨면 자리만 비고 문서는 멀쩡해야 한다.
   assert.match(source, /onerror="this\.remove\(\)"/);
 });
+
+/**
+ * ⚠ 이 검사가 있는 이유.
+ *
+ * 인쇄 CSS 는 **아무도 못 보는 코드**다. 브라우저에서 인쇄 미리보기를 열어야만
+ * 보이고, 셀렉터가 어긋나도 조용히 아무 일도 안 일어난다. 실제로 그랬다 —
+ * 문서 머리의 메타 표를 `h1 + table th` 로 잡아 뒀는데 그 표는 **머리글 줄이 없는
+ * 표**라 <th> 가 아예 안 생긴다. 라벨 열 스타일이 한 번도 걸린 적이 없었다.
+ *
+ * 그래서 「규칙마다 대상이 실제로 있는가」를 센다.
+ */
+const HANDOFF = require('../lib/handoff-doc');
+
+/** 실제 인계 문서 셋을 그대로 만든다 — 검사용 마크다운을 새로 쓰지 않는다. */
+function realDocs() {
+  const notes = [{ id: 'n1', met_on: '2026-08-14', title: '킥오프' }];
+  const ctx = {
+    deal: {
+      customer: '한빛금융', source: 'portal',
+      lead_message: '전사 문서 업무에 AI 를 도입하려 합니다.',
+      customer_meta: { industry: 'Finance', companySize: '1000+' },
+      inquiry_products: ['openai-enterprise'],
+      readiness_scores: { G1: 3, G3: 2, T1: 4, D2: 2 }
+    },
+    handoff: {
+      whyNow: { value: '연말 감사 대응' },
+      workflow: { value: '계약 검토 요약', quote: { quote: '법무팀은 수작업으로 합니다.', note_id: 'n1', met_on: '2026-08-14', note_title: '킥오프' } },
+      pilotGroup: { value: '법무팀 12명' }, stakeholders: { value: '스폰서 CFO' },
+      successCriteria: { value: '40분 → 25분' }, scope: { value: '고객 PII 제외' },
+      nextSteps: { value: '8/28 보안 검토' }
+    },
+    notes, openItems: ['42문항 중 8개가 미응답입니다.'], today: '2026-08-19'
+  };
+  return [HANDOFF.buildBrief(ctx), HANDOFF.buildInterviewGuide(ctx), HANDOFF.buildEvidenceSummary(ctx)];
+}
+
+test('문서 머리의 메타 표는 <th> 가 없다 — 라벨 열을 td 로 잡아야 한다', () => {
+  const html = loadReport().IssuReport.toHtml(realDocs()[0]);
+  const head = html.match(/<h1>[\s\S]*?<\/table>/);
+  assert.ok(head, 'h1 바로 뒤에 메타 표가 없다');
+  assert.ok(!head[0].includes('<th>'), '메타 표에 <th> 가 생겼다면 CSS 도 같이 바꿔야 한다');
+  assert.match(head[0], /<td>고객사<\/td>/);
+
+  const css = read('report.js');
+  assert.ok(!/h1 \+ table th/.test(css), 'h1 + table th 는 대상이 없는 셀렉터다');
+  assert.match(css, /h1 \+ table td:first-child \{/, '라벨 열 스타일이 없다');
+  // colgroup 이 table-layout: fixed 로 이미 너비를 정한다. 여기서 또 주면 안 먹는데 준 척한다.
+  const rule = css.slice(css.indexOf('h1 + table td:first-child {'));
+  assert.ok(!/width/.test(rule.slice(0, 120)), '먹지 않는 width 를 주고 있다');
+});
+
+test('인쇄 CSS 에 대상 없는 규칙이 없다', () => {
+  const R = loadReport().IssuReport;
+  const rendered = realDocs().map((md) => R.toHtml(md)).join('\n');
+
+  const css = read('report.js').match(/const PRINT_CSS = `([\s\S]*?)`;/)[1];
+  const selectors = new Set();
+  css.replace(/\/\*[\s\S]*?\*\//g, '').split('}').forEach((chunk) => {
+    const brace = chunk.indexOf('{');
+    if (brace < 0) return;
+    chunk.slice(0, brace).split(',').forEach((s) => {
+      s = s.trim();
+      if (s && !s.startsWith('@')) selectors.add(s);
+    });
+  });
+  assert.ok(selectors.size > 15, '셀렉터를 못 읽었다');
+
+  // openPrint 가 직접 쓰는 것들 — 문서 마크다운에는 안 나온다.
+  const fromOpenPrint = new Set(['*', 'body', '.brand', '.brand img', '.brand span', '.hint']);
+
+  /**
+   * ⚠ 마지막 태그만 전역에서 찾으면 안 된다. `h1 + table th` 는 **다른 표의 <th>**
+   *  에 걸려 살아 있는 것처럼 보인다 — 바로 그렇게 놓쳤던 버그다.
+   *  결합자가 있으면 앞부분이 가리키는 **구간 안에서만** 찾는다.
+   */
+  function hasTarget(sel) {
+    const clean = sel.replace(/::?[a-z-]+(\([^)]*\))?/g, '').trim();
+    const adjacent = clean.match(/^([a-z0-9]+) \+ ([a-z0-9]+)(?: ([a-z0-9]+))?$/);
+    if (adjacent) {
+      const [, first, next, inner] = adjacent;
+      const region = rendered.match(new RegExp(`<${first}[ >][\\s\\S]*?</${first}>\\s*<${next}[ >][\\s\\S]*?</${next}>`));
+      if (!region) return false;
+      return inner ? new RegExp(`<${inner}[ >]`).test(region[0]) : true;
+    }
+    const parts = clean.split(/\s+/);
+    if (!parts.every((p) => /^[a-z0-9]+$/.test(p))) return null;   // 검사 못 하는 모양
+    if (parts.length === 1) return new RegExp(`<${parts[0]}[ >]`).test(rendered);
+    // `td code` 처럼 후손 결합자 — 바깥 태그 안쪽만 본다.
+    const [outer, inner] = parts;
+    const blocks = rendered.match(new RegExp(`<${outer}[ >][\\s\\S]*?</${outer}>`, 'g')) || [];
+    return blocks.some((b) => new RegExp(`<${inner}[ >]`).test(b));
+  }
+
+  const dead = [];
+  const unchecked = [];
+  for (const sel of selectors) {
+    if (fromOpenPrint.has(sel)) continue;
+    const hit = hasTarget(sel);
+    if (hit === null) unchecked.push(sel);
+    else if (!hit) dead.push(sel);
+  }
+  assert.deepEqual(dead, [], `대상이 없는 규칙: ${dead.join(' · ')}`);
+  // 검사에서 빠진 모양이 늘어나면 이 검사가 조용히 무의미해진다.
+  assert.deepEqual(unchecked, [], `검사하지 못한 셀렉터가 늘었다: ${unchecked.join(' · ')}`);
+});

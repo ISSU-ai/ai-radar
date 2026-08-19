@@ -376,10 +376,13 @@
     /* ── 문서 머리 ── 제목과 첫 메타 표를 한 덩이로 묶는다 */
     h1 { font-size: 20pt; line-height: 1.25; margin: 0 0 3mm; letter-spacing: -.02em;
          padding-bottom: 3mm; border-bottom: 2px solid #16181d; }
+    /* ⚠ 이 표는 머리글 줄이 없는 표다 — <th> 가 아예 안 생긴다.
+       th 셀렉터로 잡으면 아무 일도 안 일어난다. 첫 칸을 자리로 잡는다.
+       너비는 colgroup 이 이미 정한다(table-layout: fixed) — 여기서 또 주지 않는다. */
     h1 + table { margin-top: 0; }
-    h1 + table th, h1 + table td { border: 0; border-bottom: 1px solid #eceef2;
+    h1 + table td { border: 0; border-bottom: 1px solid #eceef2;
          padding: 1.4mm 0; font-size: 9.5pt; }
-    h1 + table th { background: transparent; width: 30%; color: #6b7280; font-weight: 600; }
+    h1 + table td:first-child { color: #6b7280; font-weight: 600; }
 
     h2 { font-size: 13pt; margin: 8mm 0 2.5mm; padding-bottom: 1.5mm;
          border-bottom: 1px solid #d8dbe2; letter-spacing: -.01em; }
@@ -429,7 +432,9 @@
        이미지가 못 뜨면(오프라인 인쇄 등) 자리만 비고 문서는 멀쩡하다 */
     .brand { display: flex; align-items: center; justify-content: space-between;
              gap: 6mm; margin-bottom: 6mm; }
-    .brand img { height: 7mm; width: auto; }
+    /* ⚠ 세로형 락업(심볼 위 · 워드마크 아래)이라 7mm 로는 글자가 2mm 도 안 돼
+       안 읽힌다. 12mm 로 잡아야 「MEGAZONE CLOUD」가 인쇄에서 보인다. */
+    .brand img { height: 12mm; width: auto; }
     .brand span { font-size: 8.5pt; color: #8b929c; letter-spacing: .04em; }
 
     /* ── 꼬리 ── 인쇄물에는 안 나온다. 화면에서만 저장 방법을 알려준다 */
