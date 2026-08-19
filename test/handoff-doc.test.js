@@ -243,3 +243,68 @@ test('인계 브리프 버튼이 단계 리포트 버튼과 무게가 다르다'
   const css = read('hub.css');
   assert.match(css, /#handoff-brief \{[^}]*min-width:/, '폭이 지정돼 있지 않다');
 });
+
+/**
+ * 한 장 요약 — 원문 「Deployment Brief 작성」이 요구하는 넷.
+ *   현재 확인된 사실 · 추가 검증이 필요한 사항 · 권장 초기 추진 방식 · 즉시 다음 단계
+ *
+ * 원문은 이 문서를 **「간결한 배포 시작 문서」**로 정의한다. 14항목과 §B 표를 훑어야
+ * 그 넷을 알 수 있으면 정의를 못 지킨 것이다.
+ */
+const summaryOf = (md) => md.slice(md.indexOf('## 한 장 요약'), md.indexOf('## A. Deployment Brief'));
+
+test('요약이 원문이 요구하는 넷을 그 표현 그대로 낸다', () => {
+  const block = summaryOf(D.buildBrief(ctx(FULL)));
+  for (const label of ['현재 확인된 사실', '추가 검증이 필요한 사항',
+    '권장 초기 추진 방식', '즉시 수행해야 할 다음 단계']) {
+    assert.match(block, new RegExp(`\\*\\*${label}\\*\\*`), `요약에 「${label}」 이 없다`);
+  }
+  // 본문보다 앞에 있어야 한다 — 뒤에 있으면 요약이 아니다.
+  const md = D.buildBrief(ctx(FULL));
+  assert.ok(md.indexOf('## 한 장 요약') < md.indexOf('## A. Deployment Brief'));
+  assert.ok(md.indexOf('## 한 장 요약') < md.indexOf('## B. 근거'));
+});
+
+test('요약이 본문과 갈리지 않는다 — 다시 계산하지 않는다', () => {
+  // 두 번 계산하면 언젠가 어긋나고, 그때 읽는 사람은 앞장을 믿는다.
+  const withNext = { ...FULL, nextSteps: { value: '8/28 보안 검토 회의 (IT 담당)' } };
+  const md = D.buildBrief(ctx(withNext));
+  const block = summaryOf(md);
+  assert.ok(block.includes('8/28 보안 검토 회의 (IT 담당)'), '다음 단계가 §A14 와 다르다');
+
+  const recommendation = D.recommendApproach(ctx(withNext));
+  assert.ok(block.includes(recommendation.label), '권고가 §A11 과 다르다');
+  assert.ok(block.includes(recommendation.why[0]), '권고 이유가 계산 결과와 다르다');
+  // 권고는 권고다 — 확정으로 읽히면 안 된다.
+  assert.match(block, /확정은 의사결정 책임자/);
+});
+
+test('요약이 상태를 뭉치지 않는다', () => {
+  // 「검증 필요 11건」으로 합치면 무엇을 해야 하는지가 사라진다. 재확인과 미확인은
+  // 할 일이 다르다.
+  const block = summaryOf(D.buildBrief(ctx(FULL)));
+  assert.match(block, /`가능성 높음` \d+항목 \(영업 입력 — 재확인\)/);
+  assert.match(block, /`미해결` \d+항목/);
+});
+
+test('⚠ 권고와 관찰 체계는 근거 집계에서 뺀다', () => {
+  const block = summaryOf(D.buildBrief(ctx(FULL)));
+  // 11 은 이 표의 셋째 줄 자체다. 근거로 세면 자기를 「검증 필요」로 적는다.
+  assert.ok(!block.includes('11. 초기 추진 방식 권고'), '권고를 근거로 셌다');
+  // 12 는 배포 단계 자리다 — 공백이 아니라 경계다.
+  assert.ok(!block.includes('12. 관찰 체계'), '배포 단계 자리를 우리 공백으로 셌다');
+});
+
+test('빈 딜에서 모르는 것을 0 으로 때우지 않는다', () => {
+  const block = summaryOf(D.buildBrief(ctx({})));
+  assert.match(block, /_아직 정해지지 않았습니다/, '다음 단계 빈칸을 숨겼다');
+  assert.ok(!/확인된 사실 \| `확인됨` 0항목/.test(block), '0 으로 때웠다');
+});
+
+test('상태가 하나 늘어도 요약에서 조용히 빠지지 않는다', () => {
+  // 상태를 손으로 나열하면 새 상태가 요약에서만 사라진다. 있는 것을 전부 훑어야 한다.
+  const src = read('lib/handoff-doc.js');
+  const fn = src.slice(src.indexOf('function briefSummary'), src.indexOf('/** ① 인계 브리프'));
+  assert.match(fn, /new Set\(sections\.map/, '상태를 손으로 나열하고 있다');
+  assert.match(fn, /STATUS_LABEL\[status\] \|\| status/, '모르는 상태가 빈칸으로 나간다');
+});
