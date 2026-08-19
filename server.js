@@ -7,6 +7,7 @@ const path = require('path');
 const { createHubRouter } = require('./routes/hub');
 const { stripInternalSections } = require('./lib/section-privacy');
 const { evaluateCompleteness } = require('./lib/solution-completeness');
+const { buildPlan: buildImportPlan } = require('./lib/catalog-import');
 require('dotenv').config();
 
 const app = express();
@@ -396,7 +397,8 @@ app.use((req, res, next) => {
     // ⚠ /lib/ 을 빠뜨리면 로컬(all)에서는 멀쩡하고 프로덕션에서만 인계 문서 스크립트가
     //   404 로 죽는다. 화면은 조용히 버튼만 안 먹는다.
     hub: commonPath || radarPath || embeddedAdminPath || req.path === '/' || req.path === '/hub' || req.path.startsWith('/hub.') || req.path.startsWith('/lib/') || req.path.startsWith('/api/hub/') || req.path.startsWith('/api/solutions'),
-    admin: commonPath || req.path === '/' || req.path.startsWith('/admin') || req.path.startsWith('/api/admin/') || req.path.startsWith('/api/solutions')
+    // ⚠ /lib/ 을 빠뜨리면 로컬(all)은 멀쩡하고 프로덕션에서만 임포트 스크립트가 404 다.
+    admin: commonPath || req.path === '/' || req.path.startsWith('/admin') || req.path.startsWith('/lib/') || req.path.startsWith('/api/admin/') || req.path.startsWith('/api/solutions')
   }[APP_SURFACE];
   if (!allowed) return res.status(404).send('Not found');
   next();
@@ -845,6 +847,88 @@ app.get('/api/solutions/:slug', authenticateToken, async (req, res) => {
 // ----------------------------------------------------
 // Admin API Routes (Admin Only)
 // ----------------------------------------------------
+
+/**
+ * 카탈로그 일괄 임포트 (052). **미리보기와 실행이 같은 계획을 쓴다.**
+ *
+ * `dryRun` 이면 세기만 하고 끝낸다 — 화면이 「몇 건 생기고 몇 건 바뀌나」를 보여주고,
+ * 사람이 확인한 뒤 같은 요청을 `dryRun: false` 로 다시 보낸다. 두 경로가 다른 규칙을
+ * 쓰면 미리보기가 거짓말을 한다.
+ *
+ * ⚠ **들어온 것은 전부 draft 다.** 검토 안 된 것이 전 직원에게 보이면 안 된다.
+ * ⚠ **판정 데이터·가격·내부 본문은 건드리지 않는다.** 임포트가 채우는 칸은
+ *   lib/catalog-import.js 의 IMPORT_FIELDS 뿐이다.
+ * ⚠ **한 트랜잭션이다.** 중간에 실패하면 아무것도 안 들어간다 — 절반만 들어간
+ *   카탈로그를 사람이 손으로 되돌리는 것이 최악이다.
+ */
+app.post('/api/admin/solutions/import', authenticateToken, catalogEditorOnly, async (req, res) => {
+  const { headers, rows, mapping, decisions, dryRun } = req.body || {};
+  if (!Array.isArray(rows) || !rows.length) {
+    return res.status(400).json({ error: '\ubd99\uc5ec\ub123\uc740 \ub370\uc774\ud130\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.' });
+  }
+  if (!Array.isArray(mapping) || !mapping.includes('name')) {
+    return res.status(400).json({ error: '\uc774\ub984 \uceec\ub7fc\uc744 \uc5f0\uacb0\ud574\uc8fc\uc138\uc694.' });
+  }
+
+  try {
+    const hasIdentity = hasColumn ? await hasColumn('solutions', 'website') : false;
+    // ⚠ 비교할 컬럼을 **전부** 가져온다. slug·name 만 읽으면 나머지가 늘 「바뀐 것」으로
+    //   보여서 재실행할 때마다 의미 없는 UPDATE 가 수백 건 돈다.
+    const identityCols = hasIdentity ? ', name_kr, website' : '';
+    const current = await pool.query(
+      `select slug, name, category, jtbd, delivery, layer, synergy, value_chain,
+              scale, grade, note${identityCols}
+         from solutions where is_archived = false`
+    );
+    const plan = buildImportPlan({
+      headers: headers || [], rows, mapping,
+      existing: current.rows, decisions: decisions || {}
+    });
+    if (dryRun !== false) return res.json({ ...plan, dryRun: true, hasIdentity });
+
+    // 052 미적용 구간에는 name_kr·website 컬럼이 없다. 그 둘만 빼고 넣는다 —
+    // 임포트 전체가 42703 으로 실패하는 것보다 낫다.
+    const skip = hasIdentity ? new Set() : new Set(['name_kr', 'website']);
+    const client = await pool.connect();
+    let created = 0;
+    let updated = 0;
+    try {
+      await client.query('begin');
+      for (const entry of plan.create) {
+        const cols = Object.keys(entry.values).filter((k) => !skip.has(k));
+        await client.query(
+          `insert into solutions (${cols.join(', ')}, status, status_op, is_archived)
+           values (${cols.map((_, i) => `$${i + 1}`).join(', ')}, 'draft', 'active', false)
+           on conflict (slug) do nothing`,
+          cols.map((k) => entry.values[k])
+        );
+        created += 1;
+      }
+      for (const entry of plan.update) {
+        const cols = entry.changes.filter((k) => !skip.has(k));
+        if (!cols.length) continue;
+        await client.query(
+          `update solutions set ${cols.map((k, i) => `${k} = $${i + 1}`).join(', ')}, updated_at = now()
+            where slug = $${cols.length + 1}`,
+          [...cols.map((k) => entry.values[k]), entry.slug]
+        );
+        updated += 1;
+      }
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    auditLog(req.user.id, 'import', `solutions:${created + updated}`, `\uc2e0\uaddc ${created} \u00b7 \uac31\uc2e0 ${updated}`);
+    res.json({ ...plan, dryRun: false, created, updated });
+  } catch (error) {
+    console.error('Catalog import failed:', error.message);
+    res.status(500).json({ error: '\uc784\ud3ec\ud2b8\uc5d0 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4. \uc544\ubb34\uac83\ub3c4 \uc800\uc7a5\ub418\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.' });
+  }
+});
 
 app.post('/api/admin/solutions', authenticateToken, catalogEditorOnly, async (req, res) => {
   const {
@@ -1875,7 +1959,9 @@ const authedFrontendAssets = Object.freeze({
   '/lib/handoff-fields.js': { file: 'lib/handoff-fields.js', canonicalPath: '/hub' },
   '/lib/handoff-snapshot.js': { file: 'lib/handoff-snapshot.js', canonicalPath: '/hub' },
   '/lib/meeting-notes.js': { file: 'lib/meeting-notes.js', canonicalPath: '/hub' },
-  '/lib/handoff-doc.js': { file: 'lib/handoff-doc.js', canonicalPath: '/hub' }
+  '/lib/handoff-doc.js': { file: 'lib/handoff-doc.js', canonicalPath: '/hub' },
+  // 임포트 규칙. /admin 화면이 서버·검사와 같은 파일을 쓴다.
+  '/lib/catalog-import.js': { file: 'lib/catalog-import.js', canonicalPath: '/admin' }
 });
 
 for (const [route, filename] of Object.entries(publicFrontendAssets)) {

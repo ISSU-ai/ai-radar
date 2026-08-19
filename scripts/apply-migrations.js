@@ -58,7 +58,9 @@ const MIGRATIONS = [
   // 050 은 빈 표만 만든다. 내용은 허브 딜 화면에서 넣는다.
   '050_meeting_notes.sql',
   // 051 은 컬럼 하나 + stage 제약을 0~5 로 넓힌다. 좁히는 게 아니라 안전하다.
-  '051_deal_handoff.sql'
+  '051_deal_handoff.sql',
+  // 052 는 컬럼 둘. 백필 없다.
+  '052_solution_identity.sql'
 ];
 
 async function main() {

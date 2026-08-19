@@ -867,6 +867,36 @@ function recordResultOpen(lead) {
   }
 }
 
+/**
+ * 카탈로그 일괄 등록(052). **실서버와 같은 lib 을 쓴다** — 화면이 세는 숫자와
+ * 서버가 세는 숫자가 갈리면 미리보기가 거짓말을 한다.
+ */
+const { buildPlan: buildImportPlan } = require('../lib/catalog-import');
+app.post('/api/admin/solutions/import', (req, res) => {
+  const { headers, rows, mapping, decisions, dryRun } = req.body || {};
+  if (!Array.isArray(rows) || !rows.length) {
+    return res.status(400).json({ error: '붙여넣은 데이터가 없습니다.' });
+  }
+  if (!Array.isArray(mapping) || !mapping.includes('name')) {
+    return res.status(400).json({ error: '이름 컬럼을 연결해주세요.' });
+  }
+  // 실서버와 같이 **비교할 컬럼을 전부** 넘긴다. slug·name 만 주면 재실행 때마다
+  // 전 건이 「갱신」으로 잡혀서 로컬 확인이 거짓말이 된다.
+  const existing = refs.solutions;
+  const plan = buildImportPlan({ headers: headers || [], rows, mapping, existing, decisions: decisions || {} });
+  if (dryRun !== false) return res.json({ ...plan, dryRun: true, hasIdentity: true });
+
+  // 실서버와 같이 전부 draft 로 넣는다. 목업은 메모리라 재시작하면 사라진다.
+  for (const entry of plan.create) {
+    refs.solutions.push({ ...entry.values, id: entry.slug, status: 'draft', is_hidden: false });
+  }
+  for (const entry of plan.update) {
+    const row = refs.solutions.find((s2) => s2.slug === entry.slug);
+    if (row) for (const key of entry.changes) row[key] = entry.values[key];
+  }
+  res.json({ ...plan, dryRun: false, created: plan.create.length, updated: plan.update.length });
+});
+
 app.get('/admin', (_req, res) => res.sendFile(path.join(__dirname, '..', 'admin.html')));
 
 // 프로덕션의 / 는 랜딩(offering.html)이다. express.static 보다 먼저 걸어야

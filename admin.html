@@ -9,6 +9,8 @@
   <link rel="stylesheet" href="style.css">
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- 임포트 규칙. 서버·검사와 **같은 파일**을 쓴다 — 두 곳에 적으면 미리보기가 거짓말을 한다. -->
+  <script src="/lib/catalog-import.js" defer></script>
   <style>
     .admin-layout {
       display: grid;
@@ -447,6 +449,7 @@
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="packages" data-role-admin>패키지 단가</button>
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="reco-report">추천 vs 채택</button>
         <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="cases">레퍼런스</button>
+        <button type="button" class="admin-tab-btn" data-admin-action="switch-tab" data-tab="import">일괄 등록</button>
       </div>
 
       <!-- Tab 1: Form Editor -->
@@ -824,6 +827,38 @@
       </div>
 
       <!-- Tab 6: 레퍼런스 · 사례 -->
+      <div id="tab-admin-import" class="glass-card admin-tab-content hidden">
+        <h3 style="margin:0 0 6px; font-size:1rem;">카탈로그 일괄 등록</h3>
+        <p style="color:var(--text-secondary); font-size:.78rem; margin:0 0 14px;">
+          엑셀에서 <b>머리글 줄을 포함해</b> 복사한 뒤 아래에 붙여넣으세요. 컬럼 이름은 무엇이든 됩니다 —
+          다음 단계에서 직접 연결합니다.<br>
+          <b>들어온 것은 전부 「초안」입니다.</b> 검토 후 발행해야 영업 화면에 보입니다.
+          <b style="color:#f87171;">판정 데이터·가격·내부 의견은 임포트하지 않습니다</b> — 검토를 건너뛰게 되기 때문입니다.
+        </p>
+
+        <textarea id="import-paste" rows="8" placeholder="Company Name (EN)&#9;회사명 (KR)&#9;Website&#10;Anthropic&#9;앤트로픽&#9;https://anthropic.com"
+          style="width:100%; font-family:ui-monospace,monospace; font-size:.78rem;"></textarea>
+        <div style="display:flex; gap:8px; margin:10px 0;">
+          <button type="button" class="btn-save" data-admin-action="import-parse">읽기</button>
+          <button type="button" class="btn-save" data-admin-action="import-preview" id="import-preview-btn" disabled>미리보기</button>
+          <button type="button" class="btn-save" data-admin-action="import-apply" id="import-apply-btn" disabled
+            style="background:#b45309;">등록 실행</button>
+        </div>
+        <p id="import-error" style="color:#f87171; font-size:.8rem; margin:0 0 10px;"></p>
+
+        <div id="import-mapping" class="hidden" style="margin-bottom:14px;">
+          <h4 style="margin:0 0 8px; font-size:.86rem;">① 컬럼 연결</h4>
+          <div id="import-mapping-rows" style="display:grid; gap:6px;"></div>
+        </div>
+
+        <div id="import-plan" class="hidden">
+          <h4 style="margin:0 0 8px; font-size:.86rem;">② 무슨 일이 벌어지나</h4>
+          <div id="import-summary" style="font-size:.84rem; margin-bottom:10px;"></div>
+          <div id="import-decisions" style="display:grid; gap:8px; margin-bottom:12px;"></div>
+          <div id="import-detail" style="font-size:.78rem; color:var(--text-secondary);"></div>
+        </div>
+      </div>
+
       <div id="tab-admin-cases" class="glass-card admin-tab-content hidden">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:6px;">
           <h3 style="margin:0; font-size:1rem;">레퍼런스 · 사례</h3>
@@ -1412,6 +1447,9 @@
       if (action === 'close-add-solution') toggleAddSolutionModal(false);
       if (action === 'submit-new-solution') void submitNewSolution();
       if (action === 'rollback') void triggerRollback(Number(control.dataset.versionId), Number(control.dataset.version));
+      if (action === 'import-parse') importParse();
+      if (action === 'import-preview') void importRun(true);
+      if (action === 'import-apply') void importRun(false);
       if (action === 'new-case') openCaseEditor(null);
       if (action === 'reload-cases') void loadCases();
       if (action === 'save-case') void saveCase();
@@ -2506,6 +2544,101 @@
       setTimeout(() => {
         toast.style.display = 'none';
       }, 4000);
+    }
+
+    /* ── 카탈로그 일괄 등록 (052) ─────────────────────────────────────────
+     * ⚠ 규칙은 window.IssuCatalogImport 한 곳에 있다. 서버가 같은 파일을 쓴다 —
+     *   화면이 따로 세면 미리보기와 실제 결과가 갈린다.
+     */
+    let importState = { headers: [], rows: [], mapping: [], decisions: {} };
+
+    function importParse() {
+      const lib = window.IssuCatalogImport;
+      const err = document.getElementById('import-error');
+      err.textContent = '';
+      if (!lib) { err.textContent = '임포트 모듈을 불러오지 못했습니다.'; return; }
+      const parsed = lib.parseDelimited(document.getElementById('import-paste').value);
+      if (!parsed.rows.length) { err.textContent = '머리글 줄과 데이터 줄을 함께 붙여넣어 주세요.'; return; }
+
+      importState = { ...parsed, mapping: lib.suggestMapping(parsed.headers), decisions: {} };
+      const options = (selected) => ['<option value="">(넣지 않음)</option>']
+        .concat(lib.IMPORT_FIELDS.map((f) =>
+          `<option value="${f.key}" ${f.key === selected ? 'selected' : ''}>${f.label}</option>`)).join('');
+      document.getElementById('import-mapping-rows').innerHTML = parsed.headers.map((h, i) => `
+        <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:center;">
+          <code style="font-size:.78rem;">${escapeAdminHtml(h) || '(이름 없는 컬럼)'}</code>
+          <span style="opacity:.5;">→</span>
+          <select data-import-col="${i}">${options(importState.mapping[i])}</select>
+        </div>`).join('');
+      document.getElementById('import-mapping').classList.remove('hidden');
+      document.getElementById('import-plan').classList.add('hidden');
+      document.getElementById('import-preview-btn').disabled = false;
+      document.getElementById('import-apply-btn').disabled = true;
+      document.querySelectorAll('[data-import-col]').forEach((sel) => sel.addEventListener('change', () => {
+        importState.mapping[Number(sel.dataset.importCol)] = sel.value || null;
+        document.getElementById('import-apply-btn').disabled = true;
+      }));
+    }
+
+    async function importRun(dryRun) {
+      const err = document.getElementById('import-error');
+      err.textContent = '';
+      try {
+        const res = await fetch('/api/admin/solutions/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...importState, dryRun })
+        });
+        const plan = await res.json();
+        if (!res.ok) throw new Error(plan.error || '임포트에 실패했습니다.');
+        renderImportPlan(plan, dryRun);
+        if (!dryRun) {
+          document.getElementById('import-apply-btn').disabled = true;
+          void loadSolutionsList();
+        }
+      } catch (error) {
+        err.textContent = error.message;
+      }
+    }
+
+    function renderImportPlan(plan, dryRun) {
+      document.getElementById('import-plan').classList.remove('hidden');
+      const pill = (n, label, color) =>
+        `<b style="color:${color};">${n}</b> ${label}`;
+      document.getElementById('import-summary').innerHTML = dryRun
+        ? [pill(plan.create.length, '신규', '#4fb477'), pill(plan.update.length, '갱신', '#4c9aff'),
+           pill(plan.blocked.length, '건너뜀', '#f5a524')].join(' · ')
+          + (plan.unmapped.length
+            ? `<div style="margin-top:6px; color:#f5a524;">⚠ 연결 안 된 컬럼 ${plan.unmapped.length}개 — ${plan.unmapped.map(escapeAdminHtml).join(', ')}. 이 값은 저장되지 않습니다.</div>`
+            : '')
+        : `<b style="color:#4fb477;">완료</b> — 신규 ${plan.created} · 갱신 ${plan.updated}. 전부 <b>초안</b>입니다.`;
+
+      // ⚠ 사람이 확인해야 하는 짝. 자동으로 묶으면 남의 카탈로그를 덮어쓴다.
+      const needs = plan.create.filter((c) => c.suggestion);
+      document.getElementById('import-decisions').innerHTML = (dryRun && needs.length)
+        ? `<div style="border:1px solid rgba(245,165,36,.4); background:rgba(245,165,36,.07); border-radius:8px; padding:10px;">
+             <b style="font-size:.82rem;">이미 있는 것과 같은 제품입니까? (${needs.length}건)</b>
+             <p style="font-size:.76rem; color:var(--text-secondary); margin:4px 0 8px;">
+               이름이 비슷해서 찾았지만 <b>다른 회사일 수 있습니다.</b> 체크하면 새로 만들지 않고 기존 것을 갱신합니다.</p>
+             ${needs.map((c) => `<label style="display:block; font-size:.8rem; margin:3px 0;">
+               <input type="checkbox" data-import-merge="${c.index}" value="${escapeAdminHtml(c.suggestion.slug)}">
+               <b>${escapeAdminHtml(c.name)}</b> → 기존 <code>${escapeAdminHtml(c.suggestion.slug)}</code> (${escapeAdminHtml(c.suggestion.name)})</label>`).join('')}
+           </div>`
+        : '';
+      document.querySelectorAll('[data-import-merge]').forEach((box) => box.addEventListener('change', () => {
+        const index = Number(box.dataset.importMerge);
+        if (box.checked) importState.decisions[index] = box.value;
+        else delete importState.decisions[index];
+        document.getElementById('import-apply-btn').disabled = true;
+      }));
+
+      const list = (rows, label) => rows.length
+        ? `<div style="margin-top:8px;"><b>${label}</b><br>${rows.slice(0, 20).map((r) =>
+            escapeAdminHtml(`${r.name || ''} (${r.slug || '-'})${r.reason ? ' — ' + r.reason : ''}`)).join('<br>')}
+           ${rows.length > 20 ? `<br>외 ${rows.length - 20}건` : ''}</div>` : '';
+      document.getElementById('import-detail').innerHTML =
+        list(plan.blocked, '건너뛴 것') + list(plan.update, '갱신될 것');
+      if (dryRun) document.getElementById('import-apply-btn').disabled = false;
     }
   </script>
 </body>
