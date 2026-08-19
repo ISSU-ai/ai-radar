@@ -56,7 +56,13 @@
           i += 1;
           quote.push(lines[i].trim().replace(/^>\s?/, ''));
         }
-        blocks.push({ type: 'quote', text: quote.filter(Boolean).join(' ') });
+        const text = quote.filter(Boolean).join(' ');
+        // `> [!기밀] …` 은 인용이 아니라 **기밀 표시**다. 문서 머리에서 「이건 고객에게
+        // 주면 안 된다」를 한눈에 보여야 하는데, 인용 막대로는 다른 안내문과 구분이
+        // 안 된다. 종류는 지금 하나뿐이라 하나만 만든다 — 안 쓰는 종류를 미리 만들면
+        // 대상 없는 CSS 가 남는다. 모르는 표시는 그대로 찍혀서 눈에 띈다.
+        const marked = text.match(/^\[!기밀\]\s*(.*)$/);
+        blocks.push(marked ? { type: 'confidential', text: marked[1] } : { type: 'quote', text });
         continue;
       }
 
@@ -249,6 +255,14 @@
       if (b.type === 'hr') {
         return '<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:color="CCCCCC"/></w:pBdr></w:pPr></w:p>';
       }
+      if (b.type === 'confidential') {
+        // 인쇄와 같은 상자를 Word 에서도 만든다. 한쪽만 눈에 띄면 다른 쪽으로 샌다.
+        return '<w:p><w:pPr><w:pBdr>'
+          + ['top', 'left', 'bottom', 'right'].map((side) =>
+            `<w:${side} w:val="single" w:sz="12" w:space="4" w:color="B4413C"/>`).join('')
+          + '</w:pBdr><w:shd w:val="clear" w:fill="FDF5F4"/><w:spacing w:after="200"/></w:pPr>'
+          + docxRuns(b.text) + '</w:p>';
+      }
       if (b.type === 'table') {
         // 머리글이 전부 빈 표(`| | |`)는 키-값 표로 쓰는 것이다. 머리글 행을 그대로 내면
         // 빈 칸에 회색 음영이 깔리고, 빈 칸을 굵게 감싸면 "****" 가 본문에 찍힌다.
@@ -339,6 +353,7 @@
       if (b.type === 'h') out.push(`<h${b.level}>${htmlRuns(b.text)}</h${b.level}>`);
       else if (b.type === 'hr') out.push('<hr>');
       else if (b.type === 'quote') out.push(`<blockquote>${htmlRuns(b.text)}</blockquote>`);
+      else if (b.type === 'confidential') out.push(`<div class="confidential">${htmlRuns(b.text)}</div>`);
       else if (b.type === 'table') {
         const headed = b.rows[0].some((cell) => cell.trim());
         const [head, ...rest] = b.rows;
@@ -401,6 +416,14 @@
            font-family: inherit; font-size: 8.8pt; font-weight: 700;
            letter-spacing: -.01em; white-space: nowrap; }
 
+    /* ── 기밀 표시 ── 「고객에게 주지 마세요」가 표 안 한 줄이면 인쇄해서 섞였을 때
+       못 알아본다. 사방 테두리로 본문에서 떼어 낸다. 흑백으로 뽑아도 테두리와
+       굵기로 읽히고, 배경색은 print-color-adjust 로 지켜진다. */
+    .confidential { margin: 0 0 4mm; padding: 2.6mm 3.5mm; font-size: 9.8pt;
+                    border: 1px solid #b4413c; border-left-width: 3px;
+                    background: #fdf5f4; color: #7d2b27; break-inside: avoid; }
+    .confidential strong { color: #9c322d; }
+
     /* ── 인용 ── 회의록 발췌와 문서 안내가 이걸로 들어온다 */
     blockquote { margin: 0 0 3mm; padding: 2mm 0 2mm 4mm;
                  border-left: 2px solid #b9c0cb; color: #43474e; font-size: 9.8pt;
@@ -416,7 +439,6 @@
                 토큰만 예외적으로 끊는다. */
              word-break: keep-all; overflow-wrap: anywhere; }
     th { background: #f3f5f8; font-weight: 700; }
-    td strong { color: #0f1115; }
 
     h1, h2, h3 { break-after: avoid; }
     ul { break-inside: avoid; }

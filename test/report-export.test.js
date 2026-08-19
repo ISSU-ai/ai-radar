@@ -357,7 +357,14 @@ test('인쇄 CSS 에 대상 없는 규칙이 없다', () => {
       return inner ? new RegExp(`<${inner}[ >]`).test(region[0]) : true;
     }
     const parts = clean.split(/\s+/);
-    if (!parts.every((p) => /^[a-z0-9]+$/.test(p))) return null;   // 검사 못 하는 모양
+    if (!parts.every((p) => /^\.?[a-z0-9-]+$/.test(p))) return null;   // 검사 못 하는 모양
+    // `.confidential` 처럼 클래스로 잡는 것 — 그 클래스를 단 요소가 실제로 있어야 한다.
+    if (parts[0].startsWith('.')) {
+      const cls = parts[0].slice(1);
+      const boxes = rendered.match(new RegExp(`<([a-z0-9]+)[^>]*class="[^"]*\\b${cls}\\b[^"]*"[\\s\\S]*?</\\1>`, 'g')) || [];
+      if (!boxes.length) return false;
+      return parts.length === 1 || boxes.some((b) => new RegExp(`<${parts[1]}[ >]`).test(b));
+    }
     if (parts.length === 1) return new RegExp(`<${parts[0]}[ >]`).test(rendered);
     // `td code` 처럼 후손 결합자 — 바깥 태그 안쪽만 본다.
     const [outer, inner] = parts;
@@ -376,4 +383,37 @@ test('인쇄 CSS 에 대상 없는 규칙이 없다', () => {
   assert.deepEqual(dead, [], `대상이 없는 규칙: ${dead.join(' · ')}`);
   // 검사에서 빠진 모양이 늘어나면 이 검사가 조용히 무의미해진다.
   assert.deepEqual(unchecked, [], `검사하지 못한 셀렉터가 늘었다: ${unchecked.join(' · ')}`);
+});
+
+test('기밀 표시는 표 안 한 줄이 아니라 테두리 상자다', () => {
+  // 인쇄해서 다른 문서와 섞이면 표 안 한 줄은 못 알아본다. 고객에게 잘못 나가는 건
+  // 되돌릴 수 없다 — 문서 자체가 스스로 「내부용」이라고 말해야 한다.
+  const R = loadReport().IssuReport;
+  for (const md of realDocs()) {
+    const html = R.toHtml(md);
+    assert.match(html, /<div class="confidential">/, '기밀 상자가 없는 내부 문서가 있다');
+    assert.match(html, /<div class="confidential">[^<]*<strong>내부용<\/strong>/);
+    // 표 밖으로 나와 있어야 한다. 표 안이면 다른 줄과 무게가 같다.
+    assert.ok(!/<t[dh]>(?:(?!<\/t[dh]>).)*내부용/.test(html), '기밀 표시가 아직 표 안에 있다');
+    // h1 바로 뒤 메타 표의 인접은 깨지면 안 된다 — 상자는 표 다음에 온다.
+    assert.match(html, /<\/table>\s*<div class="confidential">/);
+    assert.ok(!html.includes('[!기밀]'), '표시 문법이 본문에 그대로 찍혔다');
+  }
+
+  const css = read('report.js');
+  assert.match(css, /\.confidential \{[^}]*border: 1px solid/, '사방 테두리가 없다');
+  assert.match(css, /\.confidential \{[^}]*break-inside: avoid/, '상자가 페이지 사이에서 갈린다');
+  // Word 로 받아도 같은 상자여야 한다. 한쪽만 눈에 띄면 다른 쪽으로 샌다.
+  const docx = css.slice(css.indexOf("if (b.type === 'confidential')"));
+  assert.match(docx.slice(0, 400), /w:pBdr/);
+  assert.match(docx.slice(0, 400), /'top', 'left', 'bottom', 'right'/);
+});
+
+test('고객이 받는 문서에는 기밀 상자가 없다', () => {
+  // 대외 문서에 「내부용」이 찍히면 그 자체가 사고다.
+  const hub = read('hub.js');
+  const kit = hub.slice(hub.indexOf('function buildCustomerKit'), hub.indexOf('const STAGE_REPORT_TITLES'));
+  assert.ok(kit.length > 500, 'buildCustomerKit 을 못 찾았다');
+  assert.ok(!kit.includes('[!기밀]'), '고객용 키트가 기밀 표시를 단다');
+  assert.ok(!kit.includes('내부용'), '고객용 키트에 내부용 문구가 있다');
 });
