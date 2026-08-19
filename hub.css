@@ -653,3 +653,29 @@ dialog input, dialog select { min-height: 52px; font-size: 18px; }
   border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); }
 .readonly-banner.claimable { border-color: rgba(212,164,56,.35); background: rgba(212,164,56,.08); }
 .readonly-banner svg { width: 16px; flex: none; opacity: .8; }
+
+
+/* Kit §7 제약 — 체크박스 열 개. 한눈에 들어와야 서른 초에 끝난다 */
+.constraint-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px 14px; }
+.constraint-check { display: flex; align-items: center; gap: 7px; padding: 5px 0; font-size: .84rem; cursor: pointer; }
+
+/* Kit §7 리스크 — 설명과 영향도 둘만 */
+.risk-list { display: flex; flex-direction: column; gap: 7px; }
+.risk-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) 110px; gap: 8px; align-items: center; }
+.risk-row > b { font-family: var(--font-mono); font-size: .74rem; color: var(--faint); }
+
+/* Kit 서식 보기 — 계산된 것을 원문 표 모양으로 */
+.kit-summary { margin-bottom: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.kit-summary > summary { padding: 11px 14px; cursor: pointer; font-weight: 650; font-size: .88rem; }
+.kit-summary > summary small { font-weight: 400; opacity: .6; }
+.kit-summary > *:not(summary) { margin: 0 14px 14px; }
+.kit-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.kit-table th[scope="row"] { text-align: left; font-weight: 600; padding: 7px 8px 7px 0; }
+.kit-table thead th { font-size: .72rem; opacity: .65; padding: 6px 8px; font-weight: 600; }
+.kit-table td { text-align: center; padding: 6px 8px; border-top: 1px solid rgba(255,255,255,.06); }
+.kit-table th[scope="row"] { border-top: 1px solid rgba(255,255,255,.06); }
+.kit-table .kit-have { text-align: left; font-size: .74rem; opacity: .6; }
+.kit-gate { padding: 11px 13px; border-radius: 9px; background: var(--gold-soft);
+  border: 1px solid rgba(212,164,56,.25); font-size: .84rem; }
+.kit-gate p { margin: 5px 0; opacity: .85; }
+.kit-gate ul { margin: 6px 0 0; padding-left: 18px; font-size: .8rem; }

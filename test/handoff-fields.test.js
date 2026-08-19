@@ -7,20 +7,20 @@ const path = require('node:path');
 
 const {
   HANDOFF_FIELDS, QUALITY_CHECKS, QUALITY_LEVELS, FIELD_LIMIT,
-  normaliseHandoff, handoffReadiness, interviewQuestions, qualityGaps
+  CONSTRAINTS, RISK_LIMIT, normaliseHandoff, handoffReadiness, interviewQuestions, qualityGaps
 } = require('../lib/handoff-fields');
 const { PIPELINE_STAGES, EDITABLE_DEAL_FIELDS, normaliseDealPatch } = require('../lib/hub-domain');
 
 const read = (name) => fs.readFileSync(path.join(__dirname, '..', name), 'utf8');
 const ANCHOR = { quote: '법무팀은 수작업입니다', note_id: 'n1', met_on: '2026-08-14' };
 
-test('문서1 전체가 아니라 여섯 칸만 받는다', () => {
+test('Kit 전체가 아니라 일곱 칸만 받는다', () => {
   // 입력란이 100개를 넘으면 아무도 안 채우고, 안 채워진 문서는 없는 것과 같다.
-  assert.equal(HANDOFF_FIELDS.length, 6);
+  assert.equal(HANDOFF_FIELDS.length, 7);
   assert.deepEqual(HANDOFF_FIELDS.map((f) => f.key),
-    ['workflow', 'pilotGroup', 'successCriteria', 'stakeholders', 'scope', 'nextSteps']);
+    ['whyNow', 'workflow', 'pilotGroup', 'successCriteria', 'stakeholders', 'scope', 'nextSteps']);
   // 각 칸이 Deployment Brief §A 의 어느 항목인지 안다 — 규격이 바뀌면 여기만 고친다.
-  assert.deepEqual(HANDOFF_FIELDS.map((f) => f.brief), [4, 2, 6, 7, 8, 14]);
+  assert.deepEqual(HANDOFF_FIELDS.map((f) => f.brief), [1, 4, 2, 6, 7, 8, 14]);
   // 못 채웠을 때 나갈 질문이 반드시 있다.
   for (const field of HANDOFF_FIELDS) {
     assert.ok(field.ask && field.ask.endsWith('?'), `${field.key} 에 질문이 없다`);
@@ -70,6 +70,34 @@ test('한 칸이 회의록이 되지 않게 상한을 둔다', () => {
   assert.equal(out.workflow.value.length, FIELD_LIMIT);
 });
 
+test('Kit §7 — 영업이 정할 수 있는 것만 받는다', () => {
+  // 제약은 체크박스 10개. 「있다/없다」라 설명이 필요 없다.
+  assert.equal(CONSTRAINTS.length, 10);
+  // 리스크는 설명+영향도 둘만. 원본 표의 나머지 넷(책임자·완화방안·발생가능성·상태)은
+  // 영업이 정할 수 있는 것이 아니다 — 배포 단계에서 붙는다.
+  const out = normaliseHandoff({
+    constraints: ['budget', '없는키', 'security'],
+    risks: [{ text: '보안 검토 지연', impact: 'high', owner: '김OO', mitigation: 'x' },
+      { text: '  ', impact: 'low' }, { text: '리전 미확인', impact: '이상한값' }]
+  });
+  assert.deepEqual(out.constraints, ['budget', 'security'], '모르는 키를 버려야 한다');
+  assert.deepEqual(out.risks, [
+    { text: '보안 검토 지연', impact: 'high' },
+    { text: '리전 미확인', impact: '' }
+  ], '빈 행을 만들거나 배포 단계 필드를 받으면 안 된다');
+});
+
+test('리스크는 상한을 넘지 않는다', () => {
+  const many = Array.from({ length: RISK_LIMIT + 4 }, (_, i) => ({ text: `R${i}` }));
+  assert.equal(normaliseHandoff({ risks: many }).risks.length, RISK_LIMIT);
+});
+
+test('제약·리스크는 진행도에 안 들어간다', () => {
+  // 진행도는 일곱 칸만 센다. 체크만 하고 칸은 비운 딜이 준비된 것처럼 보이면 안 된다.
+  const only = handoffReadiness({ constraints: ['budget'], risks: [{ text: 'x' }] });
+  assert.equal(only.filled, 0);
+});
+
 test('진행도는 칸만 세고 체크박스를 안 센다', () => {
   // 섞으면 「체크만 하고 칸은 비운」 딜이 준비된 것처럼 보인다.
   const onlyChecks = handoffReadiness({
@@ -77,7 +105,7 @@ test('진행도는 칸만 세고 체크박스를 안 센다', () => {
       pilotFit: 'met', dependencies: 'met', decisionBasis: 'met' }
   });
   assert.equal(onlyChecks.filled, 0, '체크만 했는데 준비된 것처럼 보인다');
-  assert.equal(onlyChecks.missing.length, 6);
+  assert.equal(onlyChecks.missing.length, 7);
 
   const partial = handoffReadiness({
     workflow: { value: '계약 검토', quote: ANCHOR }, pilotGroup: { value: '법무 12명' }
@@ -88,9 +116,9 @@ test('진행도는 칸만 세고 체크박스를 안 센다', () => {
 
 test('못 채운 칸이 질문으로 바뀐다 — 이미 아는 것은 안 묻는다', () => {
   const all = interviewQuestions({});
-  assert.equal(all.length, 6);
+  assert.equal(all.length, 7);
   const partial = interviewQuestions({ workflow: { value: '계약 검토 요약' } });
-  assert.equal(partial.length, 5);
+  assert.equal(partial.length, 6);
   assert.ok(!partial.some((q) => q.key === 'workflow'), '답한 것을 또 묻는다');
   assert.ok(partial.every((q) => q.question.endsWith('?')));
 });

@@ -86,9 +86,9 @@ test('회의록이 지워지면 되짚을 수 없다고 적는다', () => {
 
 test('인터뷰 가이드가 이미 아는 것을 안 묻는다', () => {
   const empty = D.buildInterviewGuide(ctx({}));
-  assert.match(empty, /아래 6개가 지금 비어 있는 칸입니다/);
+  assert.match(empty, /아래 7개가 지금 비어 있는 칸입니다/);
   const partial = D.buildInterviewGuide(ctx(FULL));
-  assert.match(partial, /아래 1개가 지금 비어 있는 칸입니다/);
+  assert.match(partial, /아래 2개가 지금 비어 있는 칸입니다/);  // whyNow 가 늘었다
   assert.ok(!partial.includes('가장 먼저 지원해야 할 구체적인 업무'), '답한 것을 또 묻는다');
   assert.match(partial, /이번 범위에 명시적으로 포함되는 것/, '안 채운 칸은 물어야 한다');
 });

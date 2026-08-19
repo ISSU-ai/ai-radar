@@ -2874,6 +2874,9 @@ function downloadJson(data, baseName) {
  *   다시 묻고, 그러면 인계 문서가 시간을 아끼는 게 아니라 한 벌 더 만드는 일이 된다.
  */
 const HANDOFF_FIELDS = Object.freeze([
+  { key: 'whyNow', brief: 1, label: '왜 지금인가',
+    hint: '일정 · 의사결정 · 마감일 · 운영 제약과 연결해서',
+    placeholder: '예: 4월 감사 대응에 계약 검토 적체가 걸림. 법무 인력 충원이 막혀 있음.' },
   { key: 'workflow', brief: 4, label: '우선 워크플로',
     hint: '무엇을 · 누가 · 얼마나 자주 · 사람이 어디서 검토하는가',
     placeholder: '예: 신규 계약 검토 요약. 법무 12명, 주 40건. 최종 발송 전 팀장 승인.' },
@@ -2893,6 +2896,27 @@ const HANDOFF_FIELDS = Object.freeze([
     hint: '조치 · 책임자 · 기한',
     placeholder: '예: 8/28 보안 검토 회의 (IT 김OO) / 9/5 파일럿 계정 발급' }
 ]);
+
+/**
+ * Kit §7 확인된 제약. **영업이 미팅에서 아는 것들이다** — 예산 승인이 났는지,
+ * 보안 검토가 걸려 있는지. 체크박스라 서른 초면 끝나고, 비어 있으면 배포팀이
+ * 열 개를 다시 묻는다.
+ */
+const CONSTRAINTS = Object.freeze([
+  { key: 'budget', label: '예산 또는 상업적 승인' },
+  { key: 'timeline', label: '일정 또는 출시 마감일' },
+  { key: 'security', label: '보안 · 컴플라이언스 검토' },
+  { key: 'residency', label: '데이터 레지던시 · 리전 간 처리 제한' },
+  { key: 'workspace', label: '워크스페이스 구성 · 관리자 대응 여력' },
+  { key: 'connector', label: '커넥터 · 시스템 연동' },
+  { key: 'license', label: '라이선스 또는 좌석 확보' },
+  { key: 'dataQuality', label: '데이터 품질 · 지식 소스 준비도' },
+  { key: 'userReadiness', label: '사용자 준비도 · 변화관리' },
+  { key: 'language', label: '언어 · 현지화 · 지원 범위' }
+]);
+/** 리스크는 설명과 영향도 둘만. 나머지 넷은 영업이 정할 수 있는 것이 아니다. */
+const RISK_LIMIT = 6;
+const RISK_IMPACTS = Object.freeze([['high', '높음'], ['mid', '보통'], ['low', '낮음']]);
 
 /** 사용사례 품질 점검 (문서2 §F). 판정만 받는다 — 여섯 줄이라 부담이 없다. */
 const QUALITY_CHECKS = Object.freeze([
@@ -2946,10 +2970,38 @@ function renderHandoff() {
       <span>${label}</span></label></td>`).join('')}
   </tr>`).join('');
 
+  // Kit §7 제약 — 체크박스 열 개. 영업이 미팅에서 아는 것이라 부담이 작다.
+  const picked = new Set(asArray(handoff.constraints));
+  const constraints = CONSTRAINTS.map((c) => `<label class="constraint-check">
+    <input type="checkbox" data-constraint="${c.key}" ${picked.has(c.key) ? 'checked' : ''} ${disabledAttr()}>
+    <span>${escapeHtml(c.label)}</span></label>`).join('');
+
+  // Kit §7 리스크 — 설명과 영향도 둘만. 나머지 넷은 배포 단계에서 붙는다.
+  const risks = asArray(handoff.risks);
+  const riskRows = Array.from({ length: Math.min(RISK_LIMIT, risks.length + 1) }, (_, i) => {
+    const row = risks[i] || {};
+    return `<div class="risk-row">
+      <b>R${i + 1}</b>
+      <input type="text" data-risk-text="${i}" maxlength="500" value="${escapeHtml(row.text || '')}"
+        placeholder="예: 보안 검토가 3주 이상 걸릴 수 있음" ${disabledAttr()}>
+      <select data-risk-impact="${i}" ${disabledAttr()}><option value="">영향도</option>${
+        RISK_IMPACTS.map(([v, l]) => `<option value="${v}" ${row.impact === v ? 'selected' : ''}>${l}</option>`).join('')
+      }</select></div>`;
+  }).join('');
+
   return `${stageHeader('06', '배포 인계', 'ChatGPT Deployment Brief 가 요구하는 것 중 미팅에서만 알 수 있는 것을 채웁니다. 비워 두면 인터뷰 질문으로 바뀌어 나갑니다.',
     '<button id="handoff-brief" class="primary-button" type="button"><i data-lucide="file-output"></i> 인계 브리프 4종</button>')}
     <div id="handoff-progress" class="handoff-progress">${handoffProgressMarkup()}</div>
-    <div class="field-group"><h3>근거 여섯 칸</h3><div class="form-grid">${fields}</div></div>
+    ${kitSummaryMarkup()}
+    <div class="field-group"><h3>근거 일곱 칸</h3><div class="form-grid">${fields}</div></div>
+    <div class="field-group"><h3>확인된 제약 <small>(Kit §7)</small></h3>
+      <div class="constraint-grid">${constraints}</div>
+      <p class="field-note">미팅에서 <b>확인된 것만</b> 체크하세요. 안 물어본 것은 비워 둡니다 — 빈 칸이 「없음」이 아니라 「모름」이라는 것을 배포팀이 알아야 합니다.</p>
+    </div>
+    <div class="field-group"><h3>리스크 <small>(Kit §7 · 최대 ${RISK_LIMIT})</small></h3>
+      <div class="risk-list">${riskRows}</div>
+      <p class="field-note">책임자·완화방안·발생 가능성은 <b>배포 단계에서 붙습니다.</b> 여기서는 무엇이 걸리는지와 얼마나 큰지만 적습니다.</p>
+    </div>
     <div class="field-group"><h3>사용 사례 품질 점검 <small>(Brief §F)</small></h3>
       <div class="quality-scroll"><table class="quality-table">
         <thead><tr><th scope="col">기준</th>${QUALITY_LEVELS.map(([, label]) =>
@@ -2960,7 +3012,38 @@ function renderHandoff() {
     </div>`;
 }
 
-/** 여섯 칸 중 몇 개가 찼는지. **체크박스는 안 센다** — 섞으면 빈 딜이 준비된 것처럼 보인다. */
+/**
+ * Kit §A 「근거 품질 요약」. **이미 계산하는 것을 Kit 서식 그대로** 보여준다.
+ * 새로 입력받는 게 아니라 lib/handoff-doc.js 가 낸 판정을 그리는 것이다 —
+ * 영업이 문서를 뽑기 전에 「지금 어디가 얇은가」를 화면에서 본다.
+ */
+function kitSummaryMarkup() {
+  const lib = window.IssuHandoff;
+  if (!lib || !state.deal) return '';
+  const ctx = handoffContext();
+  const areas = lib.evidenceAreas(ctx);
+  const rec = lib.recommendApproach(ctx);
+  const mark = (area, level) => (area.level === level ? '<b>☑</b>' : '☐');
+  return `<details class="kit-summary">
+    <summary>Kit 서식으로 보기 <small>(근거 품질 요약 · 추진 방식)</small></summary>
+    <table class="kit-table">
+      <thead><tr><th>준비도 영역</th><th>양호</th><th>주의</th><th>미흡</th><th>지금 있는 근거</th></tr></thead>
+      <tbody>${areas.map((a) => `<tr>
+        <th scope="row">${escapeHtml(a.label)}</th>
+        <td>${mark(a, 'good')}</td><td>${mark(a, 'watch')}</td><td>${mark(a, 'weak')}</td>
+        <td class="kit-have">${escapeHtml(a.have.join(', ') || '—')}</td>
+      </tr>`).join('')}</tbody>
+    </table>
+    <div class="kit-gate">
+      <b>권장 추진 방식 — ${escapeHtml(rec.label)}</b>
+      <p>${escapeHtml(rec.when)}</p>
+      <ul>${rec.why.map((w) => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
+      <p class="field-note">⚠ <b>권고입니다.</b> 근거 충족도로 계산한 값이고 확정은 의사결정 책임자가 합니다.</p>
+    </div>
+  </details>`;
+}
+
+/** 일곱 칸 중 몇 개가 찼는지. **체크박스는 안 센다** — 섞으면 빈 딜이 준비된 것처럼 보인다. */
 function handoffProgressMarkup() {
   const handoff = handoffOf();
   const filled = HANDOFF_FIELDS.filter((f) => String(handoff[f.key]?.value || '').trim());
@@ -3009,6 +3092,28 @@ function bindStageEvents() {
     });
     renderHandoffProgress();
   }));
+  // Kit §7 제약. 체크만 하면 되므로 renderStage 를 안 부른다.
+  $$('[data-constraint]').forEach((box) => box.addEventListener('change', () => {
+    const picked = $$('[data-constraint]').filter((b) => b.checked).map((b) => b.dataset.constraint);
+    saveHandoff((next) => { next.constraints = picked; });
+  }));
+  // Kit §7 리스크. 마지막 줄을 채우면 빈 줄이 하나 더 생겨야 계속 적을 수 있다.
+  const collectRisks = () => $$('[data-risk-text]')
+    .map((input) => ({
+      text: input.value,
+      impact: $(`[data-risk-impact="${input.dataset.riskText}"]`)?.value || ''
+    }))
+    .filter((row) => row.text.trim());
+  $$('[data-risk-text]').forEach((input) => {
+    input.addEventListener('input', () => saveHandoff((next) => { next.risks = collectRisks(); }));
+    // 마지막 칸을 벗어날 때만 다시 그린다 — 타이핑 중에 그리면 포커스를 잃는다.
+    input.addEventListener('blur', () => {
+      const rows = collectRisks();
+      if (rows.length === $$('[data-risk-text]').length && rows.length < RISK_LIMIT) renderStage();
+    });
+  });
+  $$('[data-risk-impact]').forEach((select) => select.addEventListener('change', () =>
+    saveHandoff((next) => { next.risks = collectRisks(); })));
   $$('[data-quality]').forEach((radio) => radio.addEventListener('change', () => {
     saveHandoff((next) => {
       const quality = next.quality && typeof next.quality === 'object' ? next.quality : {};
