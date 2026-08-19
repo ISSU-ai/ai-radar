@@ -1141,6 +1141,9 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
       // 020 미적용이면 조건을 빼서 "숨김 없음"으로 동작한다.
       const refHiddenFilter = (hasColumn && await hasColumn('solutions', 'is_hidden'))
         ? 'and s.is_hidden = false' : '';
+      // 052 미적용 구간에는 빼고 조회한다. 컬럼 하나 때문에 허브 전체가 500 이 되면 안 된다.
+      const hasIdentity = hasColumn ? await hasColumn('solutions', 'website') : false;
+      const identityColumns = hasIdentity ? 's.name_kr, s.website,' : '';
       // 세일즈 피치가 "이 평가영역을 어느 패키지가 덮는가" 를 대조한다.
       const hasPackageCoverage = hasColumn
         ? await hasColumn('packages', 'assessment_coverage') : false;
@@ -1162,7 +1165,7 @@ function createHubRouter({ pool, authenticateToken, adminOnly, auditLog, hasColu
            where p.status = 'active' group by p.id order by p.sort_order`
         ).then((r) => r.rows),
         pool.query(
-          `select s.id, s.slug, s.name, s.category, s.jtbd, s.grade, s.scale,
+          `select s.id, s.slug, s.name, ${identityColumns} s.category, s.jtbd, s.grade, s.scale,
                   s.tech_note, s.status_op, s.price_type, s.unit_price, s.currency, s.price_tiers,
                   ${solutionPlaceholder} as price_is_placeholder,
                   ${coverageColumn} as assessment_coverage,

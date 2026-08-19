@@ -11,6 +11,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- 임포트 규칙. 서버·검사와 **같은 파일**을 쓴다 — 두 곳에 적으면 미리보기가 거짓말을 한다. -->
   <script src="/lib/catalog-import.js" defer></script>
+  <script src="/lib/vendor-link.js" defer></script>
   <style>
     .admin-layout {
       display: grid;
@@ -461,6 +462,17 @@
             <div class="form-group">
               <label class="control-label" for="sol-name">솔루션 명 (Name)</label>
               <input type="text" id="sol-name" class="form-control" style="padding-left: 12px;" required>
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="sol-name-kr">한글명 (표시용)</label>
+              <input type="text" id="sol-name-kr" class="form-control" style="padding-left: 12px;" placeholder="예: 오픈에이아이 엔터프라이즈">
+              <!-- ⚠ 표시용이다. 검색 키는 slug 다 (052 주석 참고). -->
+            </div>
+            <div class="form-group">
+              <label class="control-label" for="sol-website">벤더 웹사이트</label>
+              <input type="url" id="sol-website" class="form-control" style="padding-left: 12px;" placeholder="예: https://openai.com">
+              <!-- 저장하면 카탈로그·상세 제목 옆에 링크로 붙는다. http(s) 만 저장된다. -->
+              <div id="sol-website-preview" class="field-hint" style="margin-top: 6px;"></div>
             </div>
             <div class="form-group">
               <label class="control-label" for="sol-layer">4-Layer 분류</label>
@@ -986,6 +998,10 @@
         <div class="form-group">
           <label class="control-label" for="new-sol-name">솔루션 명 (Name)</label>
           <input type="text" id="new-sol-name" class="form-control" style="padding-left: 12px; width: 100%;" placeholder="예: OpenAI Enterprise" required>
+        </div>
+        <div class="form-group">
+          <label class="control-label" for="new-sol-website">벤더 웹사이트</label>
+          <input type="url" id="new-sol-website" class="form-control" style="padding-left: 12px; width: 100%;" placeholder="예: https://openai.com">
         </div>
         <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 1.5rem;">
           <button type="button" data-admin-action="close-add-solution" class="btn-save" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--card-border); color: var(--text-primary);">취소</button>
@@ -1818,6 +1834,10 @@
         // Populate Forms
         document.getElementById('sol-id').value = sol.id;
         document.getElementById('sol-name').value = sol.name;
+        // 052 미적용 환경에서는 서버가 이 둘을 안 준다. 빈칸으로 둔다.
+        document.getElementById('sol-name-kr').value = sol.name_kr || '';
+        document.getElementById('sol-website').value = sol.website || '';
+        renderWebsitePreview();
         document.getElementById('sol-layer').value = sol.layer;
         document.getElementById('sol-delivery').value = sol.delivery;
         document.getElementById('sol-synergy').value = sol.synergy;
@@ -1948,6 +1968,8 @@
 
       return {
         name: document.getElementById('sol-name').value,
+      name_kr: document.getElementById('sol-name-kr').value,
+      website: document.getElementById('sol-website').value,
         layer: document.getElementById('sol-layer').value,
         delivery: document.getElementById('sol-delivery').value,
         synergy: document.getElementById('sol-synergy').value,
@@ -1979,9 +2001,30 @@
       };
     }
 
+    /**
+     * 입력란 옆 미리보기. **저장하기 전에** 이 주소가 링크가 되는지 보여준다 —
+     * 저장하고 카탈로그에 가서야 「안 나오네」를 알면 늦다.
+     * 판정은 lib/vendor-link.js 가 한다. 화면이 규칙을 다시 만들지 않는다.
+     */
+    function renderWebsitePreview() {
+      const box = document.getElementById('sol-website-preview');
+      const input = document.getElementById('sol-website');
+      if (!box || !input) return;
+      const raw = input.value.trim();
+      if (!raw) { box.innerHTML = ''; return; }
+      const html = window.IssuVendorLink ? window.IssuVendorLink.linkHtml(raw) : '';
+      box.innerHTML = html
+        ? `카탈로그에 이렇게 붙습니다 — ${html}`
+        : '<span style="color: var(--accent-red, #ff6b6b);">이 주소로는 링크를 만들 수 없습니다. http 또는 https 주소를 넣어주세요.</span>';
+    }
+    document.addEventListener('input', (event) => {
+      if (event.target && event.target.id === 'sol-website') renderWebsitePreview();
+    });
+
     // Create New Draft Modal Control
     function createNewDraft() {
       document.getElementById('new-sol-name').value = '';
+      document.getElementById('new-sol-website').value = '';
       toggleAddSolutionModal(true);
     }
 
@@ -2019,6 +2062,7 @@
           },
           body: JSON.stringify({
             name: solName,
+            website: document.getElementById('new-sol-website').value,
             layer: 'L1',
             status: 'draft',
             status_op: 'draft',

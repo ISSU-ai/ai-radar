@@ -179,6 +179,17 @@ function escapeHtml(value) {
   })[character]);
 }
 
+/**
+ * 벤더 사이트 링크. 규칙은 lib/vendor-link.js 한 곳에 있다 — 여기서 다시 만들면
+ * `javascript:` 를 통과시키는 쪽이 언젠가 생긴다.
+ *
+ * ⚠ 표 행은 클릭하면 상세가 열린다. 막지 않으면 벤더 사이트로 가면서 모달도 같이 뜬다.
+ */
+function vendorLink(website, options) {
+  if (!window.IssuVendorLink) return '';
+  return window.IssuVendorLink.linkHtml(website, { stopPropagation: true, ...(options || {}) });
+}
+
 function getSolutionStars(solution) {
   if (String(solution.layer || '').includes('L0')) return '★';
   if (solution.synergy === '매우 높음') return '★★★';
@@ -472,7 +483,7 @@ function renderISVTable(data) {
     
     row.innerHTML = `
       <td><span class="lbl-${stars}">${stars}</span></td>
-      <td><strong>${escapeHtml(isv.name)}</strong></td>
+      <td><strong>${escapeHtml(isv.name)}</strong>${vendorLink(isv.website)}</td>
       <td><span class="layer-badge">${escapeHtml(isv.layer)}</span></td>
       <td>${escapeHtml(isv.delivery)}</td>
       <td>${escapeHtml(isv.synergy)}</td>
@@ -540,6 +551,10 @@ async function openModalById(id) {
     priorityBadge.textContent = `우선순위: ${stars}`;
     
     document.getElementById("modal-title").textContent = isv.name;
+    // 벤더 사이트. lib/vendor-link.js 가 http(s) 만 통과시키고 못 쓰면 빈 문자열을 준다 —
+    // 자리만 비고 화면은 멀쩡하다. 052 미적용 환경에서는 isv.website 자체가 없다.
+    document.getElementById("modal-website").innerHTML =
+      window.IssuVendorLink ? window.IssuVendorLink.linkHtml(isv.website) : '';
     document.getElementById("modal-layer").textContent = isv.layer;
     document.getElementById("modal-delivery").textContent = isv.delivery;
     document.getElementById("modal-synergy").textContent = isv.synergy;

@@ -8,6 +8,8 @@ const { createHubRouter } = require('./routes/hub');
 const { stripInternalSections } = require('./lib/section-privacy');
 const { evaluateCompleteness } = require('./lib/solution-completeness');
 const { buildPlan: buildImportPlan } = require('./lib/catalog-import');
+// 화면과 **같은 규칙**으로 주소를 검사한다. 두 곳에 적으면 한 곳이 느슨해진다.
+const { safeUrl: safeVendorUrl } = require('./lib/vendor-link');
 require('dotenv').config();
 
 const app = express();
@@ -192,7 +194,7 @@ async function hasColumn(table, column) {
 // GET /api/solutions/:slug 응답 컬럼. SELECT * 는 내부 컬럼(가격·grade·tech_note·
 // focal·운영상태)을 role 구분 없이 흘려보내므로 쓰지 않는다.
 const SOLUTION_COLUMNS_COMMON = Object.freeze([
-  'id', 'legacy_id', 'slug', 'name', 'delivery', 'layer', 'synergy', 'category',
+  'id', 'legacy_id', 'slug', 'name', 'name_kr', 'website', 'delivery', 'layer', 'synergy', 'category',
   'jtbd', 'value_chain', 'sections', 'simulator_mappings', 'industries',
   'status', 'updated_at', 'list_price'
 ]);
@@ -207,8 +209,11 @@ const SOLUTION_COLUMNS_ADMIN_ONLY = Object.freeze([
  *
  * list_price 는 **영업도 봐야 해서** COMMON 에 있다. 벤더 공시가라 대외 민감이 아니고,
  * 우리 견적 단가(unit_price)는 여전히 ADMIN_ONLY 다.
+ * name_kr·website(052)도 같은 이유로 COMMON 이다 — 벤더가 공개한 것이라 내부 정보가 아니다.
  */
-const SOLUTION_COLUMNS_OPTIONAL = Object.freeze(['sections_internal', 'price_is_placeholder', 'list_price']);
+const SOLUTION_COLUMNS_OPTIONAL = Object.freeze([
+  'sections_internal', 'price_is_placeholder', 'list_price', 'name_kr', 'website'
+]);
 
 async function solutionColumnsFor(role) {
   const keep = async (columns) => {
@@ -223,6 +228,43 @@ async function solutionColumnsFor(role) {
   // curator 도 내부 본문을 편집해야 하므로 admin 과 같은 컬럼을 받는다.
   if (!isCatalogEditor({ role })) return common;
   return [...common, ...(await keep(SOLUTION_COLUMNS_ADMIN_ONLY))];
+}
+
+/**
+ * name_kr · website (052) 를 별도 UPDATE 로 반영한다.
+ *
+ * 큰 INSERT/UPDATE 의 위치 인자에 끼워 넣지 않는다 — $N 을 다시 매기다가 어긋나면
+ * **엉뚱한 컬럼에 값이 들어가고** 그건 조용히 성공한다. sections_internal·list_price 와
+ * 같은 방식이다.
+ *
+ * ⚠ website 는 저장 전에 정규화한다. 화면이 `javascript:` 를 걸러내긴 하지만,
+ *   **거르는 곳이 하나뿐이면 그 하나가 언젠가 빠진다.** 못 쓰는 주소는 400 으로
+ *   되돌려 준다 — 조용히 버리면 넣은 사람은 넣은 줄 안다.
+ */
+async function persistIdentity(executor, solutionId, body) {
+  const { name_kr: nameKr, website } = body || {};
+  if (nameKr === undefined && website === undefined) return;
+  if (!(await hasColumn('solutions', 'website'))) return;
+
+  const sets = [];
+  const params = [];
+  if (nameKr !== undefined) {
+    params.push(String(nameKr || '').trim().slice(0, 200) || null);
+    sets.push(`name_kr = $${params.length}`);
+  }
+  if (website !== undefined) {
+    const raw = String(website || '').trim();
+    const href = raw ? safeVendorUrl(raw) : '';
+    if (raw && !href) {
+      const error = new Error('웹사이트 주소를 확인해주세요. http 또는 https 주소만 저장됩니다.');
+      error.status = 400;
+      throw error;
+    }
+    params.push(href || null);
+    sets.push(`website = $${params.length}`);
+  }
+  params.push(solutionId);
+  await executor.query(`UPDATE solutions SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
 }
 
 /**
@@ -700,10 +742,13 @@ app.get('/api/solutions', authenticateToken, async (req, res) => {
   const hasHidden = await hasColumn('solutions', 'is_hidden');
   // opinion 은 정책상 카탈로그 편집자 전용이면 아예 조회하지 않는다(응답에서 지우는 것보다 안전).
   const exposeOpinion = canSeeInternal || OPINION_EXPOSE_POLICY === 'A';
+  // 052 미적용 구간에도 코드가 먼저 배포될 수 있다. 없으면 빼고 조회한다.
+  const hasIdentity = await hasColumn('solutions', 'website');
   const listColumns = [
     'id', 'legacy_id', 'slug', 'name', 'delivery', 'layer', 'synergy', 'category',
     'jtbd', 'value_chain', 'status', 'version', 'updated_at', 'simulator_mappings', 'industries',
     'is_archived',
+    ...(hasIdentity ? ['name_kr', 'website'] : []),
     ...(hasHidden ? ['is_hidden'] : []),
     ...(exposeOpinion ? ['opinion'] : [])
   ];
@@ -979,6 +1024,7 @@ app.post('/api/admin/solutions', authenticateToken, catalogEditorOnly, async (re
     ]);
     
     const solId = result.rows[0].id;
+    await persistIdentity(pool, solId, req.body);
     await persistSectionsInternal(pool, solId, req.body.sections_internal);
     await persistRecommendationFields(pool, solId, req.body);
     await persistPriceFlag(pool, solId, req.body.price_is_placeholder, req.user);
@@ -988,6 +1034,8 @@ app.post('/api/admin/solutions', authenticateToken, catalogEditorOnly, async (re
     res.json({ message: '솔루션 초안(Draft)이 성공적으로 생성되었습니다.', id: solId, slug });
   } catch (err) {
     console.error(err);
+    // 입력이 틀린 것을 500 으로 돌려주면 넣은 사람은 서버가 죽은 줄 안다.
+    if (err.status === 400) return res.status(400).json({ error: err.message });
     if (err.message && err.message.includes('unique constraint')) {
       return res.status(400).json({ error: '이미 동일한 이름이나 slug의 솔루션이 존재합니다.' });
     }
@@ -1059,6 +1107,7 @@ app.put('/api/admin/solutions/:id', authenticateToken, catalogEditorOnly, async 
       currencyVal, priceTiersJson, solId
     ]);
 
+    await persistIdentity(pool, solId, req.body);
     await persistSectionsInternal(pool, solId, req.body.sections_internal);
     await persistRecommendationFields(pool, solId, req.body);
     await persistPriceFlag(pool, solId, req.body.price_is_placeholder, req.user);
@@ -1068,6 +1117,7 @@ app.put('/api/admin/solutions/:id', authenticateToken, catalogEditorOnly, async 
     res.json({ message: '솔루션 정보가 저장되었습니다.', slug });
   } catch (err) {
     console.error(err);
+    if (err.status === 400) return res.status(400).json({ error: err.message });
     res.status(500).json({ error: '솔루션 정보 업데이트에 실패했습니다.' });
   }
 });
@@ -1961,7 +2011,10 @@ const authedFrontendAssets = Object.freeze({
   '/lib/meeting-notes.js': { file: 'lib/meeting-notes.js', canonicalPath: '/hub' },
   '/lib/handoff-doc.js': { file: 'lib/handoff-doc.js', canonicalPath: '/hub' },
   // 임포트 규칙. /admin 화면이 서버·검사와 같은 파일을 쓴다.
-  '/lib/catalog-import.js': { file: 'lib/catalog-import.js', canonicalPath: '/admin' }
+  '/lib/catalog-import.js': { file: 'lib/catalog-import.js', canonicalPath: '/admin' },
+  // 벤더 링크 안전 규칙. /radar · /hub · /admin **셋이 같은 파일**을 본다 —
+  // 화면마다 다시 쓰면 한 곳이 `javascript:` 를 통과시킨다. 서버도 같은 것을 쓴다.
+  '/lib/vendor-link.js': { file: 'lib/vendor-link.js', canonicalPath: '/radar' }
 });
 
 for (const [route, filename] of Object.entries(publicFrontendAssets)) {

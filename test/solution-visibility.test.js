@@ -68,8 +68,10 @@ test('토글은 양방향이다 — is_archived 의 편도 문제를 반복하�
 test('아카이브 복구가 화면에서 도달 가능하다', () => {
   // API 에 복구 분기만 만들어 두면 소용이 없다. 목록이 is_archived = false 로 거르면
   // 되돌릴 행 자체가 없어 누를 수가 없다 — 실제로 그 상태였다.
+  // ⚠ 고정 길이로 자르지 않는다. 라우트 앞쪽에 줄이 몇 개 늘면 검사 대상이 창 밖으로
+  //   밀려나 「동작은 그대로인데 검사만 깨지는」 일이 난다. 라우트 끝까지 본다.
   const at = serverSource.indexOf("app.get('/api/solutions'");
-  const route = serverSource.slice(at, at + 1400);
+  const route = serverSource.slice(at, serverSource.indexOf('\napp.', at + 1));
   assert.match(route, /const showArchived = canSeeInternal && String\(include_archived\) === '1'/);
   assert.match(route, /if \(!showArchived\) conditions\.push\('is_archived = false'\)/);
   assert.ok(!/conditions = \['is_archived = false'\]/.test(route),

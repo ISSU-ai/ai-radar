@@ -55,11 +55,11 @@ const refs = {
   // slug 가 있어야 ISV 확장 패키지의 구성 제품이 카탈로그와 이어진다.
   // 번들 멤버로 쓰이는 것을 몇 종 섞어 둔다 — 없으면 「조합에 추가」 경로를 못 본다.
   solutions: [
-    { id: 's1', slug: 'openai-enterprise', name: 'OpenAI Enterprise', category: 'Enterprise AI', jtbd: '전사 지식업무 생산성과 안전한 AI 활용', grade: 3, scale: 'L', focal_name: '박포컬', status_op: 'active' },
-    { id: 's2', slug: 'litellm', name: 'LiteLLM', category: 'LLM Gateway', jtbd: '멀티 모델 라우팅과 비용 통제', grade: 2, scale: 'M', focal_name: '이기술', tech_note: '고객 인증 체계 사전 확인', status_op: 'active' },
+    { id: 's1', slug: 'openai-enterprise', name: 'OpenAI Enterprise', website: 'https://openai.com', category: 'Enterprise AI', jtbd: '전사 지식업무 생산성과 안전한 AI 활용', grade: 3, scale: 'L', focal_name: '박포컬', status_op: 'active' },
+    { id: 's2', slug: 'litellm', name: 'LiteLLM', website: 'https://litellm.ai', category: 'LLM Gateway', jtbd: '멀티 모델 라우팅과 비용 통제', grade: 2, scale: 'M', focal_name: '이기술', tech_note: '고객 인증 체계 사전 확인', status_op: 'active' },
     { id: 's3', slug: 'portal26', name: 'Portal26', category: 'AI Governance', jtbd: 'Shadow AI·사용 현황 가시화와 통제', grade: 2, scale: 'M', focal_name: null, status_op: 'active' },
-    { id: 's4', slug: 'trend-micro', name: 'Trend Micro', category: 'AI Security', jtbd: 'AI 애플리케이션·Agent 보안', grade: 2, scale: 'M', focal_name: null, status_op: 'active' },
-    { id: 's5', slug: 'slack', name: 'Slack', category: 'Collaboration', jtbd: '협업 흐름에서 AI 활용', grade: 1, scale: 'M', focal_name: null, status_op: 'active' }
+    { id: 's4', slug: 'trend-micro', name: 'Trend Micro', website: 'https://www.trendmicro.com', category: 'AI Security', jtbd: 'AI 애플리케이션·Agent 보안', grade: 2, scale: 'M', focal_name: null, status_op: 'active' },
+    { id: 's5', slug: 'slack', name: 'Slack', website: 'slack.com', category: 'Collaboration', jtbd: '협업 흐름에서 AI 활용', grade: 1, scale: 'M', focal_name: null, status_op: 'active' }
   ]
 };
 
@@ -485,7 +485,9 @@ const cohereSections = (() => {
 
 const mockSolutions = [
   {
-    id: 'sol-1', slug: 'openai-enterprise', name: 'OpenAI Enterprise', layer: 'L1', slot: 'llm-platform',
+    id: 'sol-1', slug: 'openai-enterprise', name: 'OpenAI Enterprise',
+    name_kr: '오픈에이아이 엔터프라이즈', website: 'https://openai.com',
+    layer: 'L1', slot: 'llm-platform',
     delivery: 'SaaS/API', synergy: '매우 높음', category: 'GenAI / 범용 LLM',
     jtbd: '생태계 1위 및 친숙한 UI', value_chain: 'AI Platform',
     status: 'published', version: 3, grade: 3, scale: 'L', bundle_potential: 3,
@@ -508,7 +510,7 @@ const mockSolutions = [
     price_type: null, unit_price: 0, currency: 'KRW', price_tiers: [], price_is_placeholder: true
   },
   {
-    id: 'sol-2', slug: 'articul8', name: 'Articul8', layer: 'L2', slot: 'private-domain-platform',
+    id: 'sol-2', slug: 'articul8', name: 'Articul8', website: 'https://articul8.ai', layer: 'L2', slot: 'private-domain-platform',
     delivery: 'SW (On-prem/Airgap)', synergy: '매우 높음', category: '도메인특화 모델·오케스트레이션',
     jtbd: '에어갭/온프레미스 고보안 제조업 최적화', value_chain: 'AI Platform',
     status: 'published', version: 2, grade: 3, scale: 'L', bundle_potential: 3,
@@ -553,7 +555,7 @@ const mockSolutions = [
   },
   {
     // Anthropic Claude — 012 가 판정 데이터를 넣은 9종 중 하나. 노출 목록 8종에 포함된다.
-    id: 'sol-5', slug: 'anthropic-claude', name: 'Anthropic Claude', layer: 'L1', slot: 'llm-platform',
+    id: 'sol-5', slug: 'anthropic-claude', name: 'Anthropic Claude', website: 'anthropic.com', layer: 'L1', slot: 'llm-platform',
     delivery: 'API (Bedrock)', synergy: '매우 높음', category: 'GenAI / 범용 LLM',
     jtbd: '긴 문서 추론과 안전성이 중요한 업무에 쓰는 엔터프라이즈 LLM',
     value_chain: 'AI Platform', status: 'published', version: 2, grade: 3, scale: 'L',
@@ -577,7 +579,7 @@ const mockSolutions = [
   },
   {
     // Cohere — 023 으로 신규 등록. llm-platform 슬롯이라 OpenAI·Claude 와 경쟁한다.
-    id: 'sol-6', slug: 'cohere', name: 'Cohere', layer: 'L1', slot: 'llm-platform',
+    id: 'sol-6', slug: 'cohere', name: 'Cohere', website: 'javascript:alert(1)', layer: 'L1', slot: 'llm-platform',
     delivery: 'SaaS / VPC / On-prem', synergy: '높음',
     category: 'GenAI / 범용 LLM (데이터 주권형)',
     jtbd: '데이터를 외부로 내보내지 않고 다국어 검색·RAG·에이전트를 기업 내부에 구축',

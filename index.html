@@ -327,6 +327,8 @@
           <div class="title-left" style="display: flex; align-items: center; gap: 10px;">
             <span class="modal-priority-badge" id="modal-priority"></span>
             <h2 id="modal-title">솔루션명</h2>
+            <!-- 벤더 공식 사이트. 주소가 없거나 못 쓰는 형식이면 비어 있다. -->
+            <span id="modal-website" class="vendor-link-slot"></span>
           </div>
           <button class="export-btn" onclick="exportSolutionWord()" style="display: flex; align-items: center; gap: 6px; background: var(--accent-blue); color: white; border: none; padding: 8px 14px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: background 0.2s;">
             <i data-lucide="download" style="width: 14px; height: 14px;"></i>
@@ -366,6 +368,7 @@
   </footer>
 
   <!-- Scripts -->
+  <script src="/lib/vendor-link.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

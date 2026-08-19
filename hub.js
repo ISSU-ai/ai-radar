@@ -39,6 +39,17 @@ const asArray = (value) => (Array.isArray(value) ? value : []);
 const sourceNames = { portal: '포탈 유입', manual: '직접 생성', sheet: '시트 회수' };
 const DEAL_SIM_TYPE_LABEL = { seat: '좌석 라이선스', once: '일회성', mrr: '운영 MRR' };
 
+/**
+ * 벤더 사이트 링크. 규칙은 lib/vendor-link.js 한 곳에 있다.
+ *
+ * ⚠ 카탈로그 카드는 <label> 이라 안을 클릭하면 체크박스가 켜진다. 막지 않으면
+ *   벤더 사이트를 여는 순간 그 솔루션이 딜에 딸려 들어간다.
+ */
+function vendorLink(website) {
+  if (!window.IssuVendorLink) return '';
+  return window.IssuVendorLink.linkHtml(website, { stopPropagation: true });
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -1712,7 +1723,7 @@ function renderSolutions() {
   const hiddenCount = state.refs.solutions.length - visible.length;
   const cards = filtered.map((solution) => `<label class="select-card ${selected.has(solution.id) ? 'selected' : ''}">
     <input type="checkbox" data-solution-id="${solution.id}" ${selected.has(solution.id) ? 'checked' : ''} ${disabledAttr()}>
-    <h3>${escapeHtml(solution.name)}</h3><p>${escapeHtml(solution.jtbd || '카탈로그 설명 준비 중')}</p>
+    <h3>${escapeHtml(solution.name)}${vendorLink(solution.website)}</h3><p>${escapeHtml(solution.jtbd || '카탈로그 설명 준비 중')}</p>
     <div class="card-meta"><span>급 ${solution.grade ?? '—'}</span><span>${escapeHtml(solution.scale || '규모 미정')}</span><span>${escapeHtml(solution.focal_name || '포컬 미배정')}</span>${solution.status_op === 'paused' ? '<span>준비중</span>' : ''}</div>
     ${solution.tech_note ? `<div class="tech-note">기술 확인 · ${escapeHtml(solution.tech_note)}</div>` : ''}
   </label>`).join('');
